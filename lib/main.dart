@@ -12,10 +12,6 @@ import 'tools_page.dart';
 import 'models/settings_model.dart';
 import 'models/tag.dart';
 
-
-
-
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
@@ -156,3 +152,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+

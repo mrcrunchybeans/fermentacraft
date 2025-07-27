@@ -5,7 +5,7 @@ class BatchLogPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return const Center(
       child: Text("BatchLogPage screen coming soon!", style: TextStyle(fontSize: 18)),
     );
   }

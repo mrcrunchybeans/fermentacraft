@@ -1014,7 +1014,7 @@ TextFormField(
     const SizedBox(height: 12),
 
 const SizedBox(height: 12),
-Text("Select Sugar Type", style: TextStyle(fontWeight: FontWeight.bold)),
+const Text("Select Sugar Type", style: TextStyle(fontWeight: FontWeight.bold)),
 DropdownButton<SugarType>(
   value: selectedSugarType,
   onChanged: (type) {

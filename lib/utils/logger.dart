@@ -1,7 +1,7 @@
 import 'package:logger/logger.dart';
 
 final logger = Logger(
-  level: bool.fromEnvironment('dart.vm.product') ? Level.warning : Level.debug,
+  level: const bool.fromEnvironment('dart.vm.product') ? Level.warning : Level.debug,
   printer: PrettyPrinter(
     methodCount: 1,
     errorMethodCount: 5,

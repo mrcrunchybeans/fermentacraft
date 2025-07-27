@@ -147,13 +147,13 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
         ),
       ),
       const SizedBox(width: 8),
-      Tooltip(
+      const Tooltip(
         message: "Formula:\n"
             "grams = (Target TA - Current TA) × Volume\n\n"
             "• TA in g/L (as malic acid)\n"
             "• Volume is converted to liters\n"
             "• Assumes 1 g acid blend raises TA by 1 g/L per L",
-        child: const Icon(Icons.info_outline),
+        child: Icon(Icons.info_outline),
       ),
     ],
   ),

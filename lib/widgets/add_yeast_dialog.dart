@@ -74,7 +74,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
             TextFormField(
               controller: amountController,
               decoration: const InputDecoration(labelText: "Amount"),
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(

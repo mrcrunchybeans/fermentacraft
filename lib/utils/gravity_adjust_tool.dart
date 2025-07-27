@@ -60,7 +60,7 @@ class _GravityAdjustToolState extends State<GravityAdjustTool> {
           const SizedBox(height: 12),
           TextField(
             controller: _currentSGController,
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Current SG',
               border: OutlineInputBorder(),
@@ -69,7 +69,7 @@ class _GravityAdjustToolState extends State<GravityAdjustTool> {
           const SizedBox(height: 12),
           TextField(
             controller: _targetSGController,
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Target SG',
               border: OutlineInputBorder(),

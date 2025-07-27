@@ -69,7 +69,7 @@ class _SulfiteToolTabState extends State<So2CalculatorPage> {
     }
 
     final warning = actualPPM > 200
-        ? "⚠️ Warning: SO₂ level above 200 ppm may be unsafe for consumption."
+        ? "� ️ Warning: SO₂ level above 200 ppm may be unsafe for consumption."
         : null;
 
     return Scaffold(
@@ -246,7 +246,7 @@ class _SulfiteToolTabState extends State<So2CalculatorPage> {
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
-                  dotData: FlDotData(show: false),
+                  dotData: const FlDotData(show: false),
                 ),
               ],
               extraLinesData: ExtraLinesData(
@@ -266,7 +266,7 @@ class _SulfiteToolTabState extends State<So2CalculatorPage> {
                 ],
               ),
               titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
+                leftTitles: const AxisTitles(
                   sideTitles: SideTitles(showTitles: true, reservedSize: 40, interval: 40),
                 ),
                 bottomTitles: AxisTitles(
@@ -279,7 +279,7 @@ class _SulfiteToolTabState extends State<So2CalculatorPage> {
                 ),
               ),
               borderData: FlBorderData(show: true),
-              gridData: FlGridData(show: true),
+              gridData: const FlGridData(show: true),
             ),
           ),
         ),

@@ -194,12 +194,12 @@ class _PhAcidCalculatorTabState extends State<PhAcidCalculatorTab> {
         ),
       ),
       const SizedBox(width: 8),
-      Tooltip(
+      const Tooltip(
         message:
           "Formula:\n"
           "Acid needed = (Acid in test / ΔpH in test / test volume) × ΔpH to target × full batch volume\n\n"
           "All volumes are converted to mL.",
-        child: const Icon(Icons.info_outline),
+        child: Icon(Icons.info_outline),
       ),
     ],
   ),

@@ -17,7 +17,7 @@ Color _getFSUColor(double fsu) {
 }
 
 String _getFSUMessage(double fsu) {
-  if (fsu > 400) return "⚠️ Faster than typical primary fermentation.";
+  if (fsu > 400) return "� ️ Faster than typical primary fermentation.";
   if (fsu > 350) return "Slightly fast, monitor fermentation closely.";
   if (fsu >= 250) return "✅ Ideal rate for primary fermentation.";
   if (fsu > 50) return "Secondary fermentation or slow primary.";

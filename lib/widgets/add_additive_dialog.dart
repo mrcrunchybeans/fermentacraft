@@ -142,7 +142,7 @@ class _AddAdditiveDialogState extends State<AddAdditiveDialog> {
             TextFormField(
               controller: amountController,
               decoration: const InputDecoration(labelText: "Amount"),
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               validator: (val) =>
                   val == null || val.isEmpty ? "Enter amount" : null,
             ),

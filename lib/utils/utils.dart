@@ -86,7 +86,7 @@ static double correctedSG(double measuredSG, double tempF) {
       + 0.002057793 * (tempF * tempF)
       - 0.000002627634 * (tempF * tempF * tempF);
 
-  final double baseCorrection = 1.313454
+  const double baseCorrection = 1.313454
       - 0.132674 * calibrationTempF
       + 0.002057793 * (calibrationTempF * calibrationTempF)
       - 0.000002627634 * (calibrationTempF * calibrationTempF * calibrationTempF);
