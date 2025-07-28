@@ -8,7 +8,7 @@ part of 'recipe_model.dart';
 
 class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
   @override
-  final int typeId = 0;
+  final int typeId = 4;
 
   @override
   RecipeModel read(BinaryReader reader) {
@@ -19,23 +19,15 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
     return RecipeModel(
       id: fields[0] as String?,
       name: fields[1] as String,
-      tags: (fields[3] as List).cast<Tag>(),
       createdAt: fields[2] as DateTime,
-      og: fields[4] as double,
-      fg: fields[5] as double,
-      abv: fields[6] as double,
-      additives: (fields[7] as List)
-          .map((dynamic e) => (e as Map).cast<String, dynamic>())
-          .toList(),
-      fermentables: (fields[8] as List)
-          .map((dynamic e) => (e as Map).cast<String, dynamic>())
-          .toList(),
-      fermentationStages: (fields[9] as List)
-          .map((dynamic e) => (e as Map).cast<String, dynamic>())
-          .toList(),
-      yeast: (fields[10] as List)
-          .map((dynamic e) => (e as Map).cast<String, dynamic>())
-          .toList(),
+      tags: (fields[3] as List).cast<Tag>(),
+      og: fields[4] as double?,
+      fg: fields[5] as double?,
+      abv: fields[6] as double?,
+      additives: (fields[7] as List).cast<Map<String, dynamic>>(),
+      fermentables: (fields[8] as List).cast<Map<String, dynamic>>(),
+      fermentationStages: (fields[9] as List).cast<Map<String, dynamic>>(),
+      yeast: (fields[10] as List).cast<Map<String, dynamic>>(),
       notes: fields[11] as String,
       lastOpened: fields[12] as DateTime?,
     );

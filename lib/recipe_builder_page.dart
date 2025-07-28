@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/fermentation_stage.dart';
 import 'package:flutter_application_1/models/tag.dart';
 import 'package:flutter_application_1/utils/temp_display.dart';
 import 'package:logger/logger.dart';
@@ -28,10 +29,6 @@ double calculateAbv(double og, double fg) {
 }
 
 class RecipeBuilderPage extends StatefulWidget {
-  final RecipeModel? existingRecipe;
-  final int? recipeKey;
-  final bool isClone;
-
   const RecipeBuilderPage({
     super.key,
     this.existingRecipe,
@@ -39,51 +36,388 @@ class RecipeBuilderPage extends StatefulWidget {
     this.isClone = false,
   });
 
+  final RecipeModel? existingRecipe;
+  final bool isClone;
+  final int? recipeKey;
+
   @override
   State<RecipeBuilderPage> createState() => _RecipeBuilderPageState();
 }
 
 
 class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
-  Timer? sgToAbvDebounce;
-  bool userOverrodeAbv = false;
-  bool userOverrodeTargetSG = false;
-  final TextEditingController measuredMustSGController = TextEditingController();
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController targetMustSGController = TextEditingController();
-  bool get hasAnyOg => fermentables.any((f) => f.containsKey('og') && f['og'] != null);
   double abv = 0.0;
   List<Map<String, dynamic>> additives = [];
-  List<Map<String, dynamic>> fermentables = [];
-  List<Map<String, dynamic>> yeast = [];
-  List<Map<String, dynamic>> fermentationStages = [];
-  List<Tag> tags = [];
-  double fg = 1.010;
-  double? og;
-  bool showAdvanced = false;
-  bool userOverrodeMeasuredOG = false;
-  double? measuredMustSG;
-  double? targetMustSG;
   double? batchVolumeGallons;
+  double? desiredAbv;
+  final TextEditingController desiredAbvController = TextEditingController();
+  List<Map<String, dynamic>> fermentables = [];
+  List<FermentationStage> fermentationStages = [];
+  double fg = 1.010;
+  double? measuredMustSG;
+  final TextEditingController measuredMustSGController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
+TextEditingController notesController = TextEditingController();
+  double? og;
   double originalGravity = 1.000;
-  double? sugarNeededGrams;
-  bool userOverrodeMeasuredSG = false;
-  bool showAdvancedFields = true;
+  AbvSource selectedAbvSource = AbvSource.measured;
   SugarType selectedSugarType = sugarTypes.first;
-  double? waterToDiluteLiters;
   VolumeUnit selectedVolumeUnit = VolumeUnit.gallons;
+  VolumeUnit selectedWaterUnit = VolumeUnit.ounces;
+  Timer? sgToAbvDebounce;
+  bool showAdvanced = false;
+  bool showAdvancedFields = true;
+  double? sugarNeededGrams;
+  List<Tag> tags = [];
+  double? targetMustSG;
+  final TextEditingController targetMustSGController = TextEditingController();
+  bool useAdjustedOG = false;
+  bool userOverrodeAbv = false;
+  bool userOverrodeMeasuredOG = false;
+  bool userOverrodeMeasuredSG = false;
+  bool userOverrodeTargetSG = false;
   TextEditingController volumeController = TextEditingController(text: "18.9");
   double? waterToAddLiters;
-  VolumeUnit selectedWaterUnit = VolumeUnit.ounces;
-  AbvSource selectedAbvSource = AbvSource.measured;
-  bool useAdjustedOG = false;
+  double? waterToDiluteLiters;
   double? weightedAverageOG;
-  final TextEditingController desiredAbvController = TextEditingController();
-  double? desiredAbv;
+  List<Map<String, dynamic>> yeast = [];
+
+ @override
+void initState() {
+  super.initState();
+     desiredAbvController.addListener(() {
+  final input = desiredAbvController.text;
+  final parsed = double.tryParse(input);
+
+  if (parsed != null && parsed > 0 && parsed < 25) {
+    setState(() {
+      userOverrodeAbv = true;
+      userOverrodeTargetSG = false;
+
+      desiredAbv = parsed;
+      final requiredOG = (desiredAbv! / 131.25) + fg;
+      final formattedOG = double.parse(requiredOG.toStringAsFixed(3));
+
+      targetMustSG = formattedOG;
+      targetMustSGController.text = formattedOG.toStringAsFixed(3);
+      _calculateSugarNeeded();
+      if (useAdjustedOG) calculateStats();
+    });
+  }
+});
+
+  // Optional: keep targetMustSGController synced if targetMustSG changes elsewhere
+  if (targetMustSG != null) {
+    targetMustSGController.text = targetMustSG!.toStringAsFixed(3);
+  }
+  measuredMustSGController.addListener(() {
+  final input = measuredMustSGController.text;
+  final parsed = double.tryParse(input);
+  if (parsed != null) {
+    setState(() {
+      measuredMustSG = parsed;
+      calculateStats();
+      _updateMeasuredMustSGIfNotOverridden();
+
+    });
+  }
+});
+
+  if (widget.existingRecipe != null) {
+    final recipe = widget.existingRecipe!;
+    nameController.text = recipe.name;
+    notesController.text = recipe.notes;
+    additives = List<Map<String, dynamic>>.from(recipe.additives);
+    fermentables = List<Map<String, dynamic>>.from(recipe.fermentables);
+    fermentationStages = recipe.fermentationStages
+    .map((e) => FermentationStage.fromMap(e))
+    .toList();
+
+    og = recipe.og;
+    fg = recipe.fg!;
+    abv = recipe.abv!;
+    yeast = List<Map<String, dynamic>>.from(recipe.yeast);
+    tags = List<Tag>.from(recipe.tags);
+  }
+
+  calculateStats();
+    if (measuredMustSG == null && weightedAverageOG != null) {
+    measuredMustSG = weightedAverageOG;
+    measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
+  }
+}
+
+  bool get hasAnyOg => fermentables.any((f) => f.containsKey('og') && f['og'] != null);
+
+void updateMeasuredMustSGFromWeighted() {
+  if (!userOverrodeMeasuredOG && weightedAverageOG != null) {
+    measuredMustSG = weightedAverageOG;
+    measuredMustSGController.text = weightedAverageOG!.toStringAsFixed(3);
+  }
+}
+
+// ########## Start of CalculateStats ##########
+
+void calculateStats() {
+  double totalVolumeGallons = 0;
+  double weightedOGSum = 0;
+
+  for (final f in fermentables) {
+    final og = f['og'];
+    final amount = f['amount'];
+    final unit = f['unit'];
+
+    if (og == null || amount == null || unit == null) continue;
+
+    final amountValue = double.tryParse(amount.toString()) ?? 0;
+    double amountInGallons;
+
+    abv = calculateAbv(originalGravity, fg);
+
+    if (!userOverrodeAbv) {
+      desiredAbv = abv;
+      desiredAbvController.text = abv.toStringAsFixed(2);
+    }
+
+
+    switch (unit.toString().toLowerCase()) {
+      case 'oz':
+      case 'ounces':
+        amountInGallons = amountValue / 128.0;
+        break;
+      case 'liters':
+      case 'l':
+        amountInGallons = amountValue / 3.78541;
+        break;
+      case 'ml':
+        amountInGallons = amountValue / 3785.41;
+        break;
+      case 'gallons':
+      case 'gallon':
+      default:
+        amountInGallons = amountValue;
+    }
+
+    totalVolumeGallons += amountInGallons;
+    weightedOGSum += (og as double) * amountInGallons;
+  }
+
+  weightedAverageOG = totalVolumeGallons > 0 ? weightedOGSum / totalVolumeGallons : null;
+
+  _updateMeasuredMustSGIfNotOverridden();
+
+  // 🔥 Set the batch volume for gravity adjustment
+  batchVolumeGallons = totalVolumeGallons;
+
+  // 🔁 Update the gravity adjustment volumeController
+  if (batchVolumeGallons != null) {
+    final double value = selectedVolumeUnit == VolumeUnit.ounces
+        ? batchVolumeGallons! * 128.0
+        : selectedVolumeUnit == VolumeUnit.liters
+            ? batchVolumeGallons! * 3.78541
+            : batchVolumeGallons!;
+    volumeController.text = value.toStringAsFixed(2);
+  }
+
+  // Set originalGravity
+  originalGravity = !showAdvanced
+      ? (weightedAverageOG ?? 1.000)
+      : (useAdjustedOG
+          ? (targetMustSG ?? weightedAverageOG ?? 1.000)
+          : (measuredMustSG ?? weightedAverageOG ?? 1.000));
+
+  abv = calculateAbv(originalGravity, fg);
+
+  logger.d("Stats calculated - OG: $originalGravity, FG: $fg, ABV: $abv, Weighted OG: $weightedAverageOG, Total Volume: $totalVolumeGallons gal");
+
+abv = calculateAbv(originalGravity, fg);
+
+// Update desired ABV unless overridden
+if (!userOverrodeAbv) {
+  desiredAbv = abv;
+  desiredAbvController.text = abv.toStringAsFixed(2);
+}
+
+
+}
+
+// ########### End of CalculateStats ###########
+
+
+
+
+void addFermentable(Map<String, dynamic> f) {
+  setState(() {
+    _updateMeasuredMustSGIfNotOverridden();
+ 
+    fermentables.add(f);
+  });
+
+  calculateStats();
+
+  if (measuredMustSG == null && weightedAverageOG != null) {
+    setState(() {
+      measuredMustSG = weightedAverageOG;
+      measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
+       _updateMeasuredMustSGIfNotOverridden();
+
+      updateMeasuredMustSGFromWeighted();
+
+    });
+  }
+
+  logger.d("Added fermentable: ${f['name']}");
+  logger.i("OG fallback check → measuredMustSG: $measuredMustSG, weightedAverageOG: $weightedAverageOG");
+}
+
+  void editFermentable(int index) async {
+  final existing = fermentables[index];
+
+  await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (_) => AddFermentableDialog(
+      existing: existing,
+      onAddToRecipe: (updated) {
+        setState(() {
+          fermentables[index] = updated;
+          if (updated.containsKey('og') && updated['og'] != null) {
+            og = updated['og'];
+          }
+        });
+        calculateStats();
+          _updateMeasuredMustSGIfNotOverridden();
+          updateMeasuredMustSGFromWeighted();
+
+
+      },
+      onAddToInventory: (_) {},
+    ),
+  );
+}
+
+  void editAdditive(int index) async {
+    final existing = additives[index];
+
+    await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => AddAdditiveDialog(
+        mustPH: 3.4,
+        volume: 5.0,
+        existing: existing,
+        onAdd: (updated) {
+          setState(() {
+            additives[index] = updated;
+          });
+          calculateStats();
+          _updateMeasuredMustSGIfNotOverridden();
+
+        },
+      ),
+    );
+  }
+
+void addYeast(Map<String, dynamic> y) {
+  setState(() {
+    yeast = [y]; // Only one yeast allowed, replace any existing
+  });
+  logger.d("Added yeast: ${y['name']}");
+}
+
+void editYeast() async {
+  final existing = yeast.isNotEmpty ? yeast.first : null;
+
+  await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (_) => AddYeastDialog(
+      existing: existing,
+      onAdd: (updated) {
+        setState(() {
+          yeast = [updated];
+        });
+      },
+    ),
+  );
+}
+
+    double getConvertedWaterAmount() {
+      if (waterToAddLiters == null) return 0.0;
+      switch (selectedWaterUnit) {
+        case VolumeUnit.gallons:
+          return waterToAddLiters! / 3.78541;
+        case VolumeUnit.ounces:
+          return waterToAddLiters! / 0.0295735;
+        default:
+          return waterToAddLiters!;
+      }
+    }
+
+  void addAdditive(Map<String, dynamic> a) {
+    setState(() {
+      additives.add(a);
+    });
+    logger.d("Added additive: ${a['name']}");
+  }
+
+  void saveRecipe() {
+  final recipeName = nameController.text.trim();
   
 
+  if (recipeName.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please enter a recipe name.")),
+    );
+    return;
+  }
 
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text("Confirm Save"),
+      content: Text("Save recipe as \"$recipeName\"?"),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            final newRecipe = RecipeModel(
+              name: recipeName,
+              tags: tags,
+              createdAt: DateTime.now(),
+              fg: fg,
+              abv: abv,
+              additives: additives,
+              og: originalGravity,
+              fermentables: fermentables,
+              yeast: yeast,
+              fermentationStages: fermentationStages.map((e) => e.toMap()).toList(),
+              notes: notesController.text.trim(),
 
+            );
+
+            final box = Hive.box<RecipeModel>('recipes');
+
+            if (widget.existingRecipe != null && !widget.isClone && widget.recipeKey != null) {
+              await box.put(widget.recipeKey, newRecipe);
+            } else {
+              await box.add(newRecipe);
+            }
+
+            logger.i("${widget.isClone ? "Cloned" : widget.existingRecipe != null ? "Updated" : "Saved"} recipe: $recipeName");
+
+            if (!mounted) return;
+            Navigator.of(context).pop(); // Close dialog
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const RecipeListPage()),
+            );
+          },
+          child: const Text("Save"),
+        ),
+      ],
+    ),
+  );
+}
 
 Widget _buildCalculatedABVSection() {
   final ogDisplay = originalGravity.toStringAsFixed(3);
@@ -113,16 +447,6 @@ void _updateMeasuredMustSGIfNotOverridden() {
     measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
   }
 }
-
-
-void updateMeasuredMustSGFromWeighted() {
-  if (!userOverrodeMeasuredOG && weightedAverageOG != null) {
-    measuredMustSG = weightedAverageOG;
-    measuredMustSGController.text = weightedAverageOG!.toStringAsFixed(3);
-  }
-}
-
-
 
 Widget _buildFermentablesSummary() {
   final validFermentables = fermentables.where((f) =>
@@ -220,339 +544,6 @@ void _calculateSugarNeeded() {
   calculateStats();
   _updateMeasuredMustSGIfNotOverridden();
 
-}
-
- @override
-void initState() {
-  super.initState();
-     desiredAbvController.addListener(() {
-  final input = desiredAbvController.text;
-  final parsed = double.tryParse(input);
-
-  if (parsed != null && parsed > 0 && parsed < 25) {
-    setState(() {
-      userOverrodeAbv = true;
-      userOverrodeTargetSG = false;
-
-      desiredAbv = parsed;
-      final requiredOG = (desiredAbv! / 131.25) + fg;
-      final formattedOG = double.parse(requiredOG.toStringAsFixed(3));
-
-      targetMustSG = formattedOG;
-      targetMustSGController.text = formattedOG.toStringAsFixed(3);
-      _calculateSugarNeeded();
-      if (useAdjustedOG) calculateStats();
-    });
-  }
-});
-
-  // Optional: keep targetMustSGController synced if targetMustSG changes elsewhere
-  if (targetMustSG != null) {
-    targetMustSGController.text = targetMustSG!.toStringAsFixed(3);
-  }
-  measuredMustSGController.addListener(() {
-  final input = measuredMustSGController.text;
-  final parsed = double.tryParse(input);
-  if (parsed != null) {
-    setState(() {
-      measuredMustSG = parsed;
-      calculateStats();
-      _updateMeasuredMustSGIfNotOverridden();
-
-    });
-  }
-});
-
-  if (widget.existingRecipe != null) {
-    final recipe = widget.existingRecipe!;
-    nameController.text = recipe.name;
-    notesController.text = recipe.notes;
-    additives = List<Map<String, dynamic>>.from(recipe.additives);
-    fermentables = List<Map<String, dynamic>>.from(recipe.fermentables);
-    fermentationStages = List<Map<String, dynamic>>.from(recipe.fermentationStages);
-    og = recipe.og;
-    fg = recipe.fg;
-    abv = recipe.abv;
-    yeast = List<Map<String, dynamic>>.from(recipe.yeast);
-    tags = List<Tag>.from(recipe.tags);
-  }
-
-  calculateStats();
-    if (measuredMustSG == null && weightedAverageOG != null) {
-    measuredMustSG = weightedAverageOG;
-    measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
-  }
-}
-
-// ########## Start of CalculateStats ##########
-
-void calculateStats() {
-  double totalVolumeGallons = 0;
-  double weightedOGSum = 0;
-
-  for (final f in fermentables) {
-    final og = f['og'];
-    final amount = f['amount'];
-    final unit = f['unit'];
-
-    if (og == null || amount == null || unit == null) continue;
-
-    final amountValue = double.tryParse(amount.toString()) ?? 0;
-    double amountInGallons;
-
-    abv = calculateAbv(originalGravity, fg);
-
-    if (!userOverrodeAbv) {
-      desiredAbv = abv;
-      desiredAbvController.text = abv.toStringAsFixed(2);
-    }
-
-
-    switch (unit.toString().toLowerCase()) {
-      case 'oz':
-      case 'ounces':
-        amountInGallons = amountValue / 128.0;
-        break;
-      case 'liters':
-      case 'l':
-        amountInGallons = amountValue / 3.78541;
-        break;
-      case 'ml':
-        amountInGallons = amountValue / 3785.41;
-        break;
-      case 'gallons':
-      case 'gallon':
-      default:
-        amountInGallons = amountValue;
-    }
-
-    totalVolumeGallons += amountInGallons;
-    weightedOGSum += (og as double) * amountInGallons;
-  }
-
-  weightedAverageOG = totalVolumeGallons > 0 ? weightedOGSum / totalVolumeGallons : null;
-
-  _updateMeasuredMustSGIfNotOverridden();
-
-  // 🔥 Set the batch volume for gravity adjustment
-  batchVolumeGallons = totalVolumeGallons;
-
-  // 🔁 Update the gravity adjustment volumeController
-  if (batchVolumeGallons != null) {
-    final double value = selectedVolumeUnit == VolumeUnit.ounces
-        ? batchVolumeGallons! * 128.0
-        : selectedVolumeUnit == VolumeUnit.liters
-            ? batchVolumeGallons! * 3.78541
-            : batchVolumeGallons!;
-    volumeController.text = value.toStringAsFixed(2);
-  }
-
-  // Set originalGravity
-  originalGravity = !showAdvanced
-      ? (weightedAverageOG ?? 1.000)
-      : (useAdjustedOG
-          ? (targetMustSG ?? weightedAverageOG ?? 1.000)
-          : (measuredMustSG ?? weightedAverageOG ?? 1.000));
-
-  abv = calculateAbv(originalGravity, fg);
-
-  logger.d("Stats calculated - OG: $originalGravity, FG: $fg, ABV: $abv, Weighted OG: $weightedAverageOG, Total Volume: $totalVolumeGallons gal");
-
-abv = calculateAbv(originalGravity, fg);
-
-// Update desired ABV unless overridden
-if (!userOverrodeAbv) {
-  desiredAbv = abv;
-  desiredAbvController.text = abv.toStringAsFixed(2);
-}
-
-
-}
-
-
-// ########### End of CalculateStats ###########
-
-
-
-
-void addFermentable(Map<String, dynamic> f) {
-  setState(() {
-    _updateMeasuredMustSGIfNotOverridden();
- 
-    fermentables.add(f);
-  });
-
-  calculateStats();
-
-  if (measuredMustSG == null && weightedAverageOG != null) {
-    setState(() {
-      measuredMustSG = weightedAverageOG;
-      measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
-       _updateMeasuredMustSGIfNotOverridden();
-
-      updateMeasuredMustSGFromWeighted();
-
-    });
-  }
-
-  logger.d("Added fermentable: ${f['name']}");
-  logger.i("OG fallback check → measuredMustSG: $measuredMustSG, weightedAverageOG: $weightedAverageOG");
-}
-
-
-
-  void editFermentable(int index) async {
-  final existing = fermentables[index];
-
-  await showDialog<Map<String, dynamic>>(
-    context: context,
-    builder: (_) => AddFermentableDialog(
-      existing: existing,
-      onAddToRecipe: (updated) {
-        setState(() {
-          fermentables[index] = updated;
-          if (updated.containsKey('og') && updated['og'] != null) {
-            og = updated['og'];
-          }
-        });
-        calculateStats();
-          _updateMeasuredMustSGIfNotOverridden();
-          updateMeasuredMustSGFromWeighted();
-
-
-      },
-      onAddToInventory: (_) {},
-    ),
-  );
-}
-
-  void editAdditive(int index) async {
-    final existing = additives[index];
-
-    await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => AddAdditiveDialog(
-        mustPH: 3.4,
-        volume: 5.0,
-        existing: existing,
-        onAdd: (updated) {
-          setState(() {
-            additives[index] = updated;
-          });
-          calculateStats();
-          _updateMeasuredMustSGIfNotOverridden();
-
-        },
-      ),
-    );
-  }
-
-TextEditingController notesController = TextEditingController();
-
-
-void addYeast(Map<String, dynamic> y) {
-  setState(() {
-    yeast = [y]; // Only one yeast allowed, replace any existing
-  });
-  logger.d("Added yeast: ${y['name']}");
-}
-
-void editYeast() async {
-  final existing = yeast.isNotEmpty ? yeast.first : null;
-
-  await showDialog<Map<String, dynamic>>(
-    context: context,
-    builder: (_) => AddYeastDialog(
-      existing: existing,
-      onAdd: (updated) {
-        setState(() {
-          yeast = [updated];
-        });
-      },
-    ),
-  );
-}
-
-    double getConvertedWaterAmount() {
-      if (waterToAddLiters == null) return 0.0;
-      switch (selectedWaterUnit) {
-        case VolumeUnit.gallons:
-          return waterToAddLiters! / 3.78541;
-        case VolumeUnit.ounces:
-          return waterToAddLiters! / 0.0295735;
-        default:
-          return waterToAddLiters!;
-      }
-    }
-
-
-
-  void addAdditive(Map<String, dynamic> a) {
-    setState(() {
-      additives.add(a);
-    });
-    logger.d("Added additive: ${a['name']}");
-  }
-
-  void saveRecipe() {
-  final recipeName = nameController.text.trim();
-  
-
-  if (recipeName.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please enter a recipe name.")),
-    );
-    return;
-  }
-
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text("Confirm Save"),
-      content: Text("Save recipe as \"$recipeName\"?"),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Cancel"),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            final newRecipe = RecipeModel(
-              name: recipeName,
-              tags: tags,
-              createdAt: DateTime.now(),
-              fg: fg,
-              abv: abv,
-              additives: additives,
-              og: originalGravity,
-              fermentables: fermentables,
-              yeast: yeast,
-              fermentationStages: fermentationStages,
-              notes: notesController.text.trim(),
-
-            );
-
-            final box = Hive.box<RecipeModel>('recipes');
-
-            if (widget.existingRecipe != null && !widget.isClone && widget.recipeKey != null) {
-              await box.put(widget.recipeKey, newRecipe);
-            } else {
-              await box.add(newRecipe);
-            }
-
-            logger.i("${widget.isClone ? "Cloned" : widget.existingRecipe != null ? "Updated" : "Saved"} recipe: $recipeName");
-
-            if (!mounted) return;
-            Navigator.of(context).pop(); // Close dialog
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const RecipeListPage()),
-            );
-          },
-          child: const Text("Save"),
-        ),
-      ],
-    ),
-  );
 }
 
 // ######## Start of _buildSectionTitle ########
@@ -776,8 +767,9 @@ void editYeast() async {
             final i = entry.key;
             final stage = entry.value;
             return ListTile(
-              title: Text(stage['name']),
-              subtitle: Text("${stage['days']} ${stage['days'] == 1 ? 'day' : 'days'} @ ${TempDisplay.format(stage['temp'])}"),
+              title: Text(stage.name),
+              subtitle: Text("${stage.durationDays} ${stage.durationDays == 1 ? 'day' : 'days'} @ ${TempDisplay.format(stage.targetTempC!)
+}"),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

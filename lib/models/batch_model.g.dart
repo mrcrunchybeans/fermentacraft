@@ -8,15 +8,14 @@ part of 'batch_model.dart';
 
 class BatchModelAdapter extends TypeAdapter<BatchModel> {
   @override
-  final int typeId = 10;
+  final int typeId = 34;
 
   @override
   BatchModel read(BinaryReader reader) {
     final numOfFields = reader.readByte();
-    final fields = Map<int, dynamic>.fromIterables(
-      List.generate(numOfFields, (_) => reader.readByte()),
-      List.generate(numOfFields, (_) => reader.read()),
-    );
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
     return BatchModel(
       id: fields[0] as String,
       name: fields[1] as String,
@@ -28,20 +27,29 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       measurementLogs: (fields[7] as List).cast<MeasurementLog>(),
       status: fields[8] as String,
       notes: fields[9] as String?,
-      deductedIngredients: (fields[10] as Map).cast<String, bool>(),
+      deductedIngredients:
+          (fields[10] as Map).cast<String, bool>(),
       type: fields[11] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
-      ingredients: (fields[14] as List).cast<Map<String, dynamic>>(),
+      ingredients:
+          (fields[14] as List).cast<Map<String, dynamic>>(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
-      additives: (fields[16] as List).cast<Map<String, dynamic>>(),
+      additives:
+          (fields[16] as List).cast<Map<String, dynamic>>(),
+      yeast: (fields[17] as Map?)?.cast<String, dynamic>(),
+      createdAt: fields[18] as DateTime,
+      tags: (fields[19] as List).cast<Tag>(),
+      og: fields[20] as double?,
+      fg: fields[21] as double?,
+      abv: fields[22] as double?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BatchModel obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(23)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -75,7 +83,19 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..writeByte(15)
       ..write(obj.plannedEvents)
       ..writeByte(16)
-      ..write(obj.additives);
+      ..write(obj.additives)
+      ..writeByte(17)
+      ..write(obj.yeast)
+      ..writeByte(18)
+      ..write(obj.createdAt)
+      ..writeByte(19)
+      ..write(obj.tags)
+      ..writeByte(20)
+      ..write(obj.og)
+      ..writeByte(21)
+      ..write(obj.fg)
+      ..writeByte(22)
+      ..write(obj.abv);
   }
 
   @override

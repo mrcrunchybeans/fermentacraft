@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/batch_model.dart';
 import 'package:flutter_application_1/models/recipe_model.dart';
+import 'package:flutter_application_1/models/fermentation_stage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,12 +15,11 @@ class AddBatchDialog extends StatefulWidget {
 class _AddBatchDialogState extends State<AddBatchDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _volumeController = TextEditingController();
   final _notesController = TextEditingController();
-
+  final _volumeController = TextEditingController();
+  String? _selectedRecipeId;
   DateTime _startDate = DateTime.now();
   String _status = 'Planning';
-  String? _selectedRecipeId;
 
   final List<String> _statusOptions = [
     'Planning',
@@ -44,22 +44,59 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
 
   void _saveBatch() {
     if (_formKey.currentState?.validate() ?? false) {
+      final recipesBox = Hive.box<RecipeModel>('recipes');
+      final selectedRecipe = _selectedRecipeId != null
+          ? recipesBox.values.firstWhere(
+              (r) => r.id == _selectedRecipeId,
+              orElse: () => RecipeModel(
+                name: 'Unknown',
+                tags: [],
+                createdAt: DateTime.now(),
+              ),
+            )
+          : null;
+
       final newBatch = BatchModel(
         id: const Uuid().v4(),
         name: _nameController.text.trim(),
         recipeId: _selectedRecipeId ?? '',
         startDate: _startDate,
+        status: _status,
         batchVolume: _volumeController.text.isNotEmpty
             ? double.tryParse(_volumeController.text)
             : null,
         notes: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
+        createdAt: DateTime.now(),
+        tags: [],
+        og: selectedRecipe?.og,
+        fg: selectedRecipe?.fg,
+        abv: selectedRecipe?.abv,
+        ingredients: selectedRecipe?.fermentables != null
+            ? List<Map<String, dynamic>>.from(selectedRecipe!.fermentables)
+            : [],
+        additives: selectedRecipe?.additives != null
+            ? List<Map<String, dynamic>>.from(selectedRecipe!.additives)
+            : [],
+        yeast: (selectedRecipe?.yeast != null &&
+                selectedRecipe!.yeast.isNotEmpty)
+            ? Map<String, dynamic>.from(selectedRecipe.yeast.first)
+            : null,
+        fermentationStages: selectedRecipe?.fermentationStages != null
+    ? selectedRecipe!.fermentationStages.map((e) {
+        if (e is FermentationStage) return e;
+        return FermentationStage.fromMap(e);
+      }).toList()
+      .cast<FermentationStage>() // ✅ cast to correct type
+    : [],
+        measurementLogs: [],
+        plannedEvents: [],
+        deductedIngredients: {},
       );
 
       final box = Hive.box<BatchModel>('batches');
       box.put(newBatch.id, newBatch);
-
       Navigator.of(context).pop();
     }
   }

@@ -8,7 +8,7 @@ class FermentationStage {
   String name;
 
   @HiveField(1)
-  DateTime startDate;
+  DateTime? startDate;
 
   @HiveField(2)
   int durationDays;
@@ -18,8 +18,30 @@ class FermentationStage {
 
   FermentationStage({
     required this.name,
-    required this.startDate,
+    this.startDate,
     required this.durationDays,
     this.targetTempC,
   });
+
+  // Factory to convert from legacy Map<String, dynamic>
+  factory FermentationStage.fromMap(Map<String, dynamic> map) {
+    return FermentationStage(
+      name: map['name'] ?? '',
+      startDate: map['startDate'] != null
+          ? DateTime.tryParse(map['startDate'].toString())
+          : null,
+      durationDays: map['durationDays'] ?? map['days'] ?? 0,
+      targetTempC: (map['targetTempC'] ?? map['temp'])?.toDouble(),
+    );
+  }
+
+  // Convert back to map if needed
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'startDate': startDate?.toIso8601String(),
+      'durationDays': durationDays,
+      'targetTempC': targetTempC,
+    };
+  }
 }

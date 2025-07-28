@@ -1,4 +1,5 @@
 import 'package:flutter_application_1/models/batch_model.dart';
+import 'package:flutter_application_1/models/recipe_model.dart';
 
 double estimateMustPH(BatchModel batch) {
   final withPH = batch.safeIngredients.where((f) => f['ph'] != null).toList();
@@ -7,4 +8,13 @@ double estimateMustPH(BatchModel batch) {
   final phValues = withPH.map((f) => double.tryParse(f['ph'].toString()) ?? 3.4);
   final avgPH = phValues.reduce((a, b) => a + b) / phValues.length;
   return avgPH;
+}
+
+void syncBatchFromRecipe(BatchModel batch, RecipeModel recipe) {
+  batch.yeast = List<Map<String, dynamic>>.from(recipe.yeast)
+      .firstWhere((y) => y['name'] == batch.yeast?['name'], orElse: () => {});
+  batch.ingredients = List<Map<String, dynamic>>.from(recipe.fermentables);
+  batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
+  batch.plannedOg = recipe.og;
+  batch.plannedAbv = recipe.abv;
 }

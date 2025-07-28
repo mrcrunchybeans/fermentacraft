@@ -19,13 +19,13 @@ class RecipeModel extends HiveObject {
   List<Tag> tags;
 
   @HiveField(4)
-  double og;
+  double? og;
 
   @HiveField(5)
-  double fg;
+  double? fg;
 
   @HiveField(6)
-  double abv;
+  double? abv;
 
   @HiveField(7)
   List<Map<String, dynamic>> additives;
@@ -50,14 +50,18 @@ class RecipeModel extends HiveObject {
     required this.name,
     required this.tags,
     required this.createdAt,
-    required this.og,
-    required this.fg,
-    required this.abv,
-    required this.additives,
-    required this.fermentables,
-    required this.fermentationStages,
-    required this.yeast,
+    this.og,
+    this.fg,
+    this.abv,
+    List<Map<String, dynamic>>? additives,
+    List<Map<String, dynamic>>? fermentables,
+    List<Map<String, dynamic>>? fermentationStages,
+    List<Map<String, dynamic>>? yeast,
     this.notes = '',
     this.lastOpened,
-  }) : id = id ?? const Uuid().v4();
+  })  : id = id ?? const Uuid().v4(),
+        additives = additives ?? [],
+        fermentables = fermentables ?? [],
+        fermentationStages = fermentationStages ?? [],
+        yeast = yeast ?? [];
 }

@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../utils/temp_display.dart';
 import '../models/settings_model.dart';
+import '../models/fermentation_stage.dart';
 
 class AddFermentationStageDialog extends StatefulWidget {
-  final Map<String, dynamic>? existing;
-  final Function(Map<String, dynamic>) onSave;
+  final FermentationStage? existing; // changed from Map<String, dynamic>
+  final Function(FermentationStage) onSave;
 
   const AddFermentationStageDialog({
     super.key,
@@ -33,13 +34,15 @@ class _AddFermentationStageDialogState extends State<AddFermentationStageDialog>
 
     if (widget.existing != null) {
       final e = widget.existing!;
-      nameController.text = e['name'] ?? '';
-      double tempC = e['temp'] ?? 0.0;
-      double displayTemp = tempUnit == '°F' ? (tempC * 9 / 5) + 32 : tempC;
-      tempController.text = displayTemp.toStringAsFixed(1);
-      daysController.text = e['days']?.toString() ?? '';
+      nameController.text = e.name;
+      double? tempC = e.targetTempC;
+      double? displayTemp = tempC != null
+    ? (tempUnit == '°F' ? (tempC * 9 / 5) + 32 : tempC)
+    : null;
+
+      tempController.text = displayTemp!.toStringAsFixed(1);
+      daysController.text = e.durationDays.toString();
     } else {
-      // Default temperature based on unit
       tempController.text = tempUnit == '°F' ? '68.0' : '20.0';
     }
   }
@@ -48,11 +51,11 @@ class _AddFermentationStageDialogState extends State<AddFermentationStageDialog>
     double inputTemp = double.tryParse(tempController.text) ?? 0.0;
     double tempC = TempDisplay.convertToCelsius(inputTemp, tempUnit);
 
-    final stage = {
-      'name': nameController.text.trim(),
-      'temp': tempC, // Always store in Celsius
-      'days': int.tryParse(daysController.text) ?? 0,
-    };
+    final stage = FermentationStage(
+      name: nameController.text.trim(),
+      durationDays: int.tryParse(daysController.text) ?? 0,
+      targetTempC:tempC, startDate: null,
+    );
 
     widget.onSave(stage);
     Navigator.of(context).pop();

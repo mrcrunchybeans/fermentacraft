@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/recipe_model.dart';
+import 'package:hive/hive.dart';
 import '../models/batch_model.dart';
 import '../models/planned_event.dart';
 import '../widgets/add_fermentable_dialog.dart';
 import '../widgets/add_additive_dialog.dart';
 import '../utils/batch_utils.dart';
+import '../widgets/add_yeast_dialog.dart';
+
+
+
 
 
 class BatchDetailPage extends StatefulWidget {
@@ -33,6 +39,142 @@ class _BatchDetailPageState extends State<BatchDetailPage> with SingleTickerProv
       ),
     );
   }
+
+Widget _yeastSection(BatchModel batch) {
+  final yeast = batch.yeast;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _sectionTitle('Yeast'),
+      if (yeast == null)
+        const Text('No yeast selected.'),
+      if (yeast != null)
+        ListTile(
+          leading: const Icon(Icons.bubble_chart),
+          title: Text('${yeast['amount'] ?? ''} ${yeast['unit'] ?? ''} ${yeast['name'] ?? 'Unnamed'}'),
+        ),
+      const SizedBox(height: 8),
+      ElevatedButton.icon(
+        icon: const Icon(Icons.edit),
+        label: Text(yeast == null ? 'Add Yeast' : 'Edit Yeast'),
+        onPressed: () async {
+          await showDialog(
+            context: context,
+            builder: (_) => AddYeastDialog(
+              existing: batch.yeast,
+              onAdd: (newYeast) {
+                setState(() {
+                  batch.yeast = newYeast;
+                  batch.save();
+                });
+              },
+            ),
+          );
+        },
+      ),
+    ],
+  );
+}
+
+
+void _showSyncFromRecipeDialog(BatchModel batch) async {
+  bool syncYeast = true;
+  bool syncIngredients = true;
+  bool syncAdditives = true;
+  bool syncStages = true;
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Sync From Recipe'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Are you sure you want to sync data from the original recipe? This will overwrite selected fields in the batch.'),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              value: syncYeast,
+              onChanged: (val) => setState(() => syncYeast = val ?? true),
+              title: const Text("Yeast"),
+            ),
+            CheckboxListTile(
+              value: syncIngredients,
+              onChanged: (val) => setState(() => syncIngredients = val ?? true),
+              title: const Text("Ingredients"),
+            ),
+            CheckboxListTile(
+              value: syncAdditives,
+              onChanged: (val) => setState(() => syncAdditives = val ?? true),
+              title: const Text("Additives"),
+            ),
+            CheckboxListTile(
+              value: syncStages,
+              onChanged: (val) => setState(() => syncStages = val ?? true),
+              title: const Text("Fermentation Stages"),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sync')),
+        ],
+      ),
+    ),
+  );
+
+  if (confirmed != true) return;
+
+  final recipeBox = Hive.isBoxOpen('recipes')
+      ? Hive.box<RecipeModel>('recipes')
+      : await Hive.openBox<RecipeModel>('recipes');
+
+  if (!mounted) return;
+
+  final recipe = recipeBox.get(batch.recipeId);
+
+  if (recipe == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Recipe not found.')),
+    );
+    return;
+  }
+
+  if (syncYeast) {
+    if ((recipe.yeast as List).isNotEmpty) {
+      batch.yeast = Map<String, dynamic>.from((recipe.yeast as List).first);
+    } else if (recipe.yeast is Map<String, dynamic>) {
+      batch.yeast = Map<String, dynamic>.from(recipe.yeast as Map<String, dynamic>);
+    } else {
+      batch.yeast = null;
+    }
+  }
+
+  if (syncIngredients) {
+    batch.ingredients = List<Map<String, dynamic>>.from(recipe.fermentables);
+  }
+
+  if (syncAdditives) {
+    batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
+  }
+
+  if (syncStages) {
+    batch.fermentationStages = List.from(recipe.fermentationStages);
+  }
+
+  await batch.save();
+
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Batch synced from recipe')),
+  );
+}
+
+
+
+
 
   Widget _additivesList(BatchModel batch) {
     if (batch.additives.isEmpty) {
@@ -244,6 +386,13 @@ class _BatchDetailPageState extends State<BatchDetailPage> with SingleTickerProv
           _recipeSummaryCard(batch),
           const SizedBox(height: 16),
 
+        ElevatedButton.icon(
+        icon: const Icon(Icons.sync),
+        label: const Text('Sync From Recipe'),
+        onPressed: () => _showSyncFromRecipeDialog(widget.batch),
+),
+
+
           _sectionTitle('Ingredients'),
           _ingredientsList(batch),
           const SizedBox(height: 8),
@@ -267,6 +416,11 @@ class _BatchDetailPageState extends State<BatchDetailPage> with SingleTickerProv
 
             },
           ),
+          const SizedBox(height: 16),
+
+_yeastSection(batch),
+const SizedBox(height: 16),
+
 
           const SizedBox(height: 16),
           _sectionTitle('Additives'),

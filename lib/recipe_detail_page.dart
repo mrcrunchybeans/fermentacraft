@@ -8,14 +8,14 @@ import 'recipe_builder_page.dart';
 import 'recipe_list_page.dart';
 
 class RecipeDetailPage extends StatefulWidget {
-  final RecipeModel recipe;
-  final int index;
-
   const RecipeDetailPage({
     super.key,
     required this.recipe,
     required this.index,
   });
+
+  final int index;
+  final RecipeModel recipe;
 
   @override
   State<RecipeDetailPage> createState() => _RecipeDetailPageState();
@@ -94,9 +94,9 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
             Text("Tags: ${recipe.tags.join(', ')}"),
           const Divider(),
 
-          ListTile(title: const Text("Original Gravity"), subtitle: Text(recipe.og.toStringAsFixed(3))),
-          ListTile(title: const Text("Final Gravity"), subtitle: Text(recipe.fg.toStringAsFixed(3))),
-          ListTile(title: const Text("ABV"), subtitle: Text("${recipe.abv.toStringAsFixed(2)}%")),
+          Text('OG: ${recipe.og?.toStringAsFixed(3) ?? 'N/A'}'),
+          Text('FG: ${recipe.fg?.toStringAsFixed(3) ?? 'N/A'}'),
+          Text('ABV: ${recipe.abv?.toStringAsFixed(1) ?? 'N/A'}'),
 
           const Divider(),
 
