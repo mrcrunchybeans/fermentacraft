@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 import 'tag.dart';
 
 part 'recipe_model.g.dart';
@@ -6,42 +7,46 @@ part 'recipe_model.g.dart';
 @HiveType(typeId: 0)
 class RecipeModel extends HiveObject {
   @HiveField(0)
-  String name;
+  String id;
 
   @HiveField(1)
-  DateTime createdAt;
+  String name;
 
   @HiveField(2)
-  List<Tag> tags;
+  DateTime createdAt;
 
   @HiveField(3)
-  double og;
+  List<Tag> tags;
 
   @HiveField(4)
-  double fg;
+  double og;
 
   @HiveField(5)
-  double abv;
+  double fg;
 
   @HiveField(6)
-  List<Map<String, dynamic>> additives;
+  double abv;
 
   @HiveField(7)
-  List<Map<String, dynamic>> fermentables;
+  List<Map<String, dynamic>> additives;
 
   @HiveField(8)
-  List<Map<String, dynamic>> fermentationStages;
+  List<Map<String, dynamic>> fermentables;
 
   @HiveField(9)
-  List<Map<String, dynamic>> yeast;
+  List<Map<String, dynamic>> fermentationStages;
 
   @HiveField(10)
-  String notes;
-  
+  List<Map<String, dynamic>> yeast;
+
   @HiveField(11)
+  String notes;
+
+  @HiveField(12)
   DateTime? lastOpened;
 
   RecipeModel({
+    String? id,
     required this.name,
     required this.tags,
     required this.createdAt,
@@ -53,6 +58,6 @@ class RecipeModel extends HiveObject {
     required this.fermentationStages,
     required this.yeast,
     this.notes = '',
-
-  });
+    this.lastOpened,
+  }) : id = id ?? const Uuid().v4();
 }

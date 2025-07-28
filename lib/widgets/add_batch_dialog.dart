@@ -1,0 +1,149 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/batch_model.dart';
+import 'package:flutter_application_1/models/recipe_model.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:uuid/uuid.dart';
+
+class AddBatchDialog extends StatefulWidget {
+  const AddBatchDialog({super.key});
+
+  @override
+  State<AddBatchDialog> createState() => _AddBatchDialogState();
+}
+
+class _AddBatchDialogState extends State<AddBatchDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _volumeController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  DateTime _startDate = DateTime.now();
+  String _status = 'Planning';
+  String? _selectedRecipeId;
+
+  final List<String> _statusOptions = [
+    'Planning',
+    'Brewing',
+    'Fermenting',
+    'Completed'
+  ];
+
+  void _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _startDate = picked;
+      });
+    }
+  }
+
+  void _saveBatch() {
+    if (_formKey.currentState?.validate() ?? false) {
+      final newBatch = BatchModel(
+        id: const Uuid().v4(),
+        name: _nameController.text.trim(),
+        recipeId: _selectedRecipeId ?? '',
+        startDate: _startDate,
+        batchVolume: _volumeController.text.isNotEmpty
+            ? double.tryParse(_volumeController.text)
+            : null,
+        notes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
+      );
+
+      final box = Hive.box<BatchModel>('batches');
+      box.put(newBatch.id, newBatch);
+
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recipes = Hive.box<RecipeModel>('recipes');
+
+    return AlertDialog(
+      title: const Text('Add New Batch'),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Batch Name'),
+                validator: (value) =>
+                    value == null || value.trim().isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Start Date: ${_startDate.toLocal().toString().split(' ')[0]}'),
+                  ),
+                  TextButton(
+                    onPressed: _pickDate,
+                    child: const Text('Select Date'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _status,
+                onChanged: (value) => setState(() => _status = value!),
+                items: _statusOptions
+                    .map((status) => DropdownMenuItem(
+                          value: status,
+                          child: Text(status),
+                        ))
+                    .toList(),
+                decoration: const InputDecoration(labelText: 'Status'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedRecipeId,
+                onChanged: (value) => setState(() => _selectedRecipeId = value),
+                decoration: const InputDecoration(labelText: 'Linked Recipe (optional)'),
+                items: recipes.values.map((recipe) {
+                  return DropdownMenuItem(
+                    value: recipe.id,
+                    child: Text(recipe.name),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _volumeController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Batch Volume (gal)'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _notesController,
+                decoration: const InputDecoration(labelText: 'Notes'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _saveBatch,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}

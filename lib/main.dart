@@ -11,18 +11,30 @@ import 'settings_page.dart';
 import 'tools_page.dart';
 import 'models/settings_model.dart';
 import 'models/tag.dart';
+import 'models/batch_model.dart';
+import 'models/fermentation_stage.dart';
+import 'models/measurement_log.dart';
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.deleteBoxFromDisk('recipes');
-
+  Hive.registerAdapter(BatchModelAdapter());
+  Hive.registerAdapter(FermentationStageAdapter());
+  Hive.registerAdapter(MeasurementLogAdapter());
   Hive.registerAdapter(RecipeModelAdapter());
   Hive.registerAdapter(TagAdapter());
 
   final recipeBox = await Hive.openBox<RecipeModel>('recipes');
   await Hive.openBox('settings');
   await Hive.openBox<Tag>('tags');
+  await Hive.openBox<BatchModel>('batches');
+  await Hive.openBox<MeasurementLog>('measurementLogs');
+  await Hive.openBox<FermentationStage>('fermentationStages');
+
+
 
 
 

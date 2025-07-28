@@ -325,9 +325,9 @@ class _StripReaderTabState extends State<StripReaderTab> {
   }
 
   double _colorDistance(Color a, Color b) {
-    final rDiff = a.red - b.red;
-    final gDiff = a.green - b.green;
-    final bDiff = a.blue - b.blue;
+    final rDiff = a.red - b.red; // ignore: deprecated_member_use
+    final gDiff = a.green - b.green; // ignore: deprecated_member_use
+    final bDiff = a.blue - b.blue; // ignore: deprecated_member_use
     return sqrt((rDiff * rDiff + gDiff * gDiff + bDiff * bDiff));
   }
 
@@ -454,7 +454,7 @@ class _StripReaderTabState extends State<StripReaderTab> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: referencePoints.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (_, index) {
                   final point = referencePoints[index];
                   final bool isNext = point == _nextReferenceToSelect;
