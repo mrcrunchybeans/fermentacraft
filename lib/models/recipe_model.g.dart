@@ -17,55 +17,59 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return RecipeModel(
-      name: fields[0] as String,
-      tags: (fields[2] as List).cast<Tag>(),
-      createdAt: fields[1] as DateTime,
-      og: fields[3] as double,
-      fg: fields[4] as double,
-      abv: fields[5] as double,
-      additives: (fields[6] as List)
+      id: fields[0] as String?,
+      name: fields[1] as String,
+      tags: (fields[3] as List).cast<Tag>(),
+      createdAt: fields[2] as DateTime,
+      og: fields[4] as double,
+      fg: fields[5] as double,
+      abv: fields[6] as double,
+      additives: (fields[7] as List)
           .map((dynamic e) => (e as Map).cast<String, dynamic>())
           .toList(),
-      fermentables: (fields[7] as List)
+      fermentables: (fields[8] as List)
           .map((dynamic e) => (e as Map).cast<String, dynamic>())
           .toList(),
-      fermentationStages: (fields[8] as List)
+      fermentationStages: (fields[9] as List)
           .map((dynamic e) => (e as Map).cast<String, dynamic>())
           .toList(),
-      yeast: (fields[9] as List)
+      yeast: (fields[10] as List)
           .map((dynamic e) => (e as Map).cast<String, dynamic>())
           .toList(),
-      notes: fields[10] as String,
-    )..lastOpened = fields[11] as DateTime?;
+      notes: fields[11] as String,
+      lastOpened: fields[12] as DateTime?,
+    );
   }
 
   @override
   void write(BinaryWriter writer, RecipeModel obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
-      ..write(obj.name)
+      ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.createdAt)
+      ..write(obj.name)
       ..writeByte(2)
-      ..write(obj.tags)
+      ..write(obj.createdAt)
       ..writeByte(3)
-      ..write(obj.og)
+      ..write(obj.tags)
       ..writeByte(4)
-      ..write(obj.fg)
+      ..write(obj.og)
       ..writeByte(5)
-      ..write(obj.abv)
+      ..write(obj.fg)
       ..writeByte(6)
-      ..write(obj.additives)
+      ..write(obj.abv)
       ..writeByte(7)
-      ..write(obj.fermentables)
+      ..write(obj.additives)
       ..writeByte(8)
-      ..write(obj.fermentationStages)
+      ..write(obj.fermentables)
       ..writeByte(9)
-      ..write(obj.yeast)
+      ..write(obj.fermentationStages)
       ..writeByte(10)
-      ..write(obj.notes)
+      ..write(obj.yeast)
       ..writeByte(11)
+      ..write(obj.notes)
+      ..writeByte(12)
       ..write(obj.lastOpened);
   }
 

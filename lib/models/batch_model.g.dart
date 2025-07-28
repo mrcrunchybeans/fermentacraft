@@ -13,9 +13,10 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
   @override
   BatchModel read(BinaryReader reader) {
     final numOfFields = reader.readByte();
-    final fields = <int, dynamic>{
-      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
-    };
+    final fields = Map<int, dynamic>.fromIterables(
+      List.generate(numOfFields, (_) => reader.readByte()),
+      List.generate(numOfFields, (_) => reader.read()),
+    );
     return BatchModel(
       id: fields[0] as String,
       name: fields[1] as String,
@@ -23,18 +24,24 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       startDate: fields[3] as DateTime,
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
-      stages: (fields[6] as List).cast<FermentationStage>(),
+      fermentationStages: (fields[6] as List).cast<FermentationStage>(),
       measurementLogs: (fields[7] as List).cast<MeasurementLog>(),
       status: fields[8] as String,
       notes: fields[9] as String?,
       deductedIngredients: (fields[10] as Map).cast<String, bool>(),
+      type: fields[11] as String?,
+      plannedOg: fields[12] as double?,
+      plannedAbv: fields[13] as double?,
+      ingredients: (fields[14] as List).cast<Map<String, dynamic>>(),
+      plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
+      additives: (fields[16] as List).cast<Map<String, dynamic>>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, BatchModel obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -48,7 +55,7 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..writeByte(5)
       ..write(obj.batchVolume)
       ..writeByte(6)
-      ..write(obj.stages)
+      ..write(obj.fermentationStages)
       ..writeByte(7)
       ..write(obj.measurementLogs)
       ..writeByte(8)
@@ -56,7 +63,19 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..writeByte(9)
       ..write(obj.notes)
       ..writeByte(10)
-      ..write(obj.deductedIngredients);
+      ..write(obj.deductedIngredients)
+      ..writeByte(11)
+      ..write(obj.type)
+      ..writeByte(12)
+      ..write(obj.plannedOg)
+      ..writeByte(13)
+      ..write(obj.plannedAbv)
+      ..writeByte(14)
+      ..write(obj.ingredients)
+      ..writeByte(15)
+      ..write(obj.plannedEvents)
+      ..writeByte(16)
+      ..write(obj.additives);
   }
 
   @override

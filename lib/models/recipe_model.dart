@@ -4,7 +4,7 @@ import 'tag.dart';
 
 part 'recipe_model.g.dart';
 
-@HiveType(typeId: 0)
+@HiveType(typeId: 4)
 class RecipeModel extends HiveObject {
   @HiveField(0)
   String id;
