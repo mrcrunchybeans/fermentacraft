@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/measurement.dart';
 import 'package:flutter_application_1/models/recipe_model.dart';
+import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
 import 'package:hive/hive.dart';
 import '../models/batch_model.dart';
 import '../models/planned_event.dart';
@@ -7,6 +9,13 @@ import '../widgets/add_fermentable_dialog.dart';
 import '../widgets/add_additive_dialog.dart';
 import '../utils/batch_utils.dart';
 import '../widgets/add_yeast_dialog.dart';
+import '../widgets/fermentation_chart.dart';
+import '../widgets/manage_stages_dialog.dart';
+import '../models/fermentation_stage.dart';
+
+
+
+
 
 
 
@@ -141,27 +150,40 @@ void _showSyncFromRecipeDialog(BatchModel batch) async {
     return;
   }
 
-  if (syncYeast) {
-    if ((recipe.yeast as List).isNotEmpty) {
-      batch.yeast = Map<String, dynamic>.from((recipe.yeast as List).first);
-    } else if (recipe.yeast is Map<String, dynamic>) {
-      batch.yeast = Map<String, dynamic>.from(recipe.yeast as Map<String, dynamic>);
-    } else {
-      batch.yeast = null;
-    }
+if (syncYeast) {
+  final yeastData = recipe.yeast;
+
+  if (yeastData.isNotEmpty) {
+    final firstItem = yeastData.first;
+    batch.yeast = Map<String, dynamic>.from(firstItem);
+    } else if (yeastData is Map) {
+if (recipe.yeast.isNotEmpty) {
+  final first = recipe.yeast.first;
+  batch.yeast = Map<String, dynamic>.from(first);
+}
+  } else {
+    batch.yeast = null;
   }
+}
+
+
+
+
+
 
   if (syncIngredients) {
     batch.ingredients = List<Map<String, dynamic>>.from(recipe.fermentables);
   }
+
 
   if (syncAdditives) {
     batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
   }
 
   if (syncStages) {
-    batch.fermentationStages = List.from(recipe.fermentationStages);
+    batch.fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
   }
+
 
   await batch.save();
 
@@ -196,6 +218,8 @@ void _showSyncFromRecipeDialog(BatchModel batch) async {
       }).toList(),
     );
   }
+
+  
 
   Widget _recipeSummaryCard(BatchModel batch) {
     return Card(
@@ -451,17 +475,40 @@ const SizedBox(height: 16),
 
           const SizedBox(height: 16),
           _sectionTitle('Fermentation Profile'),
-          _fermentationStagesList(batch),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add Fermentation Stage'),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Add Fermentation Stage coming soon')),
-              );
-            },
-          ),
+_fermentationStagesList(batch),
+const SizedBox(height: 12),
+
+
+
+FermentationChartWidget(
+  measurements: batch.measurements,
+  stages: batch.safeFermentationStages,
+  onEditMeasurement: (updatedMeasurement) async {
+},
+
+),
+const SizedBox(height: 8),
+ElevatedButton.icon(
+  icon: const Icon(Icons.settings),
+  label: const Text('Manage Stages'),
+  onPressed: () async {
+    final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => ManageStagesDialog(
+        initialStages: batch.safeFermentationStages,
+      ),
+    );
+
+    if (updatedStages != null) {
+      setState(() {
+        batch.fermentationStages = updatedStages;
+        batch.save();
+      });
+    }
+  },
+),
+
 
           const SizedBox(height: 16),
           _sectionTitle('Planned Events'),
@@ -491,10 +538,79 @@ const SizedBox(height: 16),
   }
 
   Widget _buildFermentingTab(BatchModel batch) {
-    return const Center(child: Text('Fermentation activity log coming soon'));
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Text(
+          'Fermentation Stages',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+  icon: const Icon(Icons.add),
+  label: const Text('Add Measurement'),
+  onPressed: () async {
+  final newMeasurement = await showDialog<Measurement>(
+    context: context,
+    builder: (_) => AddMeasurementDialog(
+      onSave: (m) => Navigator.of(context).pop(m),
+    ),
+  );
+
+  if (newMeasurement != null) {
+    setState(() {
+      final updated = [...batch.measurements]; // safe mutable copy
+      updated.add(newMeasurement);
+      batch.measurements = updated;
+      batch.save();
+    });
   }
+},
+
+),
+
+FermentationChartWidget(
+  measurements: batch.measurements,
+  stages: batch.safeFermentationStages,
+  onEditMeasurement: (updatedMeasurement) async {
+},
+
+),
+
+
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final updatedStages = await showDialog<List<FermentationStage>>(
+              context: context,
+              builder: (context) => ManageStagesDialog(
+                initialStages: batch.safeFermentationStages,
+              ),
+            );
+
+            if (updatedStages != null) {
+              setState(() {
+                batch.fermentationStages = updatedStages;
+                batch.save();
+              });
+            }
+          },
+          icon: const Icon(Icons.edit_calendar),
+          label: const Text('Manage Stages'),
+        ),
+      ],
+    ),
+  );
+}
+
 
   Widget _buildCompletedTab(BatchModel batch) {
     return const Center(child: Text('Final batch notes and stats'));
   }
 }
+
+
+

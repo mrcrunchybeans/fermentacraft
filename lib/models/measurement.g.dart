@@ -1,41 +1,47 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'fermentation_stage.dart';
+part of 'measurement.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class FermentationStageAdapter extends TypeAdapter<FermentationStage> {
+class MeasurementAdapter extends TypeAdapter<Measurement> {
   @override
-  final int typeId = 11;
+  final int typeId = 16;
 
   @override
-  FermentationStage read(BinaryReader reader) {
+  Measurement read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return FermentationStage(
-      name: fields[0] as String,
-      startDate: fields[1] as DateTime?,
-      durationDays: fields[2] as int,
-      targetTempC: fields[3] as double?,
-    );
+    return Measurement(
+      timestamp: fields[0] as DateTime,
+      temperature: fields[1] as double?,
+      gravityUnit: fields[4] as String,
+      note: fields[5] as String?,
+    )
+      ..sg = fields[2] as double?
+      ..brix = fields[3] as double?;
   }
 
   @override
-  void write(BinaryWriter writer, FermentationStage obj) {
+  void write(BinaryWriter writer, Measurement obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(6)
       ..writeByte(0)
-      ..write(obj.name)
+      ..write(obj.timestamp)
       ..writeByte(1)
-      ..write(obj.startDate)
+      ..write(obj.temperature)
       ..writeByte(2)
-      ..write(obj.durationDays)
+      ..write(obj.sg)
       ..writeByte(3)
-      ..write(obj.targetTempC);
+      ..write(obj.brix)
+      ..writeByte(4)
+      ..write(obj.gravityUnit)
+      ..writeByte(5)
+      ..write(obj.note);
   }
 
   @override
@@ -44,7 +50,7 @@ class FermentationStageAdapter extends TypeAdapter<FermentationStage> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is FermentationStageAdapter &&
+      other is MeasurementAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

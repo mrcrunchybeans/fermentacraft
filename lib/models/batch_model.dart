@@ -3,6 +3,8 @@ import 'package:hive/hive.dart';
 import 'fermentation_stage.dart';
 import 'measurement_log.dart';
 import 'tag.dart';
+import 'measurement.dart';
+
 
 part 'batch_model.g.dart';
 
@@ -84,6 +86,14 @@ class BatchModel extends HiveObject {
   @HiveField(22)
   double? abv;
 
+  @HiveField(23)
+  List<Measurement> measurements;
+
+  @HiveField(10) // Use the next available index
+  DateTime? fsuDate;
+
+
+
 
   // ✅ Constructor
 BatchModel({
@@ -111,6 +121,7 @@ BatchModel({
   this.og,
   this.fg,
   this.abv,
+  this.measurements = const [],
 })  : fermentationStages = fermentationStages ?? [],
       measurementLogs = measurementLogs ?? [],
       deductedIngredients = deductedIngredients ?? {},

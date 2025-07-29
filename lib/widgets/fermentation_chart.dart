@@ -1,0 +1,400 @@
+import 'dart:math';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+
+// Your own project imports
+import '../models/measurement.dart';
+import '../models/fermentation_stage.dart';
+import '../utils/temp_display.dart';
+
+
+class FermentationChartWidget extends StatefulWidget {
+  final List<Measurement> measurements;
+  final List<FermentationStage> stages;
+  final void Function(Measurement)? onEditMeasurement;
+  final VoidCallback? onManageStages;
+
+  const FermentationChartWidget({
+    super.key,
+    required this.measurements,
+    required this.stages,
+    this.onEditMeasurement,
+    this.onManageStages,
+  });
+
+  @override
+  State<FermentationChartWidget> createState() => _FermentationChartWidgetState();
+}
+
+class _FermentationChartWidgetState extends State<FermentationChartWidget> {
+  double? _touchedX;
+  Offset? _touchPosition;
+  final GlobalKey _chartAreaKey = GlobalKey();
+
+  // --- Touch Handling Logic ---
+  void _updateTouchPosition(Offset localPosition, double maxX) {
+    if (!mounted || _chartAreaKey.currentContext == null) return;
+    final RenderBox renderBox = _chartAreaKey.currentContext!.findRenderObject() as RenderBox;
+    final chartWidth = renderBox.size.width;
+    
+    final touchedX = (localPosition.dx / chartWidth) * maxX;
+
+    if (touchedX >= 0 && touchedX <= maxX) {
+      setState(() {
+        _touchedX = touchedX;
+        _touchPosition = localPosition;
+      });
+    }
+  }
+
+  void _handleTap(TapUpDetails details, List<Measurement> sortedMeasurements, double maxX) {
+    if (widget.onEditMeasurement == null || _chartAreaKey.currentContext == null) return;
+    
+    final RenderBox renderBox = _chartAreaKey.currentContext!.findRenderObject() as RenderBox;
+    final chartWidth = renderBox.size.width;
+    final tapX = (details.localPosition.dx / chartWidth) * maxX;
+
+    Measurement? closestMeasurement;
+    double closestDistance = double.infinity;
+    final startDate = sortedMeasurements.first.timestamp;
+
+    for (final m in sortedMeasurements) {
+      final mX = m.timestamp.difference(startDate).inHours.toDouble();
+      final distance = (mX - tapX).abs();
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestMeasurement = m;
+      }
+    }
+    
+    // If the tap was reasonably close to a point (e.g., within 12 hours)
+    if (closestDistance < 12 && closestMeasurement != null) {
+      widget.onEditMeasurement!(closestMeasurement);
+    }
+    _clearTouchPosition();
+  }
+
+  void _clearTouchPosition() {
+    setState(() {
+      _touchedX = null;
+      _touchPosition = null;
+    });
+  }
+  
+  // --- Data Processing Helpers ---
+  double _normalize(double value, double valueMin, double valueMax, double scaleMin, double scaleMax) {
+    if ((valueMax - valueMin).abs() < 1e-9) return scaleMin;
+    return scaleMin + ((value - valueMin) * (scaleMax - scaleMin) / (valueMax - valueMin));
+  }
+  
+  double _deNormalize(double normalizedValue, double valueMin, double valueMax, double scaleMin, double scaleMax) {
+    if ((scaleMax - scaleMin).abs() < 1e-9) return valueMin;
+    return valueMin + ((normalizedValue - scaleMin) * (valueMax - valueMin) / (scaleMax - scaleMin));
+  }
+
+  double _getDynamicXInterval(double maxX, double chartWidth) {
+    if (chartWidth <= 0) return 168;
+    final hoursPerPixel = maxX / chartWidth;
+    if (hoursPerPixel < 0.5) return 24;
+    if (hoursPerPixel < 1) return 48;
+    if (hoursPerPixel < 2) return 7 * 24;
+    if (hoursPerPixel < 8) return 14 * 24;
+    return 30 * 24;
+  }
+  
+  double? _getInterpolatedY(List<FlSpot> spots, double x) {
+    if (spots.isEmpty || x < spots.first.x || x > spots.last.x) return null;
+    for (int i = 0; i < spots.length - 1; i++) {
+      if (spots[i].x <= x && spots[i + 1].x >= x) {
+        final x1 = spots[i].x;
+        final y1 = spots[i].y;
+        final x2 = spots[i + 1].x;
+        final y2 = spots[i + 1].y;
+        final slope = (x2 - x1) == 0 ? 0 : (y2 - y1) / (x2 - x1);
+        return y1 + slope * (x - x1);
+      }
+    }
+    return spots.last.y;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.measurements.length < 2) {
+      return _buildPlaceholder();
+    }
+
+    final sortedMeasurements = [...widget.measurements]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final startDate = sortedMeasurements.first.timestamp;
+
+    final temps = sortedMeasurements.map((m) => m.temperature).whereType<double>().map((t) => TempDisplay.isF ? (t * 9/5 + 32) : t).toList();
+    final sgs = sortedMeasurements.map((m) => m.sg).whereType<double>().toList();
+    final fsus = sortedMeasurements.map((m) => m.fsu).whereType<double>().toList();
+    
+    final minTemp = temps.isNotEmpty ? temps.reduce(min) : (TempDisplay.isF ? 60 : 15);
+    final maxTemp = temps.isNotEmpty ? temps.reduce(max) : (TempDisplay.isF ? 80 : 27);
+    final tempPadding = (maxTemp - minTemp).abs() < 1.0 ? 5.0 : (maxTemp - minTemp) * 0.1;
+    final chartMinY = (minTemp - tempPadding).floorToDouble();
+    final chartMaxY = (maxTemp + tempPadding).ceilToDouble();
+    final chartMidY = chartMinY + (chartMaxY - chartMinY) / 2;
+
+    final minSg = sgs.isNotEmpty ? sgs.reduce(min) : 1.000;
+    final maxSg = sgs.isNotEmpty ? sgs.reduce(max) : 1.060;
+    final minFsu = fsus.isNotEmpty ? fsus.reduce(min) : 0.0;
+    final maxFsu = fsus.isNotEmpty ? fsus.reduce(max) : 100.0;
+    
+    final tempSpots = <FlSpot>[];
+    final gravitySpots = <FlSpot>[];
+    final fsuSpots = <FlSpot>[];
+
+    for (final m in sortedMeasurements) {
+      final x = m.timestamp.difference(startDate).inHours.toDouble();
+      if (m.temperature != null) {
+        final tempValue = TempDisplay.isF ? (m.temperature! * 9 / 5 + 32) : m.temperature!;
+        tempSpots.add(FlSpot(x, tempValue));
+      }
+      if (m.sg != null) {
+        gravitySpots.add(FlSpot(x, _normalize(m.sg!, minSg, maxSg, chartMidY, chartMinY)));
+      }
+      if (m.fsu != null) {
+        fsuSpots.add(FlSpot(x, _normalize(m.fsu!, minFsu, maxFsu, chartMidY, chartMaxY)));
+      }
+    }
+    
+    final maxX = sortedMeasurements.last.timestamp.difference(startDate).inHours.toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 350,
+          child: GestureDetector(
+            onTapUp: (details) => _handleTap(details, sortedMeasurements, maxX),
+            onPanDown: (details) => _updateTouchPosition(details.localPosition, maxX),
+            onPanUpdate: (details) => _updateTouchPosition(details.localPosition, maxX),
+            onPanEnd: (details) => _clearTouchPosition(),
+            child: MouseRegion(
+              onHover: (event) => _updateTouchPosition(event.localPosition, maxX),
+              onExit: (event) => _clearTouchPosition(),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  LayoutBuilder(
+                    key: _chartAreaKey,
+                    builder: (context, constraints) {
+                      const reservedSpaceForYLabels = 40.0 + 40.0;
+                      final plotAreaWidth = constraints.maxWidth - reservedSpaceForYLabels;
+                      final xInterval = _getDynamicXInterval(maxX, plotAreaWidth);
+
+                      return LineChart(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.linear,
+                        LineChartData(
+                          minY: chartMinY,
+                          maxY: chartMaxY,
+                          minX: 0,
+                          maxX: maxX,
+                          lineTouchData: LineTouchData(enabled: false), 
+                          titlesData: _buildTitlesData(chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu, startDate, xInterval),
+                          gridData: _buildGridData(),
+                          borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade400)),
+                          rangeAnnotations: _buildStageAnnotations(widget.stages, startDate),
+                          lineBarsData: [
+                            _buildLineBarData(tempSpots, Colors.blueAccent),
+                            _buildLineBarData(gravitySpots, Colors.green),
+                            _buildLineBarData(fsuSpots, Colors.purple),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  if (_touchedX != null && _touchPosition != null)
+                    Positioned(
+                      left: _touchPosition!.dx,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(width: 1.5, color: Colors.redAccent.withAlpha(35)),
+                    ),
+                  if (_touchedX != null && _touchPosition != null)
+                    Positioned(
+                      left: _touchPosition!.dx > MediaQuery.of(context).size.width / 2 ? null : _touchPosition!.dx + 12,
+                      right: _touchPosition!.dx > MediaQuery.of(context).size.width / 2 ? MediaQuery.of(context).size.width - _touchPosition!.dx + 12 : null,
+                      top: _touchPosition!.dy - 20,
+                      child: _buildCustomTooltip(startDate, _touchedX!, tempSpots, gravitySpots, fsuSpots,
+                        chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildLegend(),
+      ],
+    );
+  }
+
+  // --- Widget Builder Helpers ---
+  Widget _buildPlaceholder() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 8),
+        const Text("A minimum of two measurements are needed to draw a chart."),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        const Text("Fermentation Chart", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Spacer(),
+        if (widget.onManageStages != null)
+          TextButton.icon(
+            onPressed: widget.onManageStages,
+            icon: const Icon(Icons.edit, size: 16),
+            label: const Text("Manage Stages"),
+          ),
+      ],
+    );
+  }
+  
+  Widget _buildLegend() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        _LegendItem(color: Colors.blueAccent, label: "Temperature"),
+        _LegendItem(color: Colors.green, label: "Specific Gravity"),
+        _LegendItem(color: Colors.purple, label: "FSU"),
+      ],
+    );
+  }
+  
+  Widget _buildCustomTooltip(
+    DateTime startDate, double touchedX,
+    List<FlSpot> tempSpots, List<FlSpot> gravitySpots, List<FlSpot> fsuSpots,
+    double chartMinY, double chartMaxY, double chartMidY,
+    double minSg, double maxSg, double minFsu, double maxFsu,
+  ) {
+    final time = startDate.add(Duration(microseconds: (touchedX * Duration.microsecondsPerHour).round()));
+    final timeLabel = "${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+
+    final tempY = _getInterpolatedY(tempSpots, touchedX);
+    final sgYNormalized = _getInterpolatedY(gravitySpots, touchedX);
+    final fsuYNormalized = _getInterpolatedY(fsuSpots, touchedX);
+
+    return IgnorePointer(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(color: Colors.black.withAlpha(35), borderRadius: BorderRadius.circular(4)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(timeLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 4),
+            if (tempY != null) Text("Temp: ${tempY.toStringAsFixed(1)}°${TempDisplay.isF ? 'F' : 'C'}", style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+            if (sgYNormalized != null) Text("SG: ${_deNormalize(sgYNormalized, minSg, maxSg, chartMidY, chartMinY).toStringAsFixed(3)}", style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+            if (fsuYNormalized != null) Text("FSU: ${_deNormalize(fsuYNormalized, minFsu, maxFsu, chartMidY, chartMaxY).toStringAsFixed(1)}", style: const TextStyle(color: Colors.purpleAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  LineChartBarData _buildLineBarData(List<FlSpot> spots, Color color) {
+    return LineChartBarData(
+      spots: spots.where((spot) => spot.y.isFinite).toList(),
+      isCurved: true,
+      barWidth: 2.5,
+      color: color,
+      dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 3, color: color, strokeWidth: 1.5, strokeColor: Colors.white)),
+    );
+  }
+
+  RangeAnnotations _buildStageAnnotations(List<FermentationStage> stages, DateTime startDate) {
+    final List<Color> stageColors = [Colors.orange, Colors.blue, Colors.green, Colors.purple, Colors.pink, Colors.teal, Colors.yellow];
+    return RangeAnnotations(
+      verticalRangeAnnotations: stages.asMap().entries.map((entry) {
+        final index = entry.key;
+        final stage = entry.value;
+        if (stage.startDate == null) return null;
+        final from = stage.startDate!.difference(startDate).inHours.toDouble();
+        final to = from + (stage.durationDays * 24);
+        final color = stageColors[index % stageColors.length];
+        return VerticalRangeAnnotation(x1: from, x2: to, color: color.withAlpha(38));
+      }).whereType<VerticalRangeAnnotation>().toList(),
+    );
+  }
+  
+  FlGridData _buildGridData() {
+    return FlGridData(show: true, drawVerticalLine: true, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.withAlpha(35), strokeWidth: 1), getDrawingVerticalLine: (value) => FlLine(color: Colors.grey.withAlpha(35), strokeWidth: 1));
+  }
+  
+  FlTitlesData _buildTitlesData(
+    double chartMinY, double chartMaxY, double chartMidY,
+    double minSg, double maxSg, double minFsu, double maxFsu,
+    DateTime startDate, double xInterval,
+  ) {
+    return FlTitlesData(
+      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      bottomTitles: AxisTitles(
+        axisNameWidget: const Text("Fermentation Timeline", style: TextStyle(fontSize: 10)),
+        axisNameSize: 20,
+        sideTitles: SideTitles(
+          showTitles: true,
+          interval: xInterval,
+          getTitlesWidget: (value, meta) {
+            if (value < 0) return const SizedBox.shrink();
+            final days = value / 24;
+            if (days < 7) {
+              return Text("Day ${days.round() + 1}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold));
+            } else {
+              final date = startDate.add(Duration(hours: value.toInt()));
+              return Text("${date.month}/${date.day}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold));
+            }
+          },
+        ),
+      ),
+      leftTitles: AxisTitles(
+        axisNameWidget: Text("Temp (${TempDisplay.isF ? '°F' : '°C'})", style: const TextStyle(fontSize: 12)),
+        axisNameSize: 24,
+        sideTitles: SideTitles(showTitles: true, reservedSize: 40, interval: (chartMaxY - chartMinY) / 4),
+      ),
+      rightTitles: AxisTitles(
+        axisNameWidget: const Text("SG / FSU", style: TextStyle(fontSize: 12)),
+        axisNameSize: 24,
+        sideTitles: SideTitles(
+          showTitles: true,
+          reservedSize: 40,
+          interval: (chartMaxY - chartMinY) / 8,
+          getTitlesWidget: (value, meta) {
+            if (value <= chartMinY || value >= chartMaxY) return const SizedBox.shrink();
+            if (value < chartMidY) {
+              final deNormalizedSg = _deNormalize(value, minSg, maxSg, chartMidY, chartMinY);
+              return Text(deNormalizedSg.toStringAsFixed(3), style: const TextStyle(color: Colors.green, fontSize: 10));
+            } else {
+              final deNormalizedFsu = _deNormalize(value, minFsu, maxFsu, chartMidY, chartMaxY);
+              return Text(deNormalizedFsu.toStringAsFixed(0), style: const TextStyle(color: Colors.purple, fontSize: 10));
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendItem({required this.color, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 12, height: 12, color: color), const SizedBox(width: 4), Text(label, style: const TextStyle(fontSize: 12))]);
+  }
+}

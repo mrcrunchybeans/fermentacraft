@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/measurement.dart';
 import 'package:flutter_application_1/models/planned_event.dart';
 import 'package:flutter_application_1/models/tag_manager.dart';
 import 'package:flutter_application_1/utils/temp_display.dart';
@@ -28,6 +29,8 @@ void main() async {
   Hive.registerAdapter(RecipeModelAdapter());
   Hive.registerAdapter(TagAdapter());
   Hive.registerAdapter(PlannedEventAdapter());
+  Hive.registerAdapter(MeasurementAdapter());
+
 
 
   final recipeBox = await Hive.openBox<RecipeModel>('recipes');

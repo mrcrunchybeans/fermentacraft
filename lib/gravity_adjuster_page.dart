@@ -43,32 +43,19 @@ class PreFermentationAdjustTab extends StatefulWidget {
 }
 
 class _PreFermentationAdjustTabState extends State<PreFermentationAdjustTab> {
-  final _volumeController = TextEditingController();
-  final _currentSGController = TextEditingController();
-  final _targetSGController = TextEditingController();
-  final _abvController = TextEditingController();
-  final _fgController = TextEditingController(text: '1.000');
-  bool userOverrodeAbv = false;
   Timer? abvDebounce;
   Timer? sgDebounce;
+  bool userOverrodeAbv = false;
 
-  String _result = '';
+  final _abvController = TextEditingController();
+  final _currentSGController = TextEditingController();
+  final _fgController = TextEditingController(text: '1.000');
   String _formulaHelp = '';
+  String _result = '';
   String _selectedSugar = 'Table Sugar (sucrose)';
+  final _targetSGController = TextEditingController();
   final bool _useGallons = true;
-
-  String formatGallonsToGalCupOz(double gallons) {
-    final int wholeGallons = gallons.floor();
-    final double remainingGallons = gallons - wholeGallons;
-    final int totalOz = (remainingGallons * 128).round();
-    final int cups = totalOz ~/ 8;
-    final int flOz = totalOz % 8;
-    List<String> parts = [];
-    if (wholeGallons > 0) parts.add("$wholeGallons gal");
-    if (cups > 0) parts.add("$cups cup${cups > 1 ? 's' : ''}");
-    if (flOz > 0) parts.add("$flOz fl oz");
-    return parts.isNotEmpty ? parts.join(', ') : "0 fl oz";
-  }
+  final _volumeController = TextEditingController();
 
   @override
   void initState() {
@@ -87,6 +74,19 @@ class _PreFermentationAdjustTabState extends State<PreFermentationAdjustTab> {
         });
       }
     });
+  }
+
+  String formatGallonsToGalCupOz(double gallons) {
+    final int wholeGallons = gallons.floor();
+    final double remainingGallons = gallons - wholeGallons;
+    final int totalOz = (remainingGallons * 128).round();
+    final int cups = totalOz ~/ 8;
+    final int flOz = totalOz % 8;
+    List<String> parts = [];
+    if (wholeGallons > 0) parts.add("$wholeGallons gal");
+    if (cups > 0) parts.add("$cups cup${cups > 1 ? 's' : ''}");
+    if (flOz > 0) parts.add("$flOz fl oz");
+    return parts.isNotEmpty ? parts.join(', ') : "0 fl oz";
   }
 
   void _calculate() {
@@ -184,12 +184,12 @@ class BacksweetenAdjustTab extends StatefulWidget {
 }
 
 class _BacksweetenAdjustTabState extends State<BacksweetenAdjustTab> {
-  final _volumeController = TextEditingController();
   final _currentSGController = TextEditingController();
-  final _targetSGController = TextEditingController();
   String _result = '';
   String _selectedSugar = 'Table Sugar (sucrose)';
+  final _targetSGController = TextEditingController();
   final bool _useGallons = true;
+  final _volumeController = TextEditingController();
 
   void _calculate() {
     final double? volumeInput = double.tryParse(_volumeController.text);

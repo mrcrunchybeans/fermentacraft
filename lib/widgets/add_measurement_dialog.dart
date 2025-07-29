@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/batch_model.dart';
-import 'package:flutter_application_1/models/measurement_log.dart';
+import 'package:intl/intl.dart';
+import '../models/measurement.dart';
+import '../utils/fsu_utils.dart';
+import '../utils/gravity_utils.dart';
 
 class AddMeasurementDialog extends StatefulWidget {
-  final BatchModel batch;
+  final Measurement? existingMeasurement;
+  final void Function(Measurement) onSave;
 
-  const AddMeasurementDialog({super.key, required this.batch});
+  const AddMeasurementDialog({
+    super.key,
+    this.existingMeasurement,
+    required this.onSave,
+  });
 
   @override
   State<AddMeasurementDialog> createState() => _AddMeasurementDialogState();
@@ -13,13 +20,58 @@ class AddMeasurementDialog extends StatefulWidget {
 
 class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _sgController = TextEditingController();
+  final _gravityController = TextEditingController();
   final _tempController = TextEditingController();
-  final _pHController = TextEditingController();
+  final _noteController = TextEditingController();
 
   DateTime _timestamp = DateTime.now();
+  String _gravityUnit = 'sg'; // or 'brix'
 
-  void _pickDate() async {
+  double? _fsuPreview;
+  double? _convertedGravity;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingMeasurement != null) {
+      final m = widget.existingMeasurement!;
+      _timestamp = m.timestamp;
+      _gravityUnit = m.gravityUnit;
+      _noteController.text = m.note ?? '';
+      _tempController.text = m.temperature?.toString() ?? '';
+
+      final inputValue = _gravityUnit == 'sg' ? m.sg : m.brix;
+      if (inputValue != null) {
+        _gravityController.text = inputValue.toStringAsFixed(3);
+      }
+
+      _calculatePreview();
+    }
+  }
+
+  void _calculatePreview() {
+    final gravityVal = double.tryParse(_gravityController.text);
+    final tempVal = double.tryParse(_tempController.text);
+
+    double? sg;
+    if (_gravityUnit == 'sg') {
+      sg = gravityVal;
+      _convertedGravity = sgToBrix(gravityVal ?? 0);
+    } else {
+      sg = brixToSg(gravityVal ?? 0);
+      _convertedGravity = sg;
+    }
+
+    if (tempVal != null && sg != null) {
+      _fsuPreview = calculateFSU(tempVal, sg);
+    } else {
+      _fsuPreview = null;
+    }
+
+    setState(() {});
+  }
+
+  Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _timestamp,
@@ -34,23 +86,30 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
   void _save() {
     if (!_formKey.currentState!.validate()) return;
 
-    final log = MeasurementLog(
+    final temp = double.tryParse(_tempController.text);
+    final gravityInput = double.tryParse(_gravityController.text);
+    final note = _noteController.text.trim().isEmpty ? null : _noteController.text.trim();
+
+    final measurement = Measurement(
       timestamp: _timestamp,
-      sg: double.parse(_sgController.text),
-      tempC: _tempController.text.isEmpty ? null : double.tryParse(_tempController.text),
-      pH: _pHController.text.isEmpty ? null : double.tryParse(_pHController.text),
+      temperature: temp,
+      gravityUnit: _gravityUnit,
+      specificGravity: _gravityUnit == 'sg' ? gravityInput : null,
+      brixValue: _gravityUnit == 'brix' ? gravityInput : null,
+      note: note,
     );
 
-    widget.batch.measurementLogs.add(log);
-    widget.batch.save();
-
+    widget.onSave(measurement);
     Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(_timestamp);
+    final showConverted = _gravityController.text.isNotEmpty;
+
     return AlertDialog(
-      title: const Text('Add Measurement'),
+      title: Text(widget.existingMeasurement == null ? 'Add Measurement' : 'Edit Measurement'),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -58,31 +117,67 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('Date: ${_timestamp.toLocal().toString().split(' ')[0]}')),
+                  Expanded(child: Text('Date: $dateStr')),
                   TextButton(onPressed: _pickDate, child: const Text('Pick Date')),
                 ],
               ),
-              TextFormField(
-                controller: _sgController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Specific Gravity'),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return 'Required';
-                  final parsed = double.tryParse(value);
-                  if (parsed == null || parsed <= 0 || parsed > 2.0) return 'Invalid SG';
-                  return null;
-                },
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _gravityController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(labelText: _gravityUnit == 'sg' ? 'Specific Gravity' : 'Brix'),
+                      validator: (value) {
+                        final v = double.tryParse(value ?? '');
+                        if (v == null || v <= 0) return 'Invalid';
+                        return null;
+                      },
+                      onChanged: (_) => _calculatePreview(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  DropdownButton<String>(
+                    value: _gravityUnit,
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _gravityUnit = val);
+                        _calculatePreview();
+                      }
+                    },
+                    items: const [
+                      DropdownMenuItem(value: 'sg', child: Text('SG')),
+                      DropdownMenuItem(value: 'brix', child: Text('Brix')),
+                    ],
+                  ),
+                ],
               ),
+              if (showConverted)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _gravityUnit == 'sg'
+                        ? '≈ ${_convertedGravity?.toStringAsFixed(1)}°Bx'
+                        : '≈ SG ${_convertedGravity?.toStringAsFixed(3)}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ),
               TextFormField(
                 controller: _tempController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Temperature (°C)'),
+                onChanged: (_) => _calculatePreview(),
               ),
               TextFormField(
-                controller: _pHController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'pH'),
+                controller: _noteController,
+                decoration: const InputDecoration(labelText: 'Notes'),
+                maxLines: 2,
               ),
+              if (_fsuPreview != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text('FSU: ${_fsuPreview!.toStringAsFixed(1)}'),
+                ),
             ],
           ),
         ),

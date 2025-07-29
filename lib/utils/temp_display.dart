@@ -19,3 +19,14 @@ class TempDisplay {
 
   static bool get isF => _useFahrenheit;
 }
+// -- For direct use in widgets that use SettingsModel -- //
+
+double convertTemp(double value, {required String fromUnit, required String toUnit}) {
+  if (fromUnit == toUnit) return value;
+  return toUnit == 'f' ? (value * 9 / 5) + 32 : (value - 32) * 5 / 9;
+}
+
+String displayTemp(double tempC, {required String unit}) {
+  final v = convertTemp(tempC, fromUnit: 'c', toUnit: unit);
+  return '${v.toStringAsFixed(1)}°${unit.toUpperCase()}';
+}
