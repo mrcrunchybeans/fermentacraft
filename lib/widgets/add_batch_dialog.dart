@@ -157,12 +157,6 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
               ),
               const SizedBox(height: 12),
               TextFormField(
-                controller: _volumeController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Batch Volume (gal)'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
                 controller: _notesController,
                 decoration: const InputDecoration(labelText: 'Notes'),
                 maxLines: 2,

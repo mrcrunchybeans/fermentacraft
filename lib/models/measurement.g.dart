@@ -18,18 +18,18 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
     };
     return Measurement(
       timestamp: fields[0] as DateTime,
-      temperature: fields[1] as double?,
       gravityUnit: fields[4] as String,
+      temperature: fields[1] as double?,
+      sg: fields[2] as double?,
+      brix: fields[3] as double?,
       note: fields[5] as String?,
-    )
-      ..sg = fields[2] as double?
-      ..brix = fields[3] as double?;
+    )..fsuspeed = fields[6] as double?;
   }
 
   @override
   void write(BinaryWriter writer, Measurement obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.timestamp)
       ..writeByte(1)
@@ -41,7 +41,9 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
       ..writeByte(4)
       ..write(obj.gravityUnit)
       ..writeByte(5)
-      ..write(obj.note);
+      ..write(obj.note)
+      ..writeByte(6)
+      ..write(obj.fsuspeed);
   }
 
   @override

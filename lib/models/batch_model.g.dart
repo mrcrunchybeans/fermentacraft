@@ -2,6 +2,10 @@
 
 part of 'batch_model.dart';
 
+// **************************************************************************
+// TypeAdapterGenerator
+// **************************************************************************
+
 class BatchModelAdapter extends TypeAdapter<BatchModel> {
   @override
   final int typeId = 34;
@@ -12,33 +16,37 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return BatchModel(
       id: fields[0] as String,
       name: fields[1] as String,
       recipeId: fields[2] as String,
       startDate: fields[3] as DateTime,
+      createdAt: fields[18] as DateTime,
+      tags: (fields[19] as List).cast<Tag>(),
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
-      fermentationStages: (fields[6] as List).cast<FermentationStage>(),
-      measurementLogs: (fields[7] as List).cast<MeasurementLog>(),
-      status: fields[8] as String? ?? 'Planning',
+      fermentationStages: (fields[6] as List?)?.cast<FermentationStage>(),
+      measurementLogs: (fields[7] as List?)?.cast<MeasurementLog>(),
+      status: fields[8] as String,
       notes: fields[9] as String?,
-      deductedIngredients: (fields[10] as Map).cast<String, bool>(),
+      deductedIngredients: (fields[10] as Map?)?.cast<String, bool>(),
       type: fields[11] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
-      ingredients: (fields[14] as List).cast<Map<String, dynamic>>(),
+      ingredients: (fields[14] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          .toList(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
-      additives: (fields[16] as List).cast<Map<String, dynamic>>(),
-      yeast: fields[17] as Map<String, dynamic>?,
-      createdAt: fields[18] as DateTime,
-      tags: (fields[19] as List).cast<Tag>(),
+      additives: (fields[16] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          .toList(),
+      yeast: (fields[17] as Map?)?.cast<String, dynamic>(),
       og: fields[20] as double?,
       fg: fields[21] as double?,
       abv: fields[22] as double?,
+      fsuDate: fields[24] as DateTime?,
       measurements: (fields[23] as List).cast<Measurement>(),
-    )..fsuDate = fields[24] as DateTime?;
+    );
   }
 
   @override

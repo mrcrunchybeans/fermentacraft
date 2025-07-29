@@ -1,50 +1,38 @@
 import 'package:hive/hive.dart';
-import '../utils/fsu_utils.dart';
-import '../utils/gravity_utils.dart';
 
+// This line is needed for Hive's code generator
 part 'measurement.g.dart';
 
 @HiveType(typeId: 16)
 class Measurement {
   @HiveField(0)
-  DateTime timestamp;
+  final DateTime timestamp;
 
   @HiveField(1)
-  double? temperature; // °C by default
+  final double? temperature; // Stored in °C
 
   @HiveField(2)
-  double? sg;
+  final double? sg; // Specific Gravity
 
   @HiveField(3)
-  double? brix;
+  final double? brix;
 
   @HiveField(4)
-  String gravityUnit; // 'sg' or 'brix'
+  final String gravityUnit; // 'sg' or 'brix'
 
   @HiveField(5)
-  String? note;
+  final String? note;
+
+  @HiveField(6)
+  double? fsuspeed; // This will store the calculated speed
 
   Measurement({
     required this.timestamp,
+    required this.gravityUnit,
     this.temperature,
-    double? specificGravity,
-    double? brixValue,
-    this.gravityUnit = 'sg',
+    this.sg,
+    this.brix,
     this.note,
-  }) {
-    if (gravityUnit == 'sg' && specificGravity != null) {
-      sg = specificGravity;
-      brix = sgToBrix(specificGravity);
-    } else if (gravityUnit == 'brix' && brixValue != null) {
-      brix = brixValue;
-      sg = brixToSg(brixValue);
-    }
-  }
-
-  double? get fsu {
-    if (temperature != null && sg != null) {
-      return calculateFSU(temperature!, sg!);
-    }
-    return null;
-  }
+    this.fsuspeed,
+  });
 }

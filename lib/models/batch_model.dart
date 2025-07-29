@@ -89,7 +89,7 @@ class BatchModel extends HiveObject {
   @HiveField(23)
   List<Measurement> measurements;
 
-  @HiveField(10) // Use the next available index
+  @HiveField(24) // Use the next available index
   DateTime? fsuDate;
 
 
@@ -121,6 +121,7 @@ BatchModel({
   this.og,
   this.fg,
   this.abv,
+  this.fsuDate,
   this.measurements = const [],
 })  : fermentationStages = fermentationStages ?? [],
       measurementLogs = measurementLogs ?? [],

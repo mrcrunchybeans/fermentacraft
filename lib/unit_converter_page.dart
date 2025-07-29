@@ -177,7 +177,7 @@ double convertGravity(double val, String from, String to) {
       return (sg - 1.0) * 1000;
     case '°Brix':
     case '°Plato':
-      return ((182.4601 * sg - 775.6821) * sg + 1262.7794) * (sg - 1.0);
+      return (182.4601 * sg - 775.6821) * sg + 1262.7794;
     default:
       return val;
   }
@@ -331,7 +331,8 @@ double convertGravity(double val, String from, String to) {
       return "Gravity conversions are calculated by converting all units to Specific Gravity (SG) as an intermediate:\n"
           "- °Brix → SG: val / (258.6 - ((val / 258.2) * 227.1)) + 1.0\n"
           "- °Plato → SG: val / (258.6 - ((val / 258.2) * 227.1)) + 1.0\n"
-          "- SG → °Brix or Plato: ((182.4601 * sg - 775.6821) * sg + 1262.7794) * (sg - 1.0)";
+          "- SG → °Brix or Plato: (182.4601 * sg - 775.6821) * sg + 1262.7794\n";
+
     }
     return "No formula found.";
   }

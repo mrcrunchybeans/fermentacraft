@@ -37,7 +37,7 @@ class MeasurementList extends StatelessWidget {
         final sgText = m.sg != null ? formatGravity(m.sg!) : '—';
         final brixText = m.brix != null ? formatBrix(m.brix!) : '—';
         final tempText = m.temperature != null ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
-        final fsuText = m.fsu != null ? m.fsu!.toStringAsFixed(1) : '—';
+        final fsuText = m.fsuspeed != null ? m.fsuspeed!.toStringAsFixed(1) : '—';
         final dateText = m.timestamp.toLocal().toString().split(' ')[0];
 
         return ListTile(

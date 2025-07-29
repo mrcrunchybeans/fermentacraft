@@ -18,11 +18,11 @@ class BatchSummaryCard extends StatelessWidget {
     final today = DateTime.now();
     for (final stage in batch.fermentationStages) {
       final start = stage.startDate;
-      final end = stage.startDate?.add(Duration(days: stage.durationDays));
-      if (start != null && end != null) {
-        if (today.isAfter(start) && today.isBefore(end)) {
-          return stage;
-        }
+      if (start == null) continue;
+      
+      final end = start.add(Duration(days: stage.durationDays));
+      if (today.isAfter(start) && today.isBefore(end)) {
+        return stage;
       }
     }
     return null;
@@ -33,14 +33,16 @@ class BatchSummaryCard extends StatelessWidget {
     final upcoming = batch.fermentationStages
         .where((s) => s.startDate != null && s.startDate!.isAfter(today));
     if (upcoming.isEmpty) return null;
+    // Find the upcoming stage with the earliest start date
     return upcoming.reduce((a, b) =>
         a.startDate!.isBefore(b.startDate!) ? a : b);
   }
 
   Measurement? get latestMeasurement {
     if (batch.measurements.isEmpty) return null;
+    // Find the latest measurement that has a valid fsuspeed
     return batch.measurements
-        .where((m) => m.fsu != null)
+        .where((m) => m.fsuspeed != null) // FIXED: Changed from fsu to fsuspeed
         .fold<Measurement?>(null, (prev, curr) {
       if (prev == null || curr.timestamp.isAfter(prev.timestamp)) {
         return curr;
@@ -75,7 +77,8 @@ class BatchSummaryCard extends StatelessWidget {
                 _infoTile('Stage', stage?.name ?? '—'),
                 _infoTile('Next Stage',
                     next?.startDate != null ? DateFormat('yMMMd').format(next!.startDate!) : '—'),
-                _infoTile('FSU', measurement?.fsu?.toStringAsFixed(1) ?? '—'),
+                // FIXED: Changed from fsu to fsuspeed
+                _infoTile('FSU', measurement?.fsuspeed?.toStringAsFixed(1) ?? '—'),
               ],
             ),
           ],
