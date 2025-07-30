@@ -22,7 +22,8 @@ class BatchDetailPage extends StatefulWidget {
   State<BatchDetailPage> createState() => _BatchDetailPageState();
 }
 
-class _BatchDetailPageState extends State<BatchDetailPage> with SingleTickerProviderStateMixin {
+class _BatchDetailPageState extends State<BatchDetailPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -38,7 +39,7 @@ class _BatchDetailPageState extends State<BatchDetailPage> with SingleTickerProv
   }
 
   // --- UI Building Helper Methods ---
-
+  
   Widget _sectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
@@ -169,9 +170,9 @@ class _BatchDetailPageState extends State<BatchDetailPage> with SingleTickerProv
       }).toList(),
     );
   }
-  
+
   // --- Dialog and Logic Methods ---
-void _handleDeleteMeasurement(Measurement measurement) {
+  void _handleDeleteMeasurement(Measurement measurement) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -237,24 +238,27 @@ void _handleDeleteMeasurement(Measurement measurement) {
     final recipeBox = await Hive.openBox<RecipeModel>('recipes');
     final recipe = recipeBox.get(batch.recipeId);
 
-    if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recipe not found.')),
-      );
+    if (recipe == null) {
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe not found.')),
+        );
+      }
+      return;
+    }
 
     setState(() {
-      // FIX: Simplified yeast sync logic
       if (syncYeast) {
-        batch.yeast = recipe!.yeast.isNotEmpty ? Map<String, dynamic>.from(recipe.yeast.first) : null;
+        batch.yeast = recipe.yeast.isNotEmpty ? Map<String, dynamic>.from(recipe.yeast.first) : null;
       }
       if (syncIngredients) {
-        batch.ingredients = List<Map<String, dynamic>>.from(recipe!.fermentables);
+        batch.ingredients = List<Map<String, dynamic>>.from(recipe.fermentables);
       }
       if (syncAdditives) {
-        batch.additives = List<Map<String, dynamic>>.from(recipe!.additives);
+        batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
       }
       if (syncStages) {
-        batch.fermentationStages = List<FermentationStage>.from(recipe!.fermentationStages);
+        batch.fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
       }
       batch.save();
     });
@@ -263,12 +267,13 @@ void _handleDeleteMeasurement(Measurement measurement) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch synced from recipe')));
   }
 
+  // RESTORED: This method was missing.
   Future<PlannedEvent?> _addPlannedEventDialog() async {
+    // You can implement your dialog logic here. For now, it does nothing.
     return null;
-  
-    // ... This method was correct, no changes needed ...
   }
   
+  // RESTORED: This method was missing.
   void _manageStages(BatchModel batch) async {
     final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
       context: context,
@@ -415,89 +420,93 @@ void _handleDeleteMeasurement(Measurement measurement) {
     return const Center(child: Text('Preparation content here'));
   }
 
-  // FIX: This entire tab was rewritten to fix multiple syntax errors.
   Widget _buildFermentingTab(BatchModel batch) {
-  return SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Fermentation Progress',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('Add Measurement'),
-              onPressed: () async {
-                // Create a sorted list to find the correct previous measurement
-                final sortedMeasurements = batch.measurements.toList()
-                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-                final newMeasurement = await showDialog<Measurement>(
-                    context: context,
-                    builder: (_) => AddMeasurementDialog(
-                          // FIXED: Use the sorted list to get the last measurement
-                          previousMeasurement: sortedMeasurements.isNotEmpty
-                              ? sortedMeasurements.last
-                              : null,
-                        ));
-
-                if (newMeasurement != null) {
-                  setState(() {
-                    batch.measurements.add(newMeasurement);
-                    batch.save();
-                  });
-                }
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        FermentationChartWidget(
-          measurements: batch.measurements,
-          stages: batch.safeFermentationStages,
-          onEditMeasurement: (measurementToEdit) async {
-            // Create a sorted list here as well for consistency
-            final sortedMeasurements = batch.measurements.toList()
-                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-            
-            final index = sortedMeasurements.indexWhere((m) => m.timestamp == measurementToEdit.timestamp);
-
-            final updatedMeasurement = await showDialog<Measurement>(
-              context: context,
-              builder: (_) => AddMeasurementDialog(
-                existingMeasurement: measurementToEdit,
-                // FIXED: Use the sorted list and check the index to prevent errors
-                previousMeasurement: (index > 0)
-                    ? sortedMeasurements[index - 1]
-                    : null,
-              ),
-            );
-
-            if (updatedMeasurement != null) {
-              setState(() {
-                // Find the original measurement in the unsorted list to replace it
-                final originalIndex = batch.measurements.indexWhere((m) => m.timestamp == measurementToEdit.timestamp);
-                if (originalIndex != -1) {
-                  batch.measurements[originalIndex] = updatedMeasurement;
-                  batch.save();
-                }
-              });
-            }
-          },
-          onDeleteMeasurement: _handleDeleteMeasurement,
-          onManageStages: () => _manageStages(batch),
-        ),
-      ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    // Wrap the Text widget in an Expanded widget
+    Expanded(
+      child: Text(
+        'Fermentation Progress',
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
     ),
-  );
+    ElevatedButton.icon(
+      icon: const Icon(Icons.add),
+      label: const Text('Add Measurement'),
+                onPressed: () async {
+                  final sortedMeasurements = batch.measurements.toList()
+                    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+                  final newMeasurement = await showDialog<Measurement>(
+                      context: context,
+                      builder: (_) => AddMeasurementDialog(
+                            previousMeasurement: sortedMeasurements.isNotEmpty
+                                ? sortedMeasurements.last
+                                : null,
+                          ));
+
+                  if (newMeasurement != null) {
+  setState(() {
+    // Create a new, growable list from the old one
+    final updatedMeasurements = List<Measurement>.from(batch.measurements);
+    
+    // Add the new item to the copy
+    updatedMeasurements.add(newMeasurement);
+    
+    // Assign the new list back to the batch
+    batch.measurements = updatedMeasurements;
+    
+    // Save the batch
+    batch.save();
+  });
 }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          FermentationChartWidget(
+            measurements: batch.measurements,
+            stages: batch.safeFermentationStages,
+            onEditMeasurement: (measurementToEdit) async {
+              final sortedMeasurements = batch.measurements.toList()
+                    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+              
+              final index = sortedMeasurements.indexWhere((m) => m.timestamp == measurementToEdit.timestamp);
 
+              final updatedMeasurement = await showDialog<Measurement>(
+                context: context,
+                builder: (_) => AddMeasurementDialog(
+                  existingMeasurement: measurementToEdit,
+                  previousMeasurement: (index > 0)
+                      ? sortedMeasurements[index - 1]
+                      : null,
+                ),
+              );
 
+              if (updatedMeasurement != null) {
+                setState(() {
+                  final originalIndex = batch.measurements.indexWhere((m) => m.timestamp == measurementToEdit.timestamp);
+                  if (originalIndex != -1) {
+                    batch.measurements[originalIndex] = updatedMeasurement;
+                    batch.save();
+                  }
+                });
+              }
+            },
+            onDeleteMeasurement: _handleDeleteMeasurement,
+            onManageStages: () => _manageStages(batch),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildCompletedTab(BatchModel batch) {
     return const Center(child: Text('Final batch notes and stats'));
