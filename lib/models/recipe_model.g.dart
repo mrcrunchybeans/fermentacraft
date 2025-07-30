@@ -19,8 +19,8 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
     return RecipeModel(
       id: fields[0] as String?,
       name: fields[1] as String,
-      tags: (fields[3] as List).cast<Tag>(),
       createdAt: fields[2] as DateTime,
+      tags: (fields[3] as List).cast<Tag>(),
       og: fields[4] as double?,
       fg: fields[5] as double?,
       abv: fields[6] as double?,
@@ -30,13 +30,16 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       yeast: (fields[10] as List).cast<Map<String, dynamic>>(),
       notes: fields[11] as String,
       lastOpened: fields[12] as DateTime?,
-    );
+    )
+      ..batchVolume = fields[13] as double?
+      ..plannedOg = fields[14] as double?
+      ..plannedAbv = fields[15] as double?;
   }
 
   @override
   void write(BinaryWriter writer, RecipeModel obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +65,13 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       ..writeByte(11)
       ..write(obj.notes)
       ..writeByte(12)
-      ..write(obj.lastOpened);
+      ..write(obj.lastOpened)
+      ..writeByte(13)
+      ..write(obj.batchVolume)
+      ..writeByte(14)
+      ..write(obj.plannedOg)
+      ..writeByte(15)
+      ..write(obj.plannedAbv);
   }
 
   @override

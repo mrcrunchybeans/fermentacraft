@@ -89,8 +89,11 @@ class BatchModel extends HiveObject {
   @HiveField(23)
   List<Measurement> measurements;
 
-  @HiveField(24) // Use the next available index
+  @HiveField(24)
   DateTime? fsuDate;
+
+  @HiveField(25)
+  String? prepNotes;
 
 
 
@@ -112,6 +115,7 @@ BatchModel({
   this.notes,
   Map<String, bool>? deductedIngredients,
   this.type,
+  this.prepNotes,
   this.plannedOg,
   this.plannedAbv,
   List<Map<String, dynamic>>? ingredients,

@@ -45,6 +45,15 @@ class RecipeModel extends HiveObject {
   @HiveField(12)
   DateTime? lastOpened;
 
+  @HiveField(13)
+  double? batchVolume;
+
+  @HiveField(14)
+  double? plannedOg;
+
+  @HiveField(15)
+  double? plannedAbv;
+
   RecipeModel({
     String? id,
     required this.name,
@@ -59,6 +68,9 @@ class RecipeModel extends HiveObject {
     List<Map<String, dynamic>>? yeast,
     this.notes = '',
     this.lastOpened,
+    this.batchVolume,
+    this.plannedOg,
+    this.plannedAbv,
   })  : id = id ?? const Uuid().v4(),
         additives = additives ?? [],
         fermentables = fermentables ?? [],
