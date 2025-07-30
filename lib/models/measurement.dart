@@ -26,6 +26,15 @@ class Measurement {
   @HiveField(6)
   double? fsuspeed; // This will store the calculated speed
 
+  @HiveField(7)
+  double? ta; // Titratable Acidity
+
+  @HiveField(8)
+  List<String> interventions; // List of intervention names
+
+  @HiveField(9)
+  double? sgCorrected; // Temperature-corrected SG
+
   Measurement({
     required this.timestamp,
     required this.gravityUnit,
@@ -34,5 +43,8 @@ class Measurement {
     this.brix,
     this.note,
     this.fsuspeed,
+    this.ta,
+    this.interventions = const [], // Default to an empty list
+    this.sgCorrected,
   });
 }

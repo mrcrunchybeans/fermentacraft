@@ -14,7 +14,7 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
   Measurement read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return Measurement(
       timestamp: fields[0] as DateTime,
@@ -23,13 +23,17 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
       sg: fields[2] as double?,
       brix: fields[3] as double?,
       note: fields[5] as String?,
-    )..fsuspeed = fields[6] as double?;
+      fsuspeed: fields[6] as double?,
+      ta: fields[7] as double?,
+      interventions: (fields[8] as List).cast<String>(),
+      sgCorrected: fields[9] as double?,
+    );
   }
 
   @override
   void write(BinaryWriter writer, Measurement obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.timestamp)
       ..writeByte(1)
@@ -43,7 +47,13 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
       ..writeByte(5)
       ..write(obj.note)
       ..writeByte(6)
-      ..write(obj.fsuspeed);
+      ..write(obj.fsuspeed)
+      ..writeByte(7)
+      ..write(obj.ta)
+      ..writeByte(8)
+      ..write(obj.interventions)
+      ..writeByte(9)
+      ..write(obj.sgCorrected);
   }
 
   @override

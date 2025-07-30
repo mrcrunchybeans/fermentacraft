@@ -75,8 +75,8 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
             itemBuilder: (context, index) {
               final stage = stages[index];
               return ListTile(
-                key: ValueKey(stage.name + stage.startDate!.toIso8601String()),
-                title: Text(stage.name),
+              key: ValueKey(stage.name + (stage.startDate?.toIso8601String() ?? '')),               
+               title: Text(stage.name),
                 subtitle: Text(
                   'Start: ${stage.startDate?.toLocal().toString().split(' ')[0]}, '
                   'Duration: ${stage.durationDays}d, '

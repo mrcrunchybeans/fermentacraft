@@ -409,6 +409,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 }
 
                 if (mounted) {
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Recipe saved and linked')),
                   );
@@ -448,7 +449,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
         batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
       }
       if (syncStages) {
-        // FIXED: Convert the List<dynamic> of maps into a List<FermentationStage>
         batch.fermentationStages = recipe.fermentationStages
             .map((stageMap) =>
                 FermentationStage.fromMap(Map<String, dynamic>.from(stageMap)))
@@ -659,8 +659,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 final newMeasurement = await showDialog<Measurement>(
                     context: context,
                     builder: (_) => AddMeasurementDialog(
+                          // MODIFIED: Pass the required firstMeasurementDate
                           previousMeasurement: sortedMeasurements.isNotEmpty
                               ? sortedMeasurements.last
+                              : null,
+                          firstMeasurementDate: sortedMeasurements.isNotEmpty
+                              ? sortedMeasurements.first.timestamp
                               : null,
                         ));
 
@@ -693,6 +697,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 existingMeasurement: measurementToEdit,
                 previousMeasurement:
                     (index > 0) ? sortedMeasurements[index - 1] : null,
+                // MODIFIED: Pass the required firstMeasurementDate here too
+                firstMeasurementDate: sortedMeasurements.isNotEmpty
+                    ? sortedMeasurements.first.timestamp
+                    : null,
               ),
             );
 

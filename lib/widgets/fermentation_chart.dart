@@ -2,11 +2,11 @@ import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
-// Your own project imports
 import '../models/measurement.dart';
 import '../models/fermentation_stage.dart';
-import '../utils/temp_display.dart';
+import '../models/settings_model.dart';
 
 class FermentationChartWidget extends StatefulWidget {
   final List<Measurement> measurements;
@@ -33,7 +33,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
   double? _touchedX;
   Offset? _touchPosition;
   final GlobalKey _chartAreaKey = GlobalKey();
-  bool _showMeasurements = true; // Default to true for better visibility
+  bool _showMeasurements = true;
 
   // --- Touch Handling Logic ---
   void _updateTouchPosition(Offset localPosition, double maxX) {
@@ -41,9 +41,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
     final RenderBox renderBox =
         _chartAreaKey.currentContext!.findRenderObject() as RenderBox;
     final chartWidth = renderBox.size.width;
-
     final touchedX = (localPosition.dx / chartWidth) * maxX;
-
     if (touchedX >= 0 && touchedX <= maxX) {
       setState(() {
         _touchedX = touchedX;
@@ -58,16 +56,13 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
         _chartAreaKey.currentContext == null) {
       return;
     }
-
     final RenderBox renderBox =
         _chartAreaKey.currentContext!.findRenderObject() as RenderBox;
     final chartWidth = renderBox.size.width;
     final tapX = (details.localPosition.dx / chartWidth) * maxX;
-
     Measurement? closestMeasurement;
     double closestDistance = double.infinity;
     final startDate = sortedMeasurements.first.timestamp;
-
     for (final m in sortedMeasurements) {
       final mX = m.timestamp.difference(startDate).inHours.toDouble();
       final distance = (mX - tapX).abs();
@@ -76,8 +71,6 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
         closestMeasurement = m;
       }
     }
-
-    // A tap distance of 12 hours is a reasonable touch target
     if (closestDistance < 12 && closestMeasurement != null) {
       widget.onEditMeasurement!(closestMeasurement);
     }
@@ -108,13 +101,13 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
   }
 
   double _getDynamicXInterval(double maxX, double chartWidth) {
-    if (chartWidth <= 0) return 168; // Default to 7 days
+    if (chartWidth <= 0) return 168;
     final hoursPerPixel = maxX / chartWidth;
-    if (hoursPerPixel < 0.5) return 24; // 1 day
-    if (hoursPerPixel < 1) return 48; // 2 days
-    if (hoursPerPixel < 2) return 7 * 24; // 1 week
-    if (hoursPerPixel < 8) return 14 * 24; // 2 weeks
-    return 30 * 24; // 1 month
+    if (hoursPerPixel < 0.5) return 24;
+    if (hoursPerPixel < 1) return 48;
+    if (hoursPerPixel < 2) return 7 * 24;
+    if (hoursPerPixel < 8) return 14 * 24;
+    return 30 * 24;
   }
 
   double? _getInterpolatedY(List<FlSpot> spots, double x) {
@@ -134,7 +127,6 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // Sort measurements once for use in both chart and list
     final sortedMeasurements = [...widget.measurements]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
@@ -143,12 +135,9 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
       children: [
         _buildHeader(),
         const SizedBox(height: 16),
-        // --- CONDITIONAL CHART ---
-        // Display the chart only if there are enough measurements
         if (sortedMeasurements.length >= 2)
           _buildChart(sortedMeasurements)
         else
-          // Display a placeholder if there are not enough measurements
           SizedBox(
             height: 350,
             child: Center(
@@ -162,7 +151,6 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
             ),
           ),
         const SizedBox(height: 8),
-        // --- ALWAYS VISIBLE MEASUREMENT LIST ---
         _buildMeasurementToggle(),
         if (_showMeasurements)
           _buildMeasurementList(sortedMeasurements),
@@ -172,27 +160,28 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
 
   // --- Widget Builder Helpers ---
   Widget _buildChart(List<Measurement> sortedMeasurements) {
-    // This method now contains the logic that was previously in the `build` method.
+    final settings = context.watch<SettingsModel>();
     final startDate = sortedMeasurements.first.timestamp;
 
     final temps = sortedMeasurements
         .map((m) => m.temperature)
         .whereType<double>()
-        .map((t) => TempDisplay.isF ? (t * 9 / 5 + 32) : t)
+        .map((t) => settings.unit == 'F' ? (t * 9 / 5) + 32 : t) // FIXED
         .toList();
-    final sgs =
-        sortedMeasurements.map((m) => m.sg).whereType<double>().toList();
+        
+    final sgs = sortedMeasurements
+        .map((m) => m.sgCorrected ?? m.sg)
+        .whereType<double>()
+        .toList();
+
     final fsus = sortedMeasurements
         .map((m) => m.fsuspeed)
         .whereType<double>()
         .toList();
 
-    final minTemp =
-        temps.isNotEmpty ? temps.reduce(min) : (TempDisplay.isF ? 60 : 15);
-    final maxTemp =
-        temps.isNotEmpty ? temps.reduce(max) : (TempDisplay.isF ? 80 : 27);
-    final tempPadding =
-        (maxTemp - minTemp).abs() < 1.0 ? 5.0 : (maxTemp - minTemp) * 0.1;
+    final minTemp = temps.isNotEmpty ? temps.reduce(min) : (settings.unit == 'F' ? 60 : 15);
+    final maxTemp = temps.isNotEmpty ? temps.reduce(max) : (settings.unit == 'F' ? 80 : 27);
+    final tempPadding = (maxTemp - minTemp).abs() < 1.0 ? 5.0 : (maxTemp - minTemp) * 0.1;
     final chartMinY = (minTemp - tempPadding).floorToDouble();
     final chartMaxY = (maxTemp + tempPadding).ceilToDouble();
     final chartMidY = chartMinY + (chartMaxY - chartMinY) / 2;
@@ -209,13 +198,13 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
     for (final m in sortedMeasurements) {
       final x = m.timestamp.difference(startDate).inHours.toDouble();
       if (m.temperature != null) {
-        final tempValue =
-            TempDisplay.isF ? (m.temperature! * 9 / 5 + 32) : m.temperature!;
+        final tempValue = settings.unit == 'F' ? (m.temperature! * 9 / 5) + 32 : m.temperature!; // FIXED
         tempSpots.add(FlSpot(x, tempValue));
       }
-      if (m.sg != null) {
+      final sgValue = m.sgCorrected ?? m.sg;
+      if (sgValue != null) {
         gravitySpots.add(
-            FlSpot(x, _normalize(m.sg!, minSg, maxSg, chartMinY, chartMidY)));
+            FlSpot(x, _normalize(sgValue, minSg, maxSg, chartMinY, chartMidY)));
       }
       if (m.fsuspeed != null) {
         fsuSpots.add(FlSpot(
@@ -223,8 +212,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
       }
     }
 
-    final maxX =
-        sortedMeasurements.last.timestamp.difference(startDate).inHours.toDouble();
+    final maxX = sortedMeasurements.last.timestamp.difference(startDate).inHours.toDouble();
 
     return Column(
       children: [
@@ -232,10 +220,8 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
           height: 350,
           child: GestureDetector(
             onTapUp: (details) => _handleTap(details, sortedMeasurements, maxX),
-            onPanDown: (details) =>
-                _updateTouchPosition(details.localPosition, maxX),
-            onPanUpdate: (details) =>
-                _updateTouchPosition(details.localPosition, maxX),
+            onPanDown: (details) => _updateTouchPosition(details.localPosition, maxX),
+            onPanUpdate: (details) => _updateTouchPosition(details.localPosition, maxX),
             onPanEnd: (details) => _clearTouchPosition(),
             child: MouseRegion(
               onHover: (event) => _updateTouchPosition(event.localPosition, maxX),
@@ -247,38 +233,31 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
                     key: _chartAreaKey,
                     builder: (context, constraints) {
                       const reservedSpaceForYLabels = 40.0 + 40.0;
-                      final plotAreaWidth =
-                          constraints.maxWidth - reservedSpaceForYLabels;
+                      final plotAreaWidth = constraints.maxWidth - reservedSpaceForYLabels;
                       final xInterval = _getDynamicXInterval(maxX, plotAreaWidth);
 
                       return LineChart(
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.linear,
                         LineChartData(
-                          minY: chartMinY,
-                          maxY: chartMaxY,
-                          minX: 0,
-                          maxX: maxX,
+                          minY: chartMinY, maxY: chartMaxY, minX: 0, maxX: maxX,
                           lineTouchData: LineTouchData(enabled: false),
-                          titlesData: _buildTitlesData(
-                              chartMinY,
-                              chartMaxY,
-                              chartMidY,
-                              minSg,
-                              maxSg,
-                              minFsu,
-                              maxFsu,
-                              startDate,
-                              xInterval),
+                          titlesData: _buildTitlesData(chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu, startDate, xInterval),
                           gridData: _buildGridData(),
-                          borderData: FlBorderData(
-                              show: true,
-                              border: Border.all(color: Colors.grey.shade400)),
-                          rangeAnnotations:
-                              _buildStageAnnotations(widget.stages, startDate),
+                          borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade400)),
+                          rangeAnnotations: _buildStageAnnotations(widget.stages, startDate),
                           lineBarsData: [
                             _buildLineBarData(tempSpots, Colors.blueAccent),
-                            _buildLineBarData(gravitySpots, Colors.green),
+                            _buildLineBarData(
+                              gravitySpots,
+                              Colors.green,
+                              getDotPainter: (spot, percent, barData, index) {
+                                if (sortedMeasurements[index].interventions.isNotEmpty) {
+                                  return FlDotCirclePainter(radius: 6, color: Colors.orange.shade700, strokeWidth: 2, strokeColor: Colors.white);
+                                }
+                                return FlDotCirclePainter(radius: 3, color: Colors.green, strokeWidth: 1.5, strokeColor: Colors.white);
+                              },
+                            ),
                             _buildLineBarData(fsuSpots, Colors.purple),
                           ],
                         ),
@@ -287,38 +266,15 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
                   ),
                   if (_touchedX != null && _touchPosition != null)
                     Positioned(
-                      left: _touchPosition!.dx,
-                      top: 0,
-                      bottom: 0,
-                      child: Container(
-                          width: 1.5, color: Colors.redAccent.withAlpha(150)),
+                      left: _touchPosition!.dx, top: 0, bottom: 0,
+                      child: Container(width: 1.5, color: Colors.redAccent.withAlpha(150)),
                     ),
                   if (_touchedX != null && _touchPosition != null)
                     Positioned(
-                      left: _touchPosition!.dx >
-                              MediaQuery.of(context).size.width / 2
-                          ? null
-                          : _touchPosition!.dx + 12,
-                      right: _touchPosition!.dx >
-                              MediaQuery.of(context).size.width / 2
-                          ? MediaQuery.of(context).size.width -
-                              _touchPosition!.dx +
-                              12
-                          : null,
+                      left: _touchPosition!.dx > MediaQuery.of(context).size.width / 2 ? null : _touchPosition!.dx + 12,
+                      right: _touchPosition!.dx > MediaQuery.of(context).size.width / 2 ? MediaQuery.of(context).size.width - _touchPosition!.dx + 12 : null,
                       top: _touchPosition!.dy - 20,
-                      child: _buildCustomTooltip(
-                          startDate,
-                          _touchedX!,
-                          tempSpots,
-                          gravitySpots,
-                          fsuSpots,
-                          chartMinY,
-                          chartMaxY,
-                          chartMidY,
-                          minSg,
-                          maxSg,
-                          minFsu,
-                          maxFsu),
+                      child: _buildCustomTooltip(startDate, _touchedX!, tempSpots, gravitySpots, fsuSpots, chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu),
                     ),
                 ],
               ),
@@ -341,50 +297,71 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
       );
     }
 
+    final settings = context.watch<SettingsModel>();
     final dateFormat = DateFormat('M/d h:mm a');
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: measurements.map((m) {
-        final sg = m.sg?.toStringAsFixed(3) ?? "—";
+      children: measurements.reversed.map((m) {
         final temp = m.temperature != null
-            ? "${TempDisplay.isF ? (m.temperature! * 9 / 5 + 32).toStringAsFixed(1) : m.temperature!.toStringAsFixed(1)}°${TempDisplay.isF ? 'F' : 'C'}"
+            ? "${(settings.unit == 'F' ? (m.temperature! * 9 / 5) + 32 : m.temperature!).toStringAsFixed(1)}°${settings.unit.toUpperCase()}" // FIXED
             : "—";
-        final fsu = m.fsuspeed?.toStringAsFixed(1) ?? "—";
-        final ts = dateFormat.format(m.timestamp);
+        final ta = m.ta?.toStringAsFixed(1) ?? "—";
+        final sgRaw = m.sg?.toStringAsFixed(3) ?? "—";
+        final sgCorr = m.sgCorrected?.toStringAsFixed(3) ?? "—";
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 8.0),
-          child: Row(
-            children: [
-              Expanded(flex: 2, child: Text("SG: $sg")),
-              Expanded(flex: 3, child: Text("Temp: $temp")),
-              Expanded(flex: 2, child: Text("FSU: $fsu")),
-              Expanded(flex: 3, child: Text(ts)),
-              SizedBox(
-                width: 40,
-                child: PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      widget.onEditMeasurement?.call(m);
-                    } else if (value == 'delete') {
-                      widget.onDeleteMeasurement?.call(m);
-                    }
-                  },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'edit',
-                      child: Text('Edit'),
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4.0),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      dateFormat.format(m.timestamp),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                    const PopupMenuItem<String>(
-                      value: 'delete',
-                      child: Text('Delete'),
+                    SizedBox(
+                      width: 40,
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            widget.onEditMeasurement?.call(m);
+                          } else if (value == 'delete') {
+                            widget.onDeleteMeasurement?.call(m);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                           PopupMenuItem(value: 'edit', child: Text('Edit')),
+                           PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _DataPoint(label: 'SG', value: sgRaw),
+                    _DataPoint(label: 'SG Corr', value: sgCorr),
+                    _DataPoint(label: 'Temp', value: temp),
+                    _DataPoint(label: 'TA', value: ta),
+                  ],
+                ),
+                if (m.interventions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 6.0,
+                    runSpacing: 4.0,
+                    children: m.interventions.map((i) => Chip(label: Text(i))).toList(),
+                  )
+                ]
+              ],
+            ),
           ),
         );
       }).toList(),
@@ -394,8 +371,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
   Widget _buildHeader() {
     return Row(
       children: [
-        const Text("Fermentation Chart",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text("Fermentation Chart", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const Spacer(),
         if (widget.onManageStages != null)
           TextButton.icon(
@@ -414,30 +390,21 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
       alignment: WrapAlignment.center,
       children: [
         _LegendItem(color: Colors.blueAccent, label: "Temperature"),
-        _LegendItem(color: Colors.green, label: "Specific Gravity"),
+        _LegendItem(color: Colors.green, label: "Corrected SG"),
         _LegendItem(color: Colors.purple, label: "FSU"),
+        _LegendItem(color: Colors.orange.shade700, label: "Intervention"),
       ],
     );
   }
 
+  // FIXED: Restored the tooltip implementation
   Widget _buildCustomTooltip(
-    DateTime startDate,
-    double touchedX,
-    List<FlSpot> tempSpots,
-    List<FlSpot> gravitySpots,
-    List<FlSpot> fsuSpots,
-    double chartMinY,
-    double chartMaxY,
-    double chartMidY,
-    double minSg,
-    double maxSg,
-    double minFsu,
-    double maxFsu,
+    DateTime startDate, double touchedX, List<FlSpot> tempSpots, List<FlSpot> gravitySpots, List<FlSpot> fsuSpots,
+    double chartMinY, double chartMaxY, double chartMidY, double minSg, double maxSg, double minFsu, double maxFsu,
   ) {
-    final time = startDate.add(
-        Duration(microseconds: (touchedX * Duration.microsecondsPerHour).round()));
-    final timeLabel =
-        "${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+    final settings = context.read<SettingsModel>();
+    final time = startDate.add(Duration(microseconds: (touchedX * Duration.microsecondsPerHour).round()));
+    final timeLabel = "${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
 
     final tempY = _getInterpolatedY(tempSpots, touchedX);
     final sgYNormalized = _getInterpolatedY(gravitySpots, touchedX);
@@ -453,33 +420,20 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(timeLabel,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12)),
+            Text(timeLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
             const SizedBox(height: 4),
             if (tempY != null)
               Text(
-                  "Temp: ${tempY.toStringAsFixed(1)}°${TempDisplay.isF ? 'F' : 'C'}",
-                  style: const TextStyle(
-                      color: Colors.lightBlueAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
+                  "Temp: ${tempY.toStringAsFixed(1)}°${settings.unit.toUpperCase()}",
+                  style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
             if (sgYNormalized != null)
               Text(
                   "SG: ${_deNormalize(sgYNormalized, minSg, maxSg, chartMinY, chartMidY).toStringAsFixed(3)}",
-                  style: const TextStyle(
-                      color: Colors.lightGreenAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
+                  style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 12, fontWeight: FontWeight.w600)),
             if (fsuYNormalized != null)
               Text(
                   "FSU: ${_deNormalize(fsuYNormalized, minFsu, maxFsu, chartMidY, chartMaxY).toStringAsFixed(1)}",
-                  style: const TextStyle(
-                      color: Colors.purpleAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
+                  style: const TextStyle(color: Colors.purpleAccent, fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -490,43 +444,36 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
     return Align(
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
-        onPressed: () {
-          setState(() {
-            _showMeasurements = !_showMeasurements;
-          });
-        },
+        onPressed: () => setState(() => _showMeasurements = !_showMeasurements),
         icon: Icon(_showMeasurements ? Icons.expand_less : Icons.expand_more),
         label: Text(_showMeasurements ? "Hide Measurements" : "Show Measurements"),
       ),
     );
   }
 
-  LineChartBarData _buildLineBarData(List<FlSpot> spots, Color color) {
+  // FIXED: Changed the type from the non-existent FlDotPainterCallback to the correct function signature
+  LineChartBarData _buildLineBarData(List<FlSpot> spots, Color color, {FlDotPainter Function(FlSpot, double, LineChartBarData, int)? getDotPainter}) {
     return LineChartBarData(
       spots: spots.where((spot) => spot.y.isFinite).toList(),
       isCurved: true,
       barWidth: 2.5,
       color: color,
       dotData: FlDotData(
-          show: true,
-          getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-              radius: 3,
-              color: color,
-              strokeWidth: 1.5,
-              strokeColor: Colors.white)),
+        show: true,
+        getDotPainter: getDotPainter ?? (spot, percent, barData, index) => FlDotCirclePainter(
+            radius: 3,
+            color: color,
+            strokeWidth: 1.5,
+            strokeColor: Colors.white),
+      ),
     );
   }
 
-  RangeAnnotations _buildStageAnnotations(
+RangeAnnotations _buildStageAnnotations(
       List<FermentationStage> stages, DateTime startDate) {
     final List<Color> stageColors = [
-      Colors.orange,
-      Colors.blue,
-      Colors.green,
-      Colors.purple,
-      Colors.pink,
-      Colors.teal,
-      Colors.yellow
+      Colors.orange, Colors.blue, Colors.green, Colors.purple,
+      Colors.pink, Colors.teal, Colors.yellow
     ];
     return RangeAnnotations(
       verticalRangeAnnotations: stages.asMap().entries.map((entry) {
@@ -541,7 +488,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
       }).whereType<VerticalRangeAnnotation>().toList(),
     );
   }
-
+  
   FlGridData _buildGridData() {
     return FlGridData(
         show: true,
@@ -551,18 +498,12 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
         getDrawingVerticalLine: (value) =>
             FlLine(color: Colors.grey.withAlpha(50), strokeWidth: 1));
   }
-
+  
   FlTitlesData _buildTitlesData(
-    double chartMinY,
-    double chartMaxY,
-    double chartMidY,
-    double minSg,
-    double maxSg,
-    double minFsu,
-    double maxFsu,
-    DateTime startDate,
-    double xInterval,
+    double chartMinY, double chartMaxY, double chartMidY, double minSg, double maxSg,
+    double minFsu, double maxFsu, DateTime startDate, double xInterval,
   ) {
+    final settings = context.read<SettingsModel>();
     return FlTitlesData(
       topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
       bottomTitles: AxisTitles(
@@ -590,7 +531,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
       ),
       leftTitles: AxisTitles(
         axisNameWidget:
-            Text("Temp (${TempDisplay.isF ? '°F' : '°C'})", style: const TextStyle(fontSize: 12)),
+            Text("Temp (${settings.unit.toUpperCase()})", style: const TextStyle(fontSize: 12)),
         axisNameSize: 24,
         sideTitles: SideTitles(
             showTitles: true,
@@ -640,5 +581,21 @@ class _LegendItem extends StatelessWidget {
       const SizedBox(width: 4),
       Text(label, style: const TextStyle(fontSize: 12))
     ]);
+  }
+}
+
+class _DataPoint extends StatelessWidget {
+  final String label;
+  final String value;
+  const _DataPoint({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        Text(value, style: Theme.of(context).textTheme.titleMedium),
+      ],
+    );
   }
 }

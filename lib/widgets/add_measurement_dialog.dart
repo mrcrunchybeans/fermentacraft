@@ -5,18 +5,20 @@ import 'package:provider/provider.dart';
 import '../models/measurement.dart';
 import '../models/settings_model.dart';
 import '../utils/gravity_utils.dart';
-import '../utils/temp_display.dart';
 import '../utils/fsu_utils.dart';
+import '../utils/hydrometer_correction.dart';
 
 class AddMeasurementDialog extends StatefulWidget {
   final Measurement? existingMeasurement;
   final Measurement? previousMeasurement;
+  final DateTime? firstMeasurementDate;
   final void Function(Measurement)? onSave;
 
   const AddMeasurementDialog({
     super.key,
     this.existingMeasurement,
     this.previousMeasurement,
+    this.firstMeasurementDate,
     this.onSave,
   });
 
@@ -26,96 +28,121 @@ class AddMeasurementDialog extends StatefulWidget {
 
 class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
   final _formKey = GlobalKey<FormState>();
+
+  // --- Controllers ---
   final _gravityController = TextEditingController();
   final _tempController = TextEditingController();
+  final _taController = TextEditingController();
   final _noteController = TextEditingController();
 
-  DateTime _timestamp = DateTime.now();
-  String _gravityUnit = 'sg'; // 'sg' or 'brix'
+  // --- State Variables ---
+  late DateTime _timestamp;
+  late String _gravityUnit;
+  late bool _isFahrenheitOverride;
+  late List<String> _selectedInterventions;
 
+  // --- Auto-calculated Preview Variables ---
   double? _fsuPreview;
-  double? _convertedGravity;
+  double? _sgCorrectedPreview;
+  String _daysText = 'Day 1';
+
+  final List<String> _allInterventions = [
+    'Pressing', 'Yeast Inoculation', 'Temperature Control', 'First Racking',
+    'Secondary Racking', 'Stabilization Racking', 'Back Sweetening', 'Carbonation', 'Bottling'
+  ];
 
   @override
   void initState() {
     super.initState();
-    if (widget.existingMeasurement != null) {
-      final m = widget.existingMeasurement!;
-      _timestamp = m.timestamp;
-      _gravityUnit = m.gravityUnit;
-      _noteController.text = m.note ?? '';
-      _tempController.text = m.temperature?.toStringAsFixed(1) ?? '';
+    final settings = Provider.of<SettingsModel>(context, listen: false);
+    final m = widget.existingMeasurement;
+
+    _timestamp = m?.timestamp ?? DateTime.now();
+    _gravityUnit = m?.gravityUnit ?? 'sg';
+    _isFahrenheitOverride = settings.unit == 'F';
+    _selectedInterventions = List<String>.from(m?.interventions ?? []);
+
+    _noteController.text = m?.note ?? '';
+    _taController.text = m?.ta?.toString() ?? '';
+
+    if (m != null) {
+      if (m.temperature != null) {
+        // FIXED: Replaced the non-existent method with correct conversion logic.
+        double tempDisplayValue = m.temperature!; // Stored as Celsius
+        if (settings.unit == 'F') {
+          tempDisplayValue = (m.temperature! * 9 / 5) + 32;
+        }
+        _tempController.text = tempDisplayValue.toStringAsFixed(1);
+      }
       final value = _gravityUnit == 'sg' ? m.sg : m.brix;
       if (value != null) {
         _gravityController.text = _gravityUnit == 'sg'
             ? value.toStringAsFixed(3)
             : value.toStringAsFixed(1);
       }
-      _calculatePreview();
     }
+
+    _gravityController.addListener(_recalculateAllValues);
+    _tempController.addListener(_recalculateAllValues);
+
+    _recalculateAllValues();
   }
 
   @override
   void dispose() {
     _gravityController.dispose();
     _tempController.dispose();
+    _taController.dispose();
     _noteController.dispose();
     super.dispose();
   }
 
-  void _calculatePreview() {
+  void _recalculateAllValues() {
     final gravityVal = double.tryParse(_gravityController.text);
+    final tempVal = double.tryParse(_tempController.text);
 
-    double? sg;
-    if (gravityVal != null) {
-      if (_gravityUnit == 'sg') {
-        sg = gravityVal;
-        _convertedGravity = sgToBrix(gravityVal);
-      } else {
-        sg = brixToSg(gravityVal);
-        _convertedGravity = sgToBrix(sg);
-      }
-    } else {
-      _convertedGravity = null;
+    if (widget.firstMeasurementDate != null) {
+      final days = _timestamp.difference(widget.firstMeasurementDate!).inDays;
+      _daysText = 'Day ${days + 1}';
     }
 
-    // FSU preview logic
-    if (widget.previousMeasurement?.sg != null && sg != null) {
-    final prev = widget.previousMeasurement!;
-    final difference = _timestamp.difference(prev.timestamp);
-    _fsuPreview = calculateFSU(prev.sg!, sg, difference);
-  } else {
-    _fsuPreview = null;
-  }
+    double? sgForCalcs;
+    if (gravityVal != null) {
+      sgForCalcs = _gravityUnit == 'sg' ? gravityVal : brixToSg(gravityVal);
+    }
+
+    if (sgForCalcs != null && tempVal != null) {
+      final tempF = _isFahrenheitOverride ? tempVal : (tempVal * 9 / 5) + 32;
+      _sgCorrectedPreview = getCorrectedSG(sgForCalcs, tempF);
+    } else {
+      _sgCorrectedPreview = null;
+    }
+
+    if (widget.previousMeasurement?.sg != null && sgForCalcs != null) {
+      final prev = widget.previousMeasurement!;
+      final difference = _timestamp.difference(prev.timestamp);
+      _fsuPreview = calculateFSU(prev.sg!, sgForCalcs, difference);
+    } else {
+      _fsuPreview = null;
+    }
 
     setState(() {});
   }
 
   void _save() {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
     final gravityVal = double.tryParse(_gravityController.text);
     final tempVal = double.tryParse(_tempController.text);
+    final taVal = double.tryParse(_taController.text);
     final note = _noteController.text.trim();
-    final settings = Provider.of<SettingsModel>(context, listen: false);
 
-    if (gravityVal == null && tempVal == null && note.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter at least one value.'),
-        ),
-      );
-      return;
-    }
-
-    final double? tempC =
-        tempVal != null ? TempDisplay.convertToCelsius(tempVal, settings.unit) : null;
+    final double? tempC = tempVal != null
+        ? (_isFahrenheitOverride ? (tempVal - 32) * 5 / 9 : tempVal)
+        : null;
 
     double? currentSg;
     double? currentBrix;
-
     if (gravityVal != null) {
       if (_gravityUnit == 'sg') {
         currentSg = gravityVal;
@@ -127,11 +154,11 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
     }
 
     double? fsuspeed;
-  if (widget.previousMeasurement?.sg != null && currentSg != null) {
-    final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
-    fsuspeed = calculateFSU(widget.previousMeasurement!.sg!, currentSg, difference);
-  }
-
+    if (widget.previousMeasurement?.sg != null && currentSg != null) {
+      final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
+      fsuspeed = calculateFSU(widget.previousMeasurement!.sg!, currentSg, difference);
+    }
+    
     final measurement = Measurement(
       timestamp: _timestamp,
       gravityUnit: _gravityUnit,
@@ -140,6 +167,9 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
       temperature: tempC,
       note: note.isEmpty ? null : note,
       fsuspeed: fsuspeed,
+      ta: taVal,
+      sgCorrected: _sgCorrectedPreview,
+      interventions: _selectedInterventions,
     );
 
     widget.onSave?.call(measurement);
@@ -154,62 +184,85 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) {
+      final now = DateTime.now();
       setState(() {
-        _timestamp = DateTime(
-          picked.year,
-          picked.month,
-          picked.day,
-          _timestamp.hour,
-          _timestamp.minute,
-        );
-        _calculatePreview();
+        _timestamp = DateTime(picked.year, picked.month, picked.day, now.hour, now.minute);
+        _recalculateAllValues();
       });
     }
   }
 
+  void _showInterventionsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final tempSelected = List<String>.from(_selectedInterventions);
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Select Interventions'),
+            content: SingleChildScrollView(
+              child: ListBody(
+                children: _allInterventions.map((item) {
+                  return CheckboxListTile(
+                    value: tempSelected.contains(item),
+                    title: Text(item),
+                    onChanged: (bool? value) {
+                      setDialogState(() {
+                        if (value == true) {
+                          tempSelected.add(item);
+                        } else {
+                          tempSelected.remove(item);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  setState(() => _selectedInterventions = tempSelected);
+                  Navigator.pop(context);
+                },
+                child: const Text('DONE'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsModel>();
-    final tempUnitLabel = settings.unit.toUpperCase();
-    final showConverted =
-        _gravityController.text.isNotEmpty && _convertedGravity != null;
-
     return AlertDialog(
-      title: Text(
-          widget.existingMeasurement == null ? 'Add Measurement' : 'Edit Measurement'),
+      title: Text(widget.existingMeasurement == null ? 'Add Measurement' : 'Edit Measurement'),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  Expanded(
-                      child: Text('Date: ${DateFormat.yMMMd().format(_timestamp)}')),
-                  TextButton(onPressed: _pickDate, child: const Text('CHANGE')),
+                  Expanded(child: Text('Date: ${DateFormat.yMMMd().format(_timestamp)}')),
+                  Text(_daysText, style: Theme.of(context).textTheme.bodySmall),
+                  IconButton(icon: const Icon(Icons.calendar_today), onPressed: _pickDate, tooltip: 'Change Date'),
                 ],
               ),
+              const SizedBox(height: 8),
+
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
                     child: TextFormField(
                       controller: _gravityController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText:
-                            _gravityUnit == 'sg' ? 'Specific Gravity' : 'Brix',
-                      ),
-                      onChanged: (_) => _calculatePreview(),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return null;
-                        if (double.tryParse(value) == null) {
-                          return 'Invalid number';
-                        }
-                        return null;
-                      },
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(labelText: _gravityUnit == 'sg' ? 'Specific Gravity' : 'Brix'),
+                      validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid number' : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -218,7 +271,7 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                     onChanged: (val) {
                       if (val != null) {
                         setState(() => _gravityUnit = val);
-                        _calculatePreview();
+                        _recalculateAllValues();
                       }
                     },
                     items: const [
@@ -228,59 +281,81 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                   ),
                 ],
               ),
-              if (showConverted)
-                Align(
-                  alignment: Alignment.centerLeft,
+              const SizedBox(height: 8),
+
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _tempController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Temperature'),
+                      validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid number' : null,
+                    ),
+                  ),
+                   const SizedBox(width: 12),
+                  ToggleButtons(
+                    isSelected: [_isFahrenheitOverride, !_isFahrenheitOverride],
+                    onPressed: (index) => setState(() {
+                      _isFahrenheitOverride = index == 0;
+                      _recalculateAllValues();
+                    }),
+                    borderRadius: BorderRadius.circular(8),
+                    constraints: const BoxConstraints(minHeight: 40, minWidth: 48),
+                    children: const [Text('°F'), Text('°C')],
+                  ),
+                ],
+              ),
+               TextFormField(
+                  controller: _taController,
+                  decoration: const InputDecoration(labelText: 'TA (g/L)'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid number' : null,
+              ),
+              const SizedBox(height: 16),
+              
+              if (_sgCorrectedPreview != null || _fsuPreview != null)
+                Card(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 4.0),
-                    child: Text(
-                      _gravityUnit == 'sg'
-                          ? '≈ ${_convertedGravity!.toStringAsFixed(1)} °Bx'
-                          // Show the converted SG value when input is Brix
-                          : '≈ ${brixToSg(double.tryParse(_gravityController.text) ?? 0).toStringAsFixed(3)} SG',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      children: [
+                         if (_sgCorrectedPreview != null)
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [const Text('Corrected SG'), Text(_sgCorrectedPreview!.toStringAsFixed(3), style: const TextStyle(fontWeight: FontWeight.bold))],
+                          ),
+                         if (_fsuPreview != null)
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                           children: [const Text('Est. FSU'), Text(_fsuPreview!.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold))],
+                         ),
+                      ],
                     ),
                   ),
                 ),
-              TextFormField(
-                controller: _tempController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration:
-                    InputDecoration(labelText: 'Temperature ($tempUnitLabel)'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) return null;
-                  if (double.tryParse(value) == null) {
-                    return 'Invalid number';
-                  }
-                  return null;
-                },
+              const SizedBox(height: 16),
+              
+              OutlinedButton.icon(
+                icon: const Icon(Icons.flag_outlined),
+                label: const Text('Log Interventions'),
+                onPressed: _showInterventionsDialog,
               ),
-              TextFormField(
-                controller: _noteController,
-                decoration: const InputDecoration(labelText: 'Notes'),
-                textCapitalization: TextCapitalization.sentences,
-                maxLines: 2,
-              ),
-              if (_fsuPreview != null)
+              if (_selectedInterventions.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 16.0),
-                  child: Text(
-                      'Est. Fermentation Speed: ${_fsuPreview!.toStringAsFixed(1)} FSU',
-                      style: Theme.of(context).textTheme.bodyMedium),
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Wrap(
+                    spacing: 6.0,
+                    runSpacing: 6.0,
+                    children: _selectedInterventions.map((i) => Chip(label: Text(i))).toList(),
+                  ),
                 ),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('CANCEL')),
-        ElevatedButton(
-          onPressed: _save,
-          child: const Text('SAVE'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('CANCEL')),
+        ElevatedButton(onPressed: _save, child: const Text('SAVE')),
       ],
     );
   }
