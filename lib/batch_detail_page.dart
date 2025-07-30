@@ -13,6 +13,7 @@ import '../widgets/manage_stages_dialog.dart';
 import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
 
+
 class BatchDetailPage extends StatefulWidget {
   final BatchModel batch;
 
@@ -25,6 +26,18 @@ class BatchDetailPage extends StatefulWidget {
 class _BatchDetailPageState extends State<BatchDetailPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // --- NEW CONTROLLERS for Completed Tab ---
+  late TextEditingController _fgController;
+  late TextEditingController _tastingAromaController;
+  late TextEditingController _tastingAppearanceController;
+  late TextEditingController _tastingFlavorController;
+  late TextEditingController _finalYieldController;
+  late TextEditingController _finalNotesController;
+  String _finalYieldUnit = 'gal'; // default unit
+
+
+  // --- NEW State for Completed Tab ---
+  int _tastingRating = 0;
   late TextEditingController _prepNotesController;
 
   @override
@@ -33,12 +46,28 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _tabController = TabController(length: 4, vsync: this);
     _prepNotesController =
         TextEditingController(text: widget.batch.prepNotes ?? '');
+  _fgController = TextEditingController(text: widget.batch.fg?.toString() ?? '');
+  _tastingRating = widget.batch.tastingRating ?? 0;
+  _tastingAromaController = TextEditingController(text: widget.batch.tastingNotes?['aroma'] ?? '');
+  _tastingAppearanceController = TextEditingController(text: widget.batch.tastingNotes?['appearance'] ?? '');
+  _tastingFlavorController = TextEditingController(text: widget.batch.tastingNotes?['flavor'] ?? '');
+  _finalYieldController = TextEditingController(text: widget.batch.finalYield?.toString() ?? '');
+  _finalYieldUnit = widget.batch.finalYieldUnit ?? 'gal';
+  _finalNotesController = TextEditingController(text: widget.batch.finalNotes ?? '');
+  _finalYieldUnit = widget.batch.packagingMethod ?? 'gal'; // fallback default
+
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _prepNotesController.dispose();
+  _fgController.dispose();
+  _tastingAromaController.dispose();
+  _tastingAppearanceController.dispose();
+  _tastingFlavorController.dispose();
+  _finalYieldController.dispose();
+  _finalNotesController.dispose();
     super.dispose();
   }
 
@@ -722,9 +751,230 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
+   /// Builds the main "Completed" tab layout.
   Widget _buildCompletedTab(BatchModel batch) {
-    return const Center(child: Text('Final batch notes and stats'));
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFinalStatsCard(batch),
+          _sectionTitle('Tasting Notes'),
+          _buildTastingNotesSection(batch),
+          _sectionTitle('Packaging & Yield'),
+          _buildPackagingLogSection(batch),
+          _sectionTitle('Lessons Learned'),
+          _buildLessonsLearnedSection(batch),
+          _sectionTitle('Actions'),
+          _buildCompletedActions(batch),
+        ],
+      ),
+    );
   }
+
+  /// Card for Final Gravity input and Plan vs. Actual comparison.
+  Widget _buildFinalStatsCard(BatchModel batch) {
+  final actualAbv = (batch.og != null && batch.fg != null)
+      ? calculateABV(batch.og!, batch.fg!)
+      : null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Final Stats', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Expanded(child: Text('Final Gravity (FG)')),
+                SizedBox(
+                  width: 100,
+                  child: TextField(
+                    controller: _fgController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(hintText: 'e.g., 1.010'),
+                    onChanged: (value) {
+                      setState(() {
+                        batch.fg = double.tryParse(value);
+                        batch.save();
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            Text.rich(TextSpan(children: [
+              const TextSpan(text: 'OG: '),
+              TextSpan(text: batch.og?.toStringAsFixed(3) ?? '—', style: const TextStyle(fontWeight: FontWeight.bold)),
+              TextSpan(text: ' (Target: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'})', style: const TextStyle(color: Colors.grey)),
+            ])),
+            const SizedBox(height: 4),
+            Text.rich(TextSpan(children: [
+              const TextSpan(text: 'ABV: '),
+              TextSpan(text: '${actualAbv?.toStringAsFixed(2) ?? '—'}%', style: const TextStyle(fontWeight: FontWeight.bold)),
+              TextSpan(text: ' (Target: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%)', style: const TextStyle(color: Colors.grey)),
+            ])),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Section for structured tasting notes.
+  Widget _buildTastingNotesSection(BatchModel batch) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Overall Rating'),
+            Row(
+              children: List.generate(5, (index) {
+                return IconButton(
+                  icon: Icon(
+                    index < _tastingRating ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _tastingRating = index + 1;
+                      batch.tastingRating = _tastingRating; // Assumes model field
+                      batch.save();
+                    });
+                  },
+                );
+              }),
+            ),
+          ],
+        ),
+        TextField(controller: _tastingAromaController, decoration: const InputDecoration(labelText: 'Aroma'), onChanged: (v) => batch.tastingNotes?['aroma'] = v),
+        TextField(controller: _tastingAppearanceController, decoration: const InputDecoration(labelText: 'Appearance'), onChanged: (v) => batch.tastingNotes?['appearance'] = v),
+        TextField(controller: _tastingFlavorController, decoration: const InputDecoration(labelText: 'Flavor & Mouthfeel'), onChanged: (v) => batch.tastingNotes?['flavor'] = v),
+      ],
+    );
+  }
+
+  /// Section for logging packaging details.
+  Widget _buildPackagingLogSection(BatchModel batch) {
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.calendar_today),
+          title: const Text('Packaging Date'),
+          subtitle: Text(batch.packagingDate?.toLocal().toString().split(' ')[0] ?? 'Not set'),
+          onTap: () async {
+            final date = await showDatePicker(context: context, initialDate: batch.packagingDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2100));
+            if (date != null) {
+              setState(() {
+               batch.packagingDate  = date;
+              batch.save();
+            });
+            }
+          },
+        ),
+        DropdownButtonFormField<String>(
+          value: batch.packagingMethod,
+          decoration: const InputDecoration(labelText: 'Packaging Method'),
+          items: ['Bottled', 'Kegged', 'Aged in Secondary'].map((method) => DropdownMenuItem(value: method, child: Text(method))).toList(),
+          onChanged: (value) {
+            if (value != null) {
+              setState(() {
+              batch.packagingMethod = value;
+              batch.save();
+            });
+            }
+          },
+        ),
+        Row(
+  children: [
+    Expanded(
+      child: TextField(
+        controller: _finalYieldController,
+        decoration: const InputDecoration(
+          labelText: 'Final Yield',
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (value) {
+          batch.finalYield = double.tryParse(value);
+          batch.save();
+        },
+      ),
+    ),
+    const SizedBox(width: 12),
+    DropdownButton<String>(
+      value: _finalYieldUnit,
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            _finalYieldUnit = value;
+            batch.finalYieldUnit = value; // ✅ saves to model
+            batch.save();                 // ✅ persists in Hive
+          });
+        }
+      },
+      items: ['gal', 'L', '12oz bottle', '16oz bottle', '32oz growler'].map((unit) {
+        return DropdownMenuItem<String>(
+          value: unit,
+          child: Text(unit),
+        );
+      }).toList(),
+    ),
+  ],
+),
+
+      ],
+    );
+  }
+
+  /// Section for the final "post-mortem" notes.
+  Widget _buildLessonsLearnedSection(BatchModel batch) {
+    return TextField(
+      controller: _finalNotesController,
+      maxLines: 5,
+      decoration: const InputDecoration(
+        labelText: 'Final Thoughts & Improvements',
+        hintText: 'What would you do differently next time? What went well?',
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (value) {
+        batch.finalNotes = value;
+        batch.save();
+      },
+    );
+  }
+
+  /// Buttons for final actions like cloning or saving as a recipe.
+  Widget _buildCompletedActions(BatchModel batch) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          ElevatedButton.icon(
+            icon: const Icon(Icons.save_alt),
+            label: const Text('Save as Recipe'),
+            onPressed: () {
+              // Placeholder for saving logic
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved as new recipe!')));
+            },
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.copy),
+            label: const Text('Clone to New Batch'),
+            onPressed: () {
+              // Placeholder for cloning logic
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch cloned!')));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildPreparationNotesEditor(BatchModel batch) {
     return Column(

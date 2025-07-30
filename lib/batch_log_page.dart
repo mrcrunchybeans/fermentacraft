@@ -5,6 +5,7 @@ import 'package:flutter_application_1/widgets/add_batch_dialog.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 
+
 class BatchLogPage extends StatefulWidget {
   const BatchLogPage({super.key});
 
@@ -30,9 +31,9 @@ class _BatchLogPageState extends State<BatchLogPage> {
 
           return ListView(
             children: box.values.map((batch) {
-              final sg = batch.measurementLogs.isNotEmpty
-                  ? batch.measurementLogs.last.sg.toStringAsFixed(3)
-                  : '—';
+              final sg = batch.measurements.isNotEmpty
+              ? batch.measurements.last.sg?.toStringAsFixed(3)
+              : '—';
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

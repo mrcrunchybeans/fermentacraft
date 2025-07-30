@@ -18,3 +18,7 @@ void syncBatchFromRecipe(BatchModel batch, RecipeModel recipe) {
   batch.plannedOg = recipe.og;
   batch.plannedAbv = recipe.abv;
 }
+
+double calculateABV(double og, double fg) {
+  return (og - fg) * 131.25;
+}

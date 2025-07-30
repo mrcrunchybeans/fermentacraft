@@ -21,35 +21,42 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       name: fields[1] as String,
       recipeId: fields[2] as String,
       startDate: fields[3] as DateTime,
+      createdAt: fields[18] as DateTime,
+      tags: (fields[19] as List).cast<Tag>(),
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
+      finalYieldUnit: fields[32] as String?,
       fermentationStages: (fields[6] as List).cast<FermentationStage>(),
-      measurementLogs: (fields[7] as List).cast<MeasurementLog>(),
+      measurementLogs: (fields[7] as List).cast<Map<String, dynamic>>(),
       status: fields[8] as String,
       notes: fields[9] as String?,
       deductedIngredients: (fields[10] as Map).cast<String, bool>(),
       type: fields[11] as String?,
+      prepNotes: fields[25] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
       ingredients: (fields[14] as List).cast<Map<String, dynamic>>(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
       additives: (fields[16] as List).cast<Map<String, dynamic>>(),
       yeast: (fields[17] as Map?)?.cast<String, dynamic>(),
-      createdAt: fields[18] as DateTime,
-      tags: (fields[19] as List).cast<Tag>(),
       og: fields[20] as double?,
       fg: fields[21] as double?,
       abv: fields[22] as double?,
-      measurements: (fields[23] as List).cast<Measurement>(),
       fsuDate: fields[24] as DateTime?,
-      prepNotes: fields[25] as String?,
+      measurements: (fields[23] as List).cast<Measurement>(),
+      packagingDate: fields[30] as DateTime?,
+      finalNotes: fields[31] as String?,
+      tastingRating: fields[26] as int?,
+      tastingNotes: (fields[27] as Map?)?.cast<String, String>(),
+      packagingMethod: fields[28] as String?,
+      finalYield: fields[29] as double?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BatchModel obj) {
     writer
-      ..writeByte(26)
+      ..writeByte(33)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -101,7 +108,21 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..writeByte(24)
       ..write(obj.fsuDate)
       ..writeByte(25)
-      ..write(obj.prepNotes);
+      ..write(obj.prepNotes)
+      ..writeByte(26)
+      ..write(obj.tastingRating)
+      ..writeByte(27)
+      ..write(obj.tastingNotes)
+      ..writeByte(28)
+      ..write(obj.packagingMethod)
+      ..writeByte(29)
+      ..write(obj.finalYield)
+      ..writeByte(30)
+      ..write(obj.packagingDate)
+      ..writeByte(31)
+      ..write(obj.finalNotes)
+      ..writeByte(32)
+      ..write(obj.finalYieldUnit);
   }
 
   @override

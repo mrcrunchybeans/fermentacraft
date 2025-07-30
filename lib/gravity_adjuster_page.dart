@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_application_1/utils/sugar_gravity_data.dart';
+import '../widgets/stabilization_guidance_dialog.dart';
+
 
 class GravityAdjustTool extends StatefulWidget {
   const GravityAdjustTool({super.key});
@@ -54,7 +56,7 @@ class _PreFermentationAdjustTabState extends State<PreFermentationAdjustTab> {
   String _result = '';
   String _selectedSugar = 'Table Sugar (sucrose)';
   final _targetSGController = TextEditingController();
-  final bool _useGallons = true;
+  bool _useGallons = true;
   final _volumeController = TextEditingController();
 
   @override
@@ -146,7 +148,35 @@ class _PreFermentationAdjustTabState extends State<PreFermentationAdjustTab> {
         children: [
           const Text("Pre-Fermentation Adjustment", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-          TextField(controller: _volumeController, decoration: const InputDecoration(labelText: 'Volume (gal or L)'), onChanged: (_) => _calculate()),
+Row(
+  children: [
+    Expanded(
+      child: TextField(
+        controller: _volumeController,
+        decoration: InputDecoration(
+          labelText: 'Volume (${_useGallons ? "gal" : "L"})',
+        ),
+        onChanged: (_) => _calculate(),
+      ),
+    ),
+    const SizedBox(width: 8),
+    DropdownButton<bool>(
+      value: _useGallons,
+      items: const [
+        DropdownMenuItem(value: true, child: Text("Gallons")),
+        DropdownMenuItem(value: false, child: Text("Liters")),
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            _useGallons = value;
+            _calculate();
+          });
+        }
+      },
+    ),
+  ],
+),
           TextField(controller: _currentSGController, decoration: const InputDecoration(labelText: 'Current SG'), onChanged: (_) => _calculate()),
           TextField(controller: _targetSGController, decoration: const InputDecoration(labelText: 'Target SG'), onChanged: (_) => _calculate()),
           TextField(controller: _abvController, decoration: const InputDecoration(labelText: 'Desired ABV (%)'), onChanged: (_) => _calculate()),
@@ -188,7 +218,8 @@ class _BacksweetenAdjustTabState extends State<BacksweetenAdjustTab> {
   String _result = '';
   String _selectedSugar = 'Table Sugar (sucrose)';
   final _targetSGController = TextEditingController();
-  final bool _useGallons = true;
+  final _phController = TextEditingController();
+  bool _useGallons = true;
   final _volumeController = TextEditingController();
 
   void _calculate() {
@@ -221,9 +252,39 @@ class _BacksweetenAdjustTabState extends State<BacksweetenAdjustTab> {
         children: [
           const Text("Backsweetening Adjustment", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-          TextField(controller: _volumeController, decoration: const InputDecoration(labelText: 'Volume (gal or L)'), onChanged: (_) => _calculate()),
+Row(
+  children: [
+    Expanded(
+      child: TextField(
+        controller: _volumeController,
+        decoration: InputDecoration(
+          labelText: 'Volume (${_useGallons ? "gal" : "L"})',
+        ),
+        onChanged: (_) => _calculate(),
+      ),
+    ),
+    const SizedBox(width: 8),
+    DropdownButton<bool>(
+      value: _useGallons,
+      items: const [
+        DropdownMenuItem(value: true, child: Text("Gallons")),
+        DropdownMenuItem(value: false, child: Text("Liters")),
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            _useGallons = value;
+            _calculate();
+          });
+        }
+      },
+    ),
+  ],
+),
           TextField(controller: _currentSGController, decoration: const InputDecoration(labelText: 'Current SG'), onChanged: (_) => _calculate()),
           TextField(controller: _targetSGController, decoration: const InputDecoration(labelText: 'Target SG'), onChanged: (_) => _calculate()),
+          TextField(controller: _phController, decoration: const InputDecoration(labelText: 'Measured pH (optional)'), keyboardType: TextInputType.numberWithOptions(decimal: true),),
+
           DropdownButton<String>(
             value: _selectedSugar,
             isExpanded: true,
@@ -237,7 +298,34 @@ class _BacksweetenAdjustTabState extends State<BacksweetenAdjustTab> {
           ),
           const SizedBox(height: 12),
           Text(_result, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ],
+        ElevatedButton.icon(
+  icon: const Icon(Icons.shield),
+  label: const Text("Stabilization Dose Guide"),
+  onPressed: () {
+    final volumeInput = double.tryParse(_volumeController.text);
+    if (volumeInput == null || volumeInput <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid volume first.')),
+      );
+      return;
+    }
+final volume = double.tryParse(_volumeController.text) ?? 1.0;
+final ph = double.tryParse(_phController.text);
+
+showDialog(
+  context: context,
+  builder: (_) => StabilizationGuidanceDialog(
+    volume: volume,          // <- raw input from user
+    isGallons: _useGallons,  // <- actual unit
+    ph: ph,
+  ),
+);
+
+  
+  },
+    ),
+          ],
+        
       ),
     );
   }
