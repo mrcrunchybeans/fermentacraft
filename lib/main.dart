@@ -5,9 +5,11 @@ import 'package:flutter_application_1/models/tag_manager.dart';
 import 'package:flutter_application_1/utils/temp_display.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'models/purchase_transaction.dart';
 import 'models/recipe_model.dart';
 import 'batch_log_page.dart';
 import 'inventory_page.dart';
+import 'models/unit_type.dart';
 import 'recipe_list_page.dart';
 import 'settings_page.dart';
 import 'tools_page.dart';
@@ -16,13 +18,14 @@ import 'models/tag.dart';
 import 'models/batch_model.dart';
 import 'models/fermentation_stage.dart';
 import 'models/measurement_log.dart';
+import 'models/inventory_item.dart';
+import 'models/inventory_transaction_model.dart';
 
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.deleteBoxFromDisk('recipes');
   Hive.registerAdapter(BatchModelAdapter());
   Hive.registerAdapter(FermentationStageAdapter());
   Hive.registerAdapter(MeasurementLogAdapter());
@@ -30,6 +33,11 @@ void main() async {
   Hive.registerAdapter(TagAdapter());
   Hive.registerAdapter(PlannedEventAdapter());
   Hive.registerAdapter(MeasurementAdapter());
+  Hive.registerAdapter(InventoryItemAdapter());
+  Hive.registerAdapter(InventoryTransactionAdapter());
+  Hive.registerAdapter(UnitTypeAdapter());
+  Hive.registerAdapter(PurchaseTransactionAdapter());
+
 
 
 
@@ -39,6 +47,8 @@ void main() async {
   await Hive.openBox<BatchModel>('batches');
   await Hive.openBox<MeasurementLog>('measurementLogs');
   await Hive.openBox<FermentationStage>('fermentationStages');
+  await Hive.openBox<InventoryItem>('inventory');
+  await Hive.openBox<InventoryTransaction>('inventoryTransactions');
 
 
 
