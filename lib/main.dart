@@ -22,8 +22,6 @@ import 'models/inventory_item.dart';
 import 'models/inventory_transaction_model.dart';
 import 'home_page.dart';
 
-
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
@@ -39,10 +37,7 @@ void main() async {
   Hive.registerAdapter(UnitTypeAdapter());
   Hive.registerAdapter(PurchaseTransactionAdapter());
 
-
-
-
-  final recipeBox = await Hive.openBox<RecipeModel>('recipes');
+  await Hive.openBox<RecipeModel>('recipes');
   await Hive.openBox('settings');
   await Hive.openBox<Tag>('tags');
   await Hive.openBox<BatchModel>('batches');
@@ -50,17 +45,6 @@ void main() async {
   await Hive.openBox<FermentationStage>('fermentationStages');
   await Hive.openBox<InventoryItem>('inventory');
   await Hive.openBox<InventoryTransaction>('inventoryTransactions');
-
-
-
-
-
-
-
-  const bool isDev = true;
-  if (isDev && recipeBox.isNotEmpty) {
-    await recipeBox.clear();
-  }
 
   final useCelsius = Hive.box('settings').get('useCelsius', defaultValue: true);
   TempDisplay.setUseFahrenheit(!useCelsius);
@@ -80,17 +64,27 @@ void main() async {
   );
 }
 
-
 class CiderCraftApp extends StatelessWidget {
   const CiderCraftApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // FIX 1: You need to get the settings model from the provider to use it.
+    final settings = Provider.of<SettingsModel>(context);
+
     return MaterialApp(
       title: 'CiderCraft',
+      // These lines now correctly use the settings model
+      themeMode: settings.themeMode,
       theme: ThemeData(
+        brightness: Brightness.light,
         primarySwatch: Colors.pink,
       ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.pink,
+      ),
+      // FIX 2: Removed extra closing parenthesis that was causing a syntax error.
       home: const HomeScreen(),
     );
   }
@@ -104,7 +98,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Set "Home" as the default starting page
   String _selectedPage = 'Home';
 
   Widget _getPage() {
@@ -114,14 +107,13 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'Batches':
         return const BatchLogPage();
       case 'Inventory':
-        return const  InventoryPage();
+        return const InventoryPage();
       case 'Tools':
         return const ToolsPage();
       case 'Settings':
         return const SettingsPage();
       case 'Home':
       default:
-        // Show the HomePage content by default
         return const HomePage();
     }
   }
@@ -139,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(title: Text('CiderCraft – $_selectedPage')),
       drawer: Drawer(
         child: ListView(
-          padding: EdgeInsets.zero, // Important: remove padding
+          padding: EdgeInsets.zero,
           children: [
             const DrawerHeader(
               decoration: BoxDecoration(color: Color.fromARGB(255, 108, 147, 73)),
@@ -154,7 +146,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            // Add a ListTile for the Home page
             ListTile(
               leading: const Icon(Icons.home),
               title: const Text('Home'),
@@ -192,4 +183,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
