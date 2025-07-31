@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:hive/hive.dart';
-
+import '../utils/data_management.dart';
 import '../models/settings_model.dart';
 import '../utils/temp_display.dart';
 
@@ -88,23 +88,19 @@ class SettingsPage extends StatelessWidget {
                   leading: const Icon(Icons.upload_file),
                   title: const Text("Export Data"),
                   subtitle: const Text("Save a backup of all your recipes and inventory."),
-                  onTap: () {
-                    // Placeholder for export logic
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Export feature coming soon!")),
-                    );
-                  },
+                          onTap: () {
+          // UPDATED: Call the export service
+          DataManagementService.exportData(context);
+        },
                 ),
                 ListTile(
                   leading: const Icon(Icons.download_for_offline),
                   title: const Text("Import Data"),
                   subtitle: const Text("Restore from a backup file."),
                   onTap: () {
-                    // Placeholder for import logic
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Import feature coming soon!")),
-                    );
-                  },
+          // UPDATED: Call the import service
+          DataManagementService.importData(context);
+        },
                 ),
               ],
             ),
