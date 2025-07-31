@@ -32,7 +32,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
           return ListView(
             children: box.values.map((batch) {
               final sg = batch.measurements.isNotEmpty
-              ? batch.measurements.last.sg?.toStringAsFixed(3)
+              ? batch.measurements.last.gravity?.toStringAsFixed(3)
               : '—';
 
               return Card(

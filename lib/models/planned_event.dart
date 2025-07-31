@@ -2,8 +2,8 @@ import 'package:hive/hive.dart';
 
 part 'planned_event.g.dart';
 
-@HiveType(typeId: 15)
-class PlannedEvent {
+@HiveType(typeId: 5)
+class PlannedEvent extends HiveObject {
   @HiveField(0)
   String title;
 
@@ -18,4 +18,18 @@ class PlannedEvent {
     required this.date,
     this.notes,
   });
+
+  // --- ADDED for data export/import ---
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'date': date.toIso8601String(),
+        'notes': notes,
+      };
+
+  factory PlannedEvent.fromJson(Map<String, dynamic> json) => PlannedEvent(
+        title: json['title'],
+        date: DateTime.parse(json['date']),
+        notes: json['notes'],
+      );
+  // --- END of added code ---
 }

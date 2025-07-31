@@ -22,4 +22,13 @@ class MeasurementLog {
     this.tempC,
     this.pH,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'timestamp': timestamp.toIso8601String(),
+      'sg': sg,
+      'tempC': tempC,
+      'pH': pH,
+    };
+  }
 }

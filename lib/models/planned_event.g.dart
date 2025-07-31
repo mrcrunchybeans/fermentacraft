@@ -8,7 +8,7 @@ part of 'planned_event.dart';
 
 class PlannedEventAdapter extends TypeAdapter<PlannedEvent> {
   @override
-  final int typeId = 15;
+  final int typeId = 5;
 
   @override
   PlannedEvent read(BinaryReader reader) {
@@ -16,6 +16,7 @@ class PlannedEventAdapter extends TypeAdapter<PlannedEvent> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return PlannedEvent(
       title: fields[0] as String,
       date: fields[1] as DateTime,

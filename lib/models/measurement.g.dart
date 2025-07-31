@@ -8,25 +8,26 @@ part of 'measurement.dart';
 
 class MeasurementAdapter extends TypeAdapter<Measurement> {
   @override
-  final int typeId = 16;
+  final int typeId = 6;
 
   @override
   Measurement read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return Measurement(
       timestamp: fields[0] as DateTime,
-      gravityUnit: fields[4] as String,
-      temperature: fields[1] as double?,
-      sg: fields[2] as double?,
-      brix: fields[3] as double?,
-      note: fields[5] as String?,
-      fsuspeed: fields[6] as double?,
-      ta: fields[7] as double?,
-      interventions: (fields[8] as List).cast<String>(),
-      sgCorrected: fields[9] as double?,
+      gravity: fields[1] as double?,
+      temperature: fields[2] as double?,
+      notes: fields[3] as String?,
+      gravityUnit: fields[4] as String?,
+      interventions: (fields[5] as List?)?.cast<String>(),
+      ta: fields[6] as double?,
+      brix: fields[7] as double?,
+      sgCorrected: fields[8] as double?,
+      fsuspeed: fields[9] as double?,
     );
   }
 
@@ -37,23 +38,23 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
       ..writeByte(0)
       ..write(obj.timestamp)
       ..writeByte(1)
-      ..write(obj.temperature)
+      ..write(obj.gravity)
       ..writeByte(2)
-      ..write(obj.sg)
+      ..write(obj.temperature)
       ..writeByte(3)
-      ..write(obj.brix)
+      ..write(obj.notes)
       ..writeByte(4)
       ..write(obj.gravityUnit)
       ..writeByte(5)
-      ..write(obj.note)
-      ..writeByte(6)
-      ..write(obj.fsuspeed)
-      ..writeByte(7)
-      ..write(obj.ta)
-      ..writeByte(8)
       ..write(obj.interventions)
+      ..writeByte(6)
+      ..write(obj.ta)
+      ..writeByte(7)
+      ..write(obj.brix)
+      ..writeByte(8)
+      ..write(obj.sgCorrected)
       ..writeByte(9)
-      ..write(obj.sgCorrected);
+      ..write(obj.fsuspeed);
   }
 
   @override

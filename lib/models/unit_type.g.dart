@@ -43,4 +43,14 @@ class UnitTypeAdapter extends TypeAdapter<UnitType> {
         break;
     }
   }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UnitTypeAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
 }

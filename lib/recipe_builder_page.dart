@@ -322,7 +322,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                 ingredients: ingredients,
                 yeast: yeast,
                 fermentationStages:
-                    fermentationStages.map((e) => e.toMap()).toList(),
+                    fermentationStages.map((e) => e.toJson()).toList(),
                 notes: notesController.text.trim(),
               );
               final box = Hive.box<RecipeModel>('recipes');

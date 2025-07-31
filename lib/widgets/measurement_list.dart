@@ -34,7 +34,7 @@ class MeasurementList extends StatelessWidget {
       separatorBuilder: (_, _) => const Divider(),
       itemBuilder: (context, index) {
         final m = sorted[index];
-        final sgText = m.sg != null ? formatGravity(m.sg!) : '—';
+        final sgText = m.gravity != null ? formatGravity(m.gravity!) : '—';
         final brixText = m.brix != null ? formatBrix(m.brix!) : '—';
         final tempText = m.temperature != null ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
         final fsuText = m.fsuspeed != null ? m.fsuspeed!.toStringAsFixed(1) : '—';
@@ -47,8 +47,8 @@ class MeasurementList extends StatelessWidget {
             children: [
               Text('SG: $sgText | Brix: $brixText'),
               Text('Temp: $tempText | FSU: $fsuText'),
-              if (m.note != null && m.note!.isNotEmpty)
-                Text('Note: ${m.note}', style: const TextStyle(fontStyle: FontStyle.italic)),
+              if (m.notes != null && m.notes!.isNotEmpty)
+                Text('Note: ${m.notes}', style: const TextStyle(fontStyle: FontStyle.italic)),
             ],
           ),
           trailing: PopupMenuButton<String>(

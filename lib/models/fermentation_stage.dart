@@ -2,46 +2,59 @@ import 'package:hive/hive.dart';
 
 part 'fermentation_stage.g.dart';
 
-@HiveType(typeId: 11)
-class FermentationStage {
+@HiveType(typeId: 1)
+class FermentationStage extends HiveObject {
   @HiveField(0)
   String name;
 
   @HiveField(1)
-  DateTime? startDate;
-
-  @HiveField(2)
   int durationDays;
 
-  @HiveField(3)
+  @HiveField(2)
   double? targetTempC;
+
+  @HiveField(3)
+  DateTime? startDate;
 
   FermentationStage({
     required this.name,
-    this.startDate,
     required this.durationDays,
     this.targetTempC,
+    this.startDate,
   });
 
-  // Factory to convert from legacy Map<String, dynamic>
-  factory FermentationStage.fromMap(Map<String, dynamic> map) {
-    return FermentationStage(
-      name: map['name'] ?? '',
-      startDate: map['startDate'] != null
-          ? DateTime.tryParse(map['startDate'].toString())
-          : null,
-      durationDays: map['durationDays'] ?? map['days'] ?? 0,
-      targetTempC: (map['targetTempC'] ?? map['temp'])?.toDouble(),
-    );
-  }
+  // --- ADDED for data export/import ---
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'durationDays': durationDays,
+        'targetTempC': targetTempC,
+        'startDate': startDate?.toIso8601String(),
+      };
 
-  // Convert back to map if needed
+  factory FermentationStage.fromJson(Map<String, dynamic> json) => FermentationStage(
+        name: json['name'],
+        durationDays: json['durationDays'],
+        targetTempC: json['targetTempC'],
+        startDate: json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
+      );
+  // --- END of added code ---
+
+  // Helper method from your previous code
   Map<String, dynamic> toMap() {
     return {
       'name': name,
-      'startDate': startDate?.toIso8601String(),
       'durationDays': durationDays,
       'targetTempC': targetTempC,
+      'startDate': startDate?.toIso8601String(),
     };
+  }
+
+  factory FermentationStage.fromMap(Map<String, dynamic> map) {
+    return FermentationStage(
+      name: map['name'],
+      durationDays: map['durationDays'],
+      targetTempC: map['targetTempC'],
+      startDate: map['startDate'] != null ? DateTime.parse(map['startDate']) : null,
+    );
   }
 }

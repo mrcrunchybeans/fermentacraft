@@ -13,15 +13,24 @@ class PurchaseTransaction extends HiveObject {
   @HiveField(2)
   double cost;
 
-  @HiveField(3) // New field for expiration date
+  @HiveField(3)
   DateTime? expirationDate;
 
   PurchaseTransaction({
     required this.date,
     required this.amount,
     required this.cost,
-    this.expirationDate, // Added to constructor
+    this.expirationDate,
   });
 
   double get totalCost => cost;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'date': date.toIso8601String(),
+      'amount': amount,
+      'cost': cost,
+      'expirationDate': expirationDate?.toIso8601String(),
+    };
+  }
 }

@@ -2,13 +2,20 @@ import 'package:hive/hive.dart';
 
 part 'tag.g.dart';
 
-@HiveType(typeId: 1)
+@HiveType(typeId: 9)
 class Tag extends HiveObject {
   @HiveField(0)
-  final String name;
+  String name;
 
-  Tag(this.name);
+  Tag({required this.name});
 
-  @override
-  String toString() => name;
+  // --- ADDED for data export/import ---
+  Map<String, dynamic> toJson() => {
+        'name': name,
+      };
+
+  factory Tag.fromJson(Map<String, dynamic> json) => Tag(
+        name: json['name'],
+      );
+  // --- END of added code ---
 }

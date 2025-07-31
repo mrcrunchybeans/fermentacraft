@@ -76,4 +76,44 @@ class RecipeModel extends HiveObject {
         ingredients = ingredients ?? [],
         fermentationStages = fermentationStages ?? [],
         yeast = yeast ?? [];
+
+        Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'createdAt': createdAt.toIso8601String(),
+      'tags': tags.map((tag) => tag.toJson()).toList(),
+      'og': og,
+      'fg': fg,
+      'abv': abv,
+      'additives': additives,
+      'ingredients': ingredients,
+      'fermentationStages': fermentationStages,
+      'yeast': yeast,
+      'notes': notes,
+      'lastOpened': lastOpened?.toIso8601String(),
+      'batchVolume': batchVolume,
+      'plannedOg': plannedOg,
+      'plannedAbv': plannedAbv,
+    };
+  }
+  factory RecipeModel.fromJson(Map<String, dynamic> json) => RecipeModel(
+  id: json['id'],
+  name: json['name'],
+  createdAt: DateTime.parse(json['createdAt']),
+  tags: (json['tags'] as List).map((tag) => Tag.fromJson(tag)).toList(),
+  og: json['og'],
+  fg: json['fg'],
+  abv: json['abv'],
+  additives: List<Map<String, dynamic>>.from(json['additives']),
+  ingredients: List<Map<String, dynamic>>.from(json['ingredients']),
+  fermentationStages: List<Map<String, dynamic>>.from(json['fermentationStages']),
+  yeast: List<Map<String, dynamic>>.from(json['yeast']),
+  notes: json['notes'] ?? '',
+  lastOpened: json['lastOpened'] != null ? DateTime.parse(json['lastOpened']) : null,
+  batchVolume: json['batchVolume'],
+  plannedOg: json['plannedOg'],
+  plannedAbv: json['plannedAbv'],
+);
+
 }

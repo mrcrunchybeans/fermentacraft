@@ -1,33 +1,33 @@
-// lib/models/tag_manager.dart
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'tag.dart'; // Import the correct Tag model
 
 class TagManager extends ChangeNotifier {
   final Box<Tag> _tagBox = Hive.box<Tag>('tags');
 
-  List<Tag> get tags => _tagBox.values.cast<Tag>().toList();
+  // Use a listenable for reactive UI updates
+  ValueNotifier<List<Tag>> get tagsNotifier => ValueNotifier(_tagBox.values.toList());
+  
+  List<Tag> get tags => _tagBox.values.toList();
 
   void addTag(String name) {
-    if (!_tagBox.values.any((tag) => tag.name == name)) {
-      _tagBox.add(Tag(name));
+    // Ensure the tag doesn't already exist (case-insensitive check)
+    if (!_tagBox.values.any((tag) => tag.name.toLowerCase() == name.toLowerCase().trim())) {
+      _tagBox.add(Tag(name: name.trim()));
       notifyListeners();
     }
   }
 
   void deleteTag(Tag tag) {
-    final key = _tagBox.keys.firstWhere((k) => _tagBox.get(k) == tag, orElse: () => null);
-    if (key != null) {
-      _tagBox.delete(key);
-      notifyListeners();
-    }
+    // Use the object's key to delete it directly. This is much more efficient.
+    tag.delete();
+    notifyListeners();
   }
 
   void editTag(Tag oldTag, String newName) {
-    final key = _tagBox.keys.firstWhere((k) => _tagBox.get(k) == oldTag, orElse: () => null);
-    if (key != null) {
-      _tagBox.put(key, Tag(newName));
-      notifyListeners();
-    }
+    // Modify the existing object and save it.
+    oldTag.name = newName.trim();
+    oldTag.save();
+    notifyListeners();
   }
 }

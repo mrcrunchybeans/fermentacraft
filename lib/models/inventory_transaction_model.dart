@@ -18,4 +18,12 @@ class InventoryTransaction {
     required this.amount,
     required this.cost,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'date': date.toIso8601String(),
+      'amount': amount,
+      'cost': cost,
+    };
+  }
 }

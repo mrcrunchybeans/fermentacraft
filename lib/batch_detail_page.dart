@@ -417,7 +417,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   additives: batch.additives,
                   ingredients: batch.ingredients,
                   fermentationStages:
-                      batch.safeFermentationStages.map((e) => e.toMap()).toList(),
+                      batch.safeFermentationStages.map((e) => e.toJson()).toList(),
                   yeast: batch.yeast != null ? [batch.yeast!] : [],
                   notes: batch.notes ?? '',
                   batchVolume: batch.batchVolume,

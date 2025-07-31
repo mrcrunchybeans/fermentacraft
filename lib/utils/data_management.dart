@@ -5,40 +5,70 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:developer' as dev;
+import 'package:file_selector/file_selector.dart';
+
+// Hive model imports
+import '../models/recipe_model.dart';
+import '../models/batch_model.dart';
+import '../models/inventory_item.dart';
+import '../models/tag.dart';
 
 class DataManagementService {
-  // List of all your Hive box names
   static const List<String> _boxNames = [
     'recipes',
     'settings',
     'tags',
     'batches',
-    'measurementLogs',
-    'fermentationStages',
     'inventory',
-    'inventoryTransactions',
   ];
 
-  /// Exports all Hive data to a single JSON file and shares it.
+  static final Map<String, Function> _fromJsonConstructors = {
+    'recipes': (json) => RecipeModel.fromJson(json),
+    'batches': (json) => BatchModel.fromJson(json),
+    'inventory': (json) => InventoryItem.fromJson(json),
+    'tags': (json) => Tag.fromJson(json),
+  };
+
+  static dynamic getTypedBox(String name) {
+    switch (name) {
+      case 'recipes':
+        return Hive.box<RecipeModel>('recipes');
+      case 'batches':
+        return Hive.box<BatchModel>('batches');
+      case 'inventory':
+        return Hive.box<InventoryItem>('inventory');
+      case 'tags':
+        return Hive.box<Tag>('tags');
+      case 'settings':
+        return Hive.box('settings');
+      default:
+        return Hive.box(name);
+    }
+  }
+
   static Future<void> exportData(BuildContext context) async {
     try {
       final Map<String, dynamic> allData = {};
 
       for (final boxName in _boxNames) {
-        final box = await Hive.openBox(boxName);
-        // Convert box data to a list of maps for JSON serialization
-        final boxData = box.toMap().entries.map((e) => e.value).toList();
+        final box = getTypedBox(boxName);
+        final boxData = box.values.map((item) {
+          try {
+            return item.toJson();
+          } catch (_) {
+            return item;
+          }
+        }).toList();
+
         allData[boxName] = boxData;
       }
 
-      final jsonString = jsonEncode(allData);
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/cidercraft_backup.json';
-      final file = File(filePath);
-      await file.writeAsString(jsonString);
+      final filePath = await DataManagementService().saveJsonBackup(allData);
 
-      // Use share_plus to open the native share dialog
+        if ((Platform.isAndroid || Platform.isIOS) && filePath != null) {
       await Share.shareXFiles([XFile(filePath)], text: 'CiderCraft Backup');
+    }
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -54,7 +84,6 @@ class DataManagementService {
     }
   }
 
-  /// Imports data from a JSON file and overwrites existing Hive data.
   static Future<void> importData(BuildContext context) async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -62,9 +91,7 @@ class DataManagementService {
         allowedExtensions: ['json'],
       );
 
-      if (result == null || result.files.single.path == null) {
-        return; // User canceled the picker
-      }
+      if (result == null || result.files.single.path == null) return;
 
       final file = File(result.files.single.path!);
       final jsonString = await file.readAsString();
@@ -76,7 +103,7 @@ class DataManagementService {
           builder: (context) => AlertDialog(
             title: const Text("Confirm Import"),
             content: const Text(
-                "This will overwrite all existing data. This action cannot be undone. Are you sure you want to continue?"),
+                "This will overwrite all existing data. This action cannot be undone. Are you sure?"),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
               ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("Import")),
@@ -89,16 +116,16 @@ class DataManagementService {
 
       for (final boxName in _boxNames) {
         if (allData.containsKey(boxName)) {
-          final box = await Hive.openBox(boxName);
+          final box = getTypedBox(boxName);
           await box.clear();
           final boxData = allData[boxName] as List;
-          for (var item in boxData) {
-            // HiveObjects need to be added, not put with a key
-            if (item is HiveObject) {
-               await box.add(item);
-            } else {
-               // For simple boxes like 'settings'
-               await box.putAll(Map<String, dynamic>.from(item));
+
+          for (var itemJson in boxData) {
+            if (_fromJsonConstructors.containsKey(boxName)) {
+              final item = _fromJsonConstructors[boxName]!(itemJson);
+              await box.add(item);
+            } else if (boxName == 'settings') {
+              await box.putAll(Map<String, dynamic>.from(itemJson));
             }
           }
         }
@@ -117,4 +144,33 @@ class DataManagementService {
       }
     }
   }
+
+Future<String?> saveJsonBackup(Map<String, dynamic> data) async {
+  final jsonString = const JsonEncoder.withIndent('  ').convert(data);
+  final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:\\/*?"<>|]'), '_');
+  final fileName = 'cidercraft_backup_$timestamp.json';
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    final fileSaveLocation = await getSaveLocation(
+      suggestedName: fileName,
+      acceptedTypeGroups: [XTypeGroup(extensions: ['json'])],
+    );
+    if (fileSaveLocation != null) {
+      final file = File(fileSaveLocation.path);
+      await file.writeAsString(jsonString);
+      dev.log('Backup saved to ${file.path}');
+      return file.path;
+    }
+  } else if (Platform.isAndroid || Platform.isIOS) {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsString(jsonString);
+    dev.log('Backup saved to ${file.path}');
+    return file.path;
+  } else {
+    throw UnsupportedError('Unsupported platform');
+  }
+
+  return null;
+}
 }

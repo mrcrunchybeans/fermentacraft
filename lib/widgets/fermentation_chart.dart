@@ -170,7 +170,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
         .toList();
         
     final sgs = sortedMeasurements
-        .map((m) => m.sgCorrected ?? m.sg)
+        .map((m) => m.sgCorrected ?? m.gravity)
         .whereType<double>()
         .toList();
 
@@ -201,7 +201,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
         final tempValue = settings.unit == 'F' ? (m.temperature! * 9 / 5) + 32 : m.temperature!; // FIXED
         tempSpots.add(FlSpot(x, tempValue));
       }
-      final sgValue = m.sgCorrected ?? m.sg;
+      final sgValue = m.sgCorrected ?? m.gravity;
       if (sgValue != null) {
         gravitySpots.add(
             FlSpot(x, _normalize(sgValue, minSg, maxSg, chartMinY, chartMidY)));
@@ -252,7 +252,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
                               gravitySpots,
                               Colors.green,
                               getDotPainter: (spot, percent, barData, index) {
-                                if (sortedMeasurements[index].interventions.isNotEmpty) {
+                                if (sortedMeasurements[index].interventions!.isNotEmpty) {
                                   return FlDotCirclePainter(radius: 6, color: Colors.orange.shade700, strokeWidth: 2, strokeColor: Colors.white);
                                 }
                                 return FlDotCirclePainter(radius: 3, color: Colors.green, strokeWidth: 1.5, strokeColor: Colors.white);
@@ -306,7 +306,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
             ? "${(settings.unit == 'F' ? (m.temperature! * 9 / 5) + 32 : m.temperature!).toStringAsFixed(1)}°${settings.unit.toUpperCase()}" // FIXED
             : "—";
         final ta = m.ta?.toStringAsFixed(1) ?? "—";
-        final sgRaw = m.sg?.toStringAsFixed(3) ?? "—";
+        final sgRaw = m.gravity?.toStringAsFixed(3) ?? "—";
         final sgCorr = m.sgCorrected?.toStringAsFixed(3) ?? "—";
 
         return Card(
@@ -352,12 +352,12 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
                     _DataPoint(label: 'TA', value: ta),
                   ],
                 ),
-                if (m.interventions.isNotEmpty) ...[
+                if (m.interventions!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 6.0,
                     runSpacing: 4.0,
-                    children: m.interventions.map((i) => Chip(label: Text(i))).toList(),
+                    children: m.interventions!.map((i) => Chip(label: Text(i))).toList(),
                   )
                 ]
               ],

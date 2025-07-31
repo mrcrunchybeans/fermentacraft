@@ -8,7 +8,7 @@ part of 'fermentation_stage.dart';
 
 class FermentationStageAdapter extends TypeAdapter<FermentationStage> {
   @override
-  final int typeId = 11;
+  final int typeId = 1;
 
   @override
   FermentationStage read(BinaryReader reader) {
@@ -16,11 +16,12 @@ class FermentationStageAdapter extends TypeAdapter<FermentationStage> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return FermentationStage(
       name: fields[0] as String,
-      startDate: fields[1] as DateTime?,
-      durationDays: fields[2] as int,
-      targetTempC: fields[3] as double?,
+      durationDays: fields[1] as int,
+      targetTempC: fields[2] as double?,
+      startDate: fields[3] as DateTime?,
     );
   }
 
@@ -31,11 +32,11 @@ class FermentationStageAdapter extends TypeAdapter<FermentationStage> {
       ..writeByte(0)
       ..write(obj.name)
       ..writeByte(1)
-      ..write(obj.startDate)
-      ..writeByte(2)
       ..write(obj.durationDays)
+      ..writeByte(2)
+      ..write(obj.targetTempC)
       ..writeByte(3)
-      ..write(obj.targetTempC);
+      ..write(obj.startDate);
   }
 
   @override

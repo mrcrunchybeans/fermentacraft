@@ -29,7 +29,7 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
   void _ensureDefaultTags() async {
     for (var tag in defaultTags) {
       if (!_tagBox.values.any((t) => t.name.toLowerCase() == tag.toLowerCase())) {
-        await _tagBox.add(Tag(tag));
+      await _tagBox.add(Tag(name: tag));
       }
     }
     setState(() {});
@@ -41,7 +41,7 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
 
     final exists = _tagBox.values.any((tag) => tag.name.toLowerCase() == name.toLowerCase());
     if (!exists) {
-      final newTag = Tag(name);
+    final newTag = Tag(name: name);
       await _tagBox.add(newTag);
       setState(() {
         selectedTags.add(newTag);

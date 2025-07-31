@@ -8,7 +8,7 @@ part of 'tag.dart';
 
 class TagAdapter extends TypeAdapter<Tag> {
   @override
-  final int typeId = 1;
+  final int typeId = 9;
 
   @override
   Tag read(BinaryReader reader) {
@@ -16,8 +16,9 @@ class TagAdapter extends TypeAdapter<Tag> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return Tag(
-      fields[0] as String,
+      name: fields[0] as String,
     );
   }
 

@@ -62,7 +62,7 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
     _isFahrenheitOverride = settings.unit == 'F';
     _selectedInterventions = List<String>.from(m?.interventions ?? []);
 
-    _noteController.text = m?.note ?? '';
+    _noteController.text = m?.notes ?? '';
     _taController.text = m?.ta?.toString() ?? '';
 
     if (m != null) {
@@ -74,7 +74,7 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
         }
         _tempController.text = tempDisplayValue.toStringAsFixed(1);
       }
-      final value = _gravityUnit == 'sg' ? m.sg : m.brix;
+      final value = _gravityUnit == 'sg' ? m.gravity : m.brix;
       if (value != null) {
         _gravityController.text = _gravityUnit == 'sg'
             ? value.toStringAsFixed(3)
@@ -118,10 +118,10 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
       _sgCorrectedPreview = null;
     }
 
-    if (widget.previousMeasurement?.sg != null && sgForCalcs != null) {
+    if (widget.previousMeasurement?.gravity != null && sgForCalcs != null) {
       final prev = widget.previousMeasurement!;
       final difference = _timestamp.difference(prev.timestamp);
-      _fsuPreview = calculateFSU(prev.sg!, sgForCalcs, difference);
+      _fsuPreview = calculateFSU(prev.gravity!, sgForCalcs, difference);
     } else {
       _fsuPreview = null;
     }
@@ -154,18 +154,18 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
     }
 
     double? fsuspeed;
-    if (widget.previousMeasurement?.sg != null && currentSg != null) {
+    if (widget.previousMeasurement?.gravity != null && currentSg != null) {
       final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
-      fsuspeed = calculateFSU(widget.previousMeasurement!.sg!, currentSg, difference);
+      fsuspeed = calculateFSU(widget.previousMeasurement!.gravity!, currentSg, difference);
     }
     
     final measurement = Measurement(
       timestamp: _timestamp,
       gravityUnit: _gravityUnit,
-      sg: currentSg,
+      gravity: currentSg,
       brix: currentBrix,
       temperature: tempC,
-      note: note.isEmpty ? null : note,
+      notes: note.isEmpty ? null : note,
       fsuspeed: fsuspeed,
       ta: taVal,
       sgCorrected: _sgCorrectedPreview,

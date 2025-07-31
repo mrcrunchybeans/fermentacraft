@@ -16,6 +16,7 @@ class PurchaseTransactionAdapter extends TypeAdapter<PurchaseTransaction> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return PurchaseTransaction(
       date: fields[0] as DateTime,
       amount: fields[1] as double,
