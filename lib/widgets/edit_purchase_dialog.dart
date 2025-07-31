@@ -47,20 +47,26 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
   }
 
   void _recalculateAndSave() {
-    final totalAmount = widget.item.purchaseHistory.fold<double>(
-      0,
-      (sum, tx) => sum + tx.amount,
-    );
+  final totalAmount = widget.item.purchaseHistory.fold<double>(
+    0,
+    (sum, tx) => sum + (tx.amount),
+  );
 
-    final totalCost = widget.item.purchaseHistory.fold<double>(
-      0,
-      (sum, tx) => sum + (tx.totalCost ?? 0),
-    );
+  final totalCost = widget.item.purchaseHistory.fold<double>(
+    0,
+    (sum, tx) => sum + (tx.totalCost ?? 0),
+  );
 
-    widget.item.amountInStock = totalAmount;
-    widget.item.costPerUnit = totalAmount > 0 ? totalCost / totalAmount : 0;
-    widget.item.save();
-  }
+  widget.item.amountInStock = totalAmount;
+
+  final costPerUnit = (totalAmount > 0) ? (totalCost / totalAmount) : 0.0;
+
+  // Safe fallback in case something later uses .isNegative on costPerUnit
+  widget.item.costPerUnit = costPerUnit.isNaN ? 0.0 : costPerUnit;
+
+  widget.item.save();
+}
+
 
   @override
   Widget build(BuildContext context) {

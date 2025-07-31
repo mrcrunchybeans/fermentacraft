@@ -73,7 +73,8 @@ Widget _buildDetailRow(String label, String value) {
 
   @override
   Widget build(BuildContext context) {
-    final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit);
+final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0.0);
+
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -178,7 +179,9 @@ Widget _buildDetailRow(String label, String value) {
       amount: 1.0,
       fromUnit: item.unit,
       toUnit: targetUnit,
-      costPerUnit: item.costPerUnit,
+      costPerUnit: item.costPerUnit ?? 0.0
+
+
     );
 
     return ListView(
@@ -189,7 +192,7 @@ Widget _buildDetailRow(String label, String value) {
         if (converted != null && targetUnit != item.unit)
           _buildDetailRow(
             "Converted",
-            "${NumberFormat.simpleCurrency().format(converted)} / $targetUnit",
+  "${NumberFormat.simpleCurrency().format(converted ?? 0.0)} / $targetUnit"
           ),
         Padding(
           padding: const EdgeInsets.only(left: 16.0, top: 8),
@@ -226,7 +229,7 @@ Widget _buildDetailRow(String label, String value) {
     itemCount: entries.length,
     itemBuilder: (_, i) {
       final e = entries[i];
-      final cost = NumberFormat.simpleCurrency().format(e.totalCost);
+final cost = NumberFormat.simpleCurrency().format(e.totalCost ?? 0.0);
       final date = DateFormat.yMMMd().format(e.date);
       return ListTile(
         leading: const Icon(Icons.shopping_cart),

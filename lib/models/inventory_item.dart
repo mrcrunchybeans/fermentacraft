@@ -19,7 +19,7 @@ class InventoryItem extends HiveObject {
   UnitType unitType;
 
   @HiveField(4)
-  double costPerUnit;
+  double? costPerUnit; // Nullable to allow null safety
 
   @HiveField(5)
   String? notes;
@@ -35,9 +35,16 @@ class InventoryItem extends HiveObject {
     required this.amountInStock,
     required this.unit,
     required this.unitType,
-    required this.costPerUnit,
+    this.costPerUnit,
     required this.category,
     this.notes,
     List<PurchaseTransaction>? purchaseHistory,
   }) : purchaseHistory = purchaseHistory ?? [];
+
+  /// Returns 0.0 if costPerUnit is null
+  double get safeCostPerUnit => costPerUnit ?? 0.0;
+
+  /// Optional: Pre-formatted for display
+  String get safeCostPerUnitFormatted =>
+      '\$${safeCostPerUnit.toStringAsFixed(2)}';
 }

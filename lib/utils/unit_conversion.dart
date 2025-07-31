@@ -28,20 +28,22 @@ class UnitConversion {
     };
   }
 
-  static double? tryConvertCostPerUnit({
-    required double amount,
-    required String fromUnit,
-    required String toUnit,
-    required double costPerUnit,
-  }) {
-    final fromMap = volumeUnits.containsKey(fromUnit) ? volumeUnits : massUnits;
-    final from = fromMap[fromUnit];
-    final to = fromMap[toUnit];
-    if (from == null || to == null) return null;
+static double? tryConvertCostPerUnit({
+  required double amount,
+  required String fromUnit,
+  required String toUnit,
+  required double? costPerUnit, // ← now nullable
+}) {
+  if (costPerUnit == null) return null;
 
-    final conversionFactor = from / to;
-    return costPerUnit * conversionFactor;
-  }
+  final fromMap = volumeUnits.containsKey(fromUnit) ? volumeUnits : massUnits;
+  final from = fromMap[fromUnit];
+  final to = fromMap[toUnit];
+  if (from == null || to == null) return null;
+
+  final conversionFactor = from / to;
+  return costPerUnit * conversionFactor;
+}
 
   static double? convertAmount({
     required double value,

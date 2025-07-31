@@ -14,14 +14,14 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
   InventoryItem read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return InventoryItem(
       name: fields[0] as String,
       amountInStock: fields[1] as double,
       unit: fields[2] as String,
       unitType: fields[3] as UnitType,
-      costPerUnit: fields[4] as double,
+      costPerUnit: fields[4] as double?,
       category: fields[7] as String,
       notes: fields[5] as String?,
       purchaseHistory: (fields[6] as List).cast<PurchaseTransaction>(),

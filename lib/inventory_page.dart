@@ -173,7 +173,7 @@ class _InventoryPageState extends State<InventoryPage> {
                             },
                             title: Text(item.name),
                             subtitle: Text(
-                              "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)} @ \$${item.costPerUnit.toStringAsFixed(2)} / ${item.unit}",
+                              "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)} @ \$${item.costPerUnit!.toStringAsFixed(2)} / ${item.unit}",
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

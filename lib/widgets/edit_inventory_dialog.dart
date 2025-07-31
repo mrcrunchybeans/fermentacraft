@@ -49,7 +49,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
     _unitType = item.unitType;
     _amount = item.amountInStock;
     _unit = item.unit;
-    _cost = item.costPerUnit;
+    _cost = item.costPerUnit!;
     _notes = item.notes;
   }
 

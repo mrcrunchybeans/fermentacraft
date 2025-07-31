@@ -53,7 +53,7 @@ class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
   "Cost per Unit",
   // ignore: unnecessary_null_comparison
   item.costPerUnit != null
-      ? "\$${item.costPerUnit.toStringAsFixed(2)}"
+      ? "\$${item.costPerUnit!.toStringAsFixed(2)}"
       : "N/A",
 ),
 
@@ -67,7 +67,7 @@ class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
               ...item.purchaseHistory.asMap().entries.map((entry) {
                 final i = entry.key;
                 final tx = entry.value;
-                final cost = NumberFormat.simpleCurrency().format(tx.totalCost);
+final cost = NumberFormat.simpleCurrency().format(tx.totalCost ?? 0.0);
                 final date = DateFormat.yMMMd().format(tx.date);
 
                 return ListTile(
