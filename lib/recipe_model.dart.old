@@ -9,7 +9,7 @@ class RecipeModel extends HiveObject {
   List<String> tags;
 
   @HiveField(2)
-  List<Map<String, dynamic>> fermentables;
+  List<Map<String, dynamic>> ingredients;
 
   @HiveField(3)
   List<Map<String, dynamic>> additives;
@@ -20,7 +20,7 @@ class RecipeModel extends HiveObject {
   RecipeModel({
     required this.name,
     required this.tags,
-    required this.fermentables,
+    required this.ingredients,
     required this.additives,
     required this.fermentationStages,
   });

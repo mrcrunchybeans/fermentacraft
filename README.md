@@ -12,7 +12,7 @@ Most brewing software focuses on beer. CiderCraft fills the gap for makers of:
 - 🍓 Fruit wines and blends
 
 It’s built from the ground up with support for:
-- Juice/concentrate-based fermentables
+- Juice/concentrate-based ingredients
 - Additive tracking (e.g., pectic enzyme, sulfites, nutrients)
 - Advanced gravity, pH, acidity, and SO₂ calculations
 - Batch and fermentation chart tracking
@@ -24,7 +24,7 @@ It’s built from the ground up with support for:
 ## 🧰 Features At-a-Glance
 
 ### 🧪 Recipe Builder
-- Fermentables: juice, fruit, sugar, concentrate, honey, etc.
+- Ingredients: juice, fruit, sugar, concentrate, honey, etc.
 - Additives: pectic enzyme, acid blend, tannin, Campden, etc.
 - Yeast: Select from common strains or enter your own
 - Fermentation profile builder with multi-stage temperature/duration control

@@ -1,7 +1,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../models/fermentable.dart';
+import '../models/ingredient.dart';
 class CiderUtils {
   /// Acidity classification based on pH
   ///
@@ -102,13 +102,13 @@ static double correctedSG(double measuredSG, double tempF) {
   }
 
 
-/// Calculates the weighted average OG from a list of fermentables.
-/// Each fermentable must have a non-null SG and volume.
-static double? calculateWeightedAverageOG(List<Fermentable> fermentables) {
+/// Calculates the weighted average OG from a list of ingredients.
+/// Each ingredient must have a non-null SG and volume.
+static double? calculateWeightedAverageOG(List<Ingredient> ingredients) {
   double totalLiters = 0.0;
   double weightedOGSum = 0.0;
 
-  for (final f in fermentables) {
+  for (final f in ingredients) {
     if (f.sg == null || f.amount == null || f.unit == null) continue;
 
     final double volumeLiters = f.amount! * f.unit!.toLiters;

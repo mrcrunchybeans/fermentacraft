@@ -1,11 +1,11 @@
-class Fermentable {
+class Ingredient {
   String name;
   double amount;
   String unit;
   double og; // Original gravity potential
   double pH;
 
-  Fermentable({
+  Ingredient({
     required this.name,
     required this.amount,
     required this.unit,

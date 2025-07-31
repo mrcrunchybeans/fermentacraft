@@ -38,7 +38,7 @@ extension InventoryItemDisplay on InventoryItem {
 
     for (final entry in purchaseHistory) {
       totalAmount += entry.amount;
-      totalCost += entry.totalCost ?? 0;
+      totalCost += entry.totalCost;
 
       
     }

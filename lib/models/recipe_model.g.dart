@@ -25,7 +25,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       fg: fields[5] as double?,
       abv: fields[6] as double?,
       additives: (fields[7] as List).cast<Map<String, dynamic>>(),
-      fermentables: (fields[8] as List).cast<Map<String, dynamic>>(),
+      ingredients: (fields[8] as List).cast<Map<String, dynamic>>(),
       fermentationStages: (fields[9] as List).cast<Map<String, dynamic>>(),
       yeast: (fields[10] as List).cast<Map<String, dynamic>>(),
       notes: fields[11] as String,
@@ -57,7 +57,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       ..writeByte(7)
       ..write(obj.additives)
       ..writeByte(8)
-      ..write(obj.fermentables)
+      ..write(obj.ingredients)
       ..writeByte(9)
       ..write(obj.fermentationStages)
       ..writeByte(10)

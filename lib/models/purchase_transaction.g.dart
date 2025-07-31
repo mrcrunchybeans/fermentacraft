@@ -20,19 +20,22 @@ class PurchaseTransactionAdapter extends TypeAdapter<PurchaseTransaction> {
       date: fields[0] as DateTime,
       amount: fields[1] as double,
       cost: fields[2] as double,
+      expirationDate: fields[3] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PurchaseTransaction obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(4)
       ..writeByte(0)
       ..write(obj.date)
       ..writeByte(1)
       ..write(obj.amount)
       ..writeByte(2)
-      ..write(obj.cost);
+      ..write(obj.cost)
+      ..writeByte(3)
+      ..write(obj.expirationDate);
   }
 
   @override

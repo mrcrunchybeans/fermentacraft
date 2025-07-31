@@ -73,8 +73,8 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
         og: selectedRecipe?.og,
         fg: selectedRecipe?.fg,
         abv: selectedRecipe?.abv,
-        ingredients: selectedRecipe?.fermentables != null
-            ? List<Map<String, dynamic>>.from(selectedRecipe!.fermentables)
+        ingredients: selectedRecipe?.ingredients != null
+            ? List<Map<String, dynamic>>.from(selectedRecipe!.ingredients)
             : [],
         additives: selectedRecipe?.additives != null
             ? List<Map<String, dynamic>>.from(selectedRecipe!.additives)

@@ -5,10 +5,10 @@ enum AbvSource {
   adjusted,
 }
 
-class Fermentable {
+class Ingredient {
   final double? amount;
   final VolumeUnit? unit;
   final double? sg;
 
-  Fermentable({this.amount, this.unit, this.sg});
+  Ingredient({this.amount, this.unit, this.sg});
 }

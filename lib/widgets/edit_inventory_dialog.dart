@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../models/inventory_item.dart';
 import '../models/unit_type.dart';
 
@@ -21,23 +20,12 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
   late String _unit;
   late double _cost;
   String? _notes;
+  DateTime? _expirationDate;
 
-  final List<String> _categories = [
-    'Juice',
-    'Sugar',
-    'Additive',
-    'Yeast',
-    'Other',
-  ];
+  final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
 
   final List<String> _units = [
-    'grams',
-    'ml',
-    'oz',
-    'tsp',
-    'tbsp',
-    'gallon',
-    'package',
+    'grams', 'ml', 'oz', 'tsp', 'tbsp', 'gallon', 'package'
   ];
 
   @override
@@ -49,8 +37,21 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
     _unitType = item.unitType;
     _amount = item.amountInStock;
     _unit = item.unit;
-    _cost = item.costPerUnit!;
+    _cost = item.costPerUnit ?? 0;
     _notes = item.notes;
+    _expirationDate = item.expirationDate;
+  }
+
+  void _pickExpirationDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expirationDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
+    );
+    if (picked != null) {
+      setState(() => _expirationDate = picked);
+    }
   }
 
   void _saveEdits() {
@@ -64,7 +65,8 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
         ..amountInStock = _amount
         ..unit = _unit
         ..costPerUnit = _cost
-        ..notes = _notes;
+        ..notes = _notes
+        ..expirationDate = _expirationDate;
 
       widget.item.save();
 
@@ -101,7 +103,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 items: UnitType.values
                     .map((type) => DropdownMenuItem(
                           value: type,
-                          child: Text(type.name), // ✅ replaced describeEnum(type)
+                          child: Text(type.name),
                         ))
                     .toList(),
                 onChanged: (val) => setState(() => _unitType = val!),
@@ -143,14 +145,31 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 decoration: const InputDecoration(labelText: 'Notes (optional)'),
                 onSaved: (val) => _notes = val?.trim(),
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Expiration:'),
+                  const SizedBox(width: 12),
+                  Text(
+                    _expirationDate != null
+                        ? "${_expirationDate!.month}/${_expirationDate!.day}/${_expirationDate!.year}"
+                        : 'None selected',
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _pickExpirationDate,
+                    child: const Text('Pick Date'),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
       actions: [
         TextButton(
-          child: const Text('Cancel'),
           onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
         ),
         ElevatedButton(
           onPressed: _saveEdits,

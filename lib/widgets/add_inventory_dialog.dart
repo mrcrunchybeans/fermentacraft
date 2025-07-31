@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/inventory_item.dart';
 import '../models/unit_type.dart';
-import '../utils/unit_conversion.dart'; // Add this import
+import '../utils/unit_conversion.dart';
 
 class AddInventoryDialog extends StatefulWidget {
   const AddInventoryDialog({super.key});
@@ -12,7 +12,6 @@ class AddInventoryDialog extends StatefulWidget {
 }
 
 class _AddInventoryDialogState extends State<AddInventoryDialog> {
-  UnitType _unitType = UnitType.mass;
   final _formKey = GlobalKey<FormState>();
   String _name = '';
   String _category = 'Juice';
@@ -20,44 +19,43 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
   String _unit = 'grams';
   double _cost = 0;
   String? _notes;
+  UnitType _unitType = UnitType.mass;
+  DateTime? _expirationDate;
 
-  final List<String> _categories = [
-    'Juice',
-    'Sugar',
-    'Additive',
-    'Yeast',
-    'Other',
-  ];
-
+  final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
   final List<String> _units = [
-    'grams',
-    'mL',
-    'fl oz',
-    'cup',
-    'oz',
-    'tsp',
-    'tbsp',
-    'gallon',
-    'package',
+    'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gallon', 'package'
   ];
 
   void _saveInventoryItem() {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
 
-final newItem = InventoryItem(
-  name: _name,
-  amountInStock: _amount,
-  unit: _unit,
-  unitType: _unitType, // ✅ use this instead of inferredType
-  costPerUnit: _cost,
-  notes: _notes,
-  category: _category,
-);
-
+      final newItem = InventoryItem(
+        name: _name,
+        amountInStock: _amount,
+        unit: _unit,
+        unitType: _unitType,
+        costPerUnit: _cost,
+        notes: _notes,
+        category: _category,
+        expirationDate: _expirationDate,
+      );
 
       Hive.box<InventoryItem>('inventory').add(newItem);
       Navigator.of(context).pop();
+    }
+  }
+
+  void _pickExpirationDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expirationDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+    if (picked != null) {
+      setState(() => _expirationDate = picked);
     }
   }
 
@@ -78,9 +76,7 @@ final newItem = InventoryItem(
               ),
               DropdownButtonFormField<String>(
                 value: _category,
-                items: _categories
-                    .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
-                    .toList(),
+                items: _categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
                 onChanged: (val) => setState(() => _category = val!),
                 decoration: const InputDecoration(labelText: 'Category'),
               ),
@@ -97,37 +93,51 @@ final newItem = InventoryItem(
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-  value: _unit,
-  items: _units
-      .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
-      .toList(),
-  onChanged: (val) {
-    if (val != null) {
-      final inferred = inferUnitType(val);
-      setState(() {
-        _unit = val;
-        _unitType = inferred;
-      });
-    }
-  },
-  decoration: const InputDecoration(labelText: 'Unit'),
-),
-
+                      value: _unit,
+                      items: _units.map((unit) => DropdownMenuItem(value: unit, child: Text(unit))).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          final inferred = inferUnitType(val);
+                          setState(() {
+                            _unit = val;
+                            _unitType = inferred;
+                          });
+                        }
+                      },
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                    ),
                   ),
                 ],
               ),
               TextFormField(
                 decoration: const InputDecoration(labelText: 'Cost per Unit (\$)'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-onSaved: (val) {
-  final parsed = double.tryParse(val ?? '');
-  _cost = parsed != null && parsed >= 0 ? parsed : 0;
-},
+                onSaved: (val) {
+                  final parsed = double.tryParse(val ?? '');
+                  _cost = parsed != null && parsed >= 0 ? parsed : 0;
+                },
                 validator: (val) => val == null || val.isEmpty ? 'Required' : null,
               ),
               TextFormField(
                 decoration: const InputDecoration(labelText: 'Notes (optional)'),
                 onSaved: (val) => _notes = val?.trim(),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Expiration:'),
+                  const SizedBox(width: 12),
+                  Text(
+                    _expirationDate != null
+                        ? "${_expirationDate!.month}/${_expirationDate!.day}/${_expirationDate!.year}"
+                        : 'None selected',
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: _pickExpirationDate,
+                    child: const Text('Pick Date'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -135,8 +145,8 @@ onSaved: (val) {
       ),
       actions: [
         TextButton(
-          child: const Text('Cancel'),
           onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
         ),
         ElevatedButton(
           onPressed: _saveInventoryItem,

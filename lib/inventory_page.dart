@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/utils/inventory_item_extensions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
 import '../models/inventory_item.dart';
 import '../widgets/add_inventory_dialog.dart';
 import '../widgets/edit_inventory_dialog.dart';
@@ -8,7 +9,8 @@ import '../widgets/log_purchase_dialog.dart';
 import 'inventory_item_detail_view.dart';
 import '../models/inventory_item_detail_model.dart';
 
-enum SortOption { name, stock }
+// ADDED: New sort option for expiration date
+enum SortOption { name, stock, expiration }
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -92,6 +94,11 @@ class _InventoryPageState extends State<InventoryPage> {
                       value: SortOption.stock,
                       child: Text("Sort: Stock Level"),
                     ),
+                    // ADDED: Expiration sort option
+                    DropdownMenuItem(
+                      value: SortOption.expiration,
+                      child: Text("Sort: Expiration"),
+                    ),
                   ],
                 ),
               ],
@@ -111,12 +118,22 @@ class _InventoryPageState extends State<InventoryPage> {
                         item.name.toLowerCase().contains(searchTerm))
                     .toList();
 
-                if (_sortOption == SortOption.name) {
-                  filteredItems.sort((a, b) => a.name.compareTo(b.name));
-                } else {
-                  filteredItems.sort((a, b) =>
-                      b.amountInStock.compareTo(a.amountInStock));
-                }
+                // UPDATED: Sorting logic to include expiration date
+                filteredItems.sort((a, b) {
+                  switch (_sortOption) {
+                    case SortOption.name:
+                      return a.name.compareTo(b.name);
+                    case SortOption.stock:
+                      return b.amountInStock.compareTo(a.amountInStock);
+                    case SortOption.expiration:
+                      final aDate = a.expirationDate;
+                      final bDate = b.expirationDate;
+                      if (aDate == null && bDate == null) return 0;
+                      if (aDate == null) return 1; // Items without dates go last
+                      if (bDate == null) return -1;
+                      return aDate.compareTo(bDate);
+                  }
+                });
 
                 final Map<String, List<InventoryItem>> grouped = {};
                 for (var item in filteredItems) {
@@ -127,6 +144,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   padding: const EdgeInsets.all(12),
                   children: grouped.entries.map((entry) {
                     return ExpansionTile(
+                      initiallyExpanded: true, // Keep categories open
                       title: Text(
                         entry.key,
                         style: Theme.of(context).textTheme.titleLarge,
@@ -134,6 +152,24 @@ class _InventoryPageState extends State<InventoryPage> {
                       children: entry.value.map((item) {
                         final key = item.key as int;
                         final isSelected = _selectedItemKeys.contains(key);
+
+                        // --- OPTIMIZED: Expiration date logic ---
+                        final now = DateTime.now();
+                        final twoWeeksFromNow = now.add(const Duration(days: 14));
+                        Color? expirationColor;
+                        String? expirationText;
+
+                        if (item.expirationDate != null) {
+                          final date = item.expirationDate!;
+                          expirationText = 'Expires: ${DateFormat.yMMMd().format(date)}';
+                          if (date.isBefore(now)) {
+                            expirationColor = Colors.red; // Expired
+                          } else if (date.isBefore(twoWeeksFromNow)) {
+                            expirationColor = Colors.orange; // Expiring soon
+                          }
+                        }
+                        // --- End of optimization logic ---
+
                         return Card(
                           child: ListTile(
                             leading: Checkbox(
@@ -147,33 +183,26 @@ class _InventoryPageState extends State<InventoryPage> {
                               },
                             ),
                             onTap: () => _showInventoryItemDetail(context, item),
-                            onLongPress: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text("Delete Item"),
-                                  content: Text(
-                                      "Delete '${item.name}' from inventory?"),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(),
-                                      child: const Text("Cancel"),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        item.delete();
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: const Text("Delete"),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
                             title: Text(item.name),
-                            subtitle: Text(
-                              "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)} @ \$${item.costPerUnit!.toStringAsFixed(2)} / ${item.unit}",
+                            // UPDATED: Subtitle is now a Column to show both lines
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)}",
+                                ),
+                                if (expirationText != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Text(
+                                      expirationText,
+                                      style: TextStyle(
+                                        color: expirationColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

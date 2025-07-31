@@ -20,6 +20,7 @@ import 'models/fermentation_stage.dart';
 import 'models/measurement_log.dart';
 import 'models/inventory_item.dart';
 import 'models/inventory_transaction_model.dart';
+import 'home_page.dart';
 
 
 
@@ -103,21 +104,25 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String _selectedPage = 'Recipes';
+  // Set "Home" as the default starting page
+  String _selectedPage = 'Home';
 
   Widget _getPage() {
     switch (_selectedPage) {
+      case 'Recipes':
+        return const RecipeListPage();
       case 'Batches':
         return const BatchLogPage();
       case 'Inventory':
-        return const InventoryPage();
+        return const  InventoryPage();
       case 'Tools':
         return const ToolsPage();
       case 'Settings':
         return const SettingsPage();
-      case 'Recipes':
+      case 'Home':
       default:
-        return const RecipeListPage();
+        // Show the HomePage content by default
+        return const HomePage();
     }
   }
 
@@ -134,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(title: Text('CiderCraft – $_selectedPage')),
       drawer: Drawer(
         child: ListView(
+          padding: EdgeInsets.zero, // Important: remove padding
           children: [
             const DrawerHeader(
               decoration: BoxDecoration(color: Color.fromARGB(255, 108, 147, 73)),
@@ -147,6 +153,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(color: Colors.white70)),
                 ],
               ),
+            ),
+            // Add a ListTile for the Home page
+            ListTile(
+              leading: const Icon(Icons.home),
+              title: const Text('Home'),
+              onTap: () => _selectPage('Home'),
             ),
             ListTile(
               leading: const Icon(Icons.book),

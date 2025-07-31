@@ -31,7 +31,7 @@ class RecipeModel extends HiveObject {
   List<Map<String, dynamic>> additives;
 
   @HiveField(8)
-  List<Map<String, dynamic>> fermentables;
+  List<Map<String, dynamic>> ingredients;
 
   @HiveField(9)
   List<Map<String, dynamic>> fermentationStages;
@@ -63,7 +63,7 @@ class RecipeModel extends HiveObject {
     this.fg,
     this.abv,
     List<Map<String, dynamic>>? additives,
-    List<Map<String, dynamic>>? fermentables,
+    List<Map<String, dynamic>>? ingredients,
     List<Map<String, dynamic>>? fermentationStages,
     List<Map<String, dynamic>>? yeast,
     this.notes = '',
@@ -73,7 +73,7 @@ class RecipeModel extends HiveObject {
     this.plannedAbv,
   })  : id = id ?? const Uuid().v4(),
         additives = additives ?? [],
-        fermentables = fermentables ?? [],
+        ingredients = ingredients ?? [],
         fermentationStages = fermentationStages ?? [],
         yeast = yeast ?? [];
 }

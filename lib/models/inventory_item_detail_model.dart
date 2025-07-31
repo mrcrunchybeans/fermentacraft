@@ -57,6 +57,34 @@ class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
       : "N/A",
 ),
 
+if (item.expirationDate != null)
+  Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Expires: ", style: TextStyle(fontWeight: FontWeight.bold)),
+        Expanded(
+          child: Text(
+            DateFormat.yMMMd().format(item.expirationDate!),
+            // Style the text red if the date is in the past
+            style: TextStyle(
+              color: item.expirationDate!.isBefore(DateTime.now())
+                  ? Colors.red
+                  : null,
+            ),
+          ),
+        ),
+        // Add a warning icon if the item is expired
+        if (item.expirationDate!.isBefore(DateTime.now()))
+          const Tooltip(
+            message: 'Expired',
+            child: Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+          ),
+      ],
+    ),
+  ),
+
               if (item.notes != null && item.notes!.isNotEmpty)
                 _infoRow("Notes", item.notes!),
               const SizedBox(height: 16),
@@ -67,7 +95,7 @@ class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
               ...item.purchaseHistory.asMap().entries.map((entry) {
                 final i = entry.key;
                 final tx = entry.value;
-final cost = NumberFormat.simpleCurrency().format(tx.totalCost ?? 0.0);
+final cost = NumberFormat.simpleCurrency().format(tx.totalCost);
                 final date = DateFormat.yMMMd().format(tx.date);
 
                 return ListTile(
@@ -163,4 +191,5 @@ final cost = NumberFormat.simpleCurrency().format(tx.totalCost ?? 0.0);
       ],
     );
   }
+
 }

@@ -4,7 +4,7 @@ import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
 import 'package:hive/hive.dart';
 import '../models/batch_model.dart';
 import '../models/planned_event.dart';
-import '../widgets/add_fermentable_dialog.dart';
+import 'widgets/add_ingredient_dialog.dart';
 import '../widgets/add_additive_dialog.dart';
 import '../utils/batch_utils.dart';
 import '../widgets/add_yeast_dialog.dart';
@@ -415,7 +415,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   fg: batch.fg,
                   abv: batch.abv,
                   additives: batch.additives,
-                  fermentables: batch.ingredients,
+                  ingredients: batch.ingredients,
                   fermentationStages:
                       batch.safeFermentationStages.map((e) => e.toMap()).toList(),
                   yeast: batch.yeast != null ? [batch.yeast!] : [],
@@ -472,17 +472,31 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       }
       if (syncIngredients) {
         batch.ingredients =
-            List<Map<String, dynamic>>.from(recipe.fermentables);
+            List<Map<String, dynamic>>.from(recipe.ingredients);
       }
       if (syncAdditives) {
         batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
       }
-      if (syncStages) {
-        batch.fermentationStages = recipe.fermentationStages
-            .map((stageMap) =>
-                FermentationStage.fromMap(Map<String, dynamic>.from(stageMap)))
-            .toList();
-      }
+      // In _showSyncFromRecipeDialog -> setState
+
+if (syncStages) {
+  batch.fermentationStages = recipe.fermentationStages
+      .map((stageMap) =>
+          FermentationStage.fromMap(Map<String, dynamic>.from(stageMap)))
+      .toList();
+
+  // --- NEW LOGIC TO SET STAGE DATES ---
+  if (batch.fermentationStages.isNotEmpty) {
+    // Use the batch's start date as the anchor, or today if it's not set.
+    DateTime nextStageStartDate = batch.startDate;
+    
+    for (var stage in batch.fermentationStages) {
+      stage.startDate = nextStageStartDate;
+      // Calculate the start date for the *next* stage.
+      nextStageStartDate = nextStageStartDate.add(Duration(days: stage.durationDays));
+    }
+  }
+}
       if (syncTargets) {
         batch.batchVolume = recipe.batchVolume;
         batch.plannedOg = recipe.plannedOg;
@@ -573,10 +587,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             onPressed: () async {
               await showDialog<void>(
                 context: context,
-                builder: (_) => AddFermentableDialog(
-                  onAddToRecipe: (fermentable) {
+                builder: (_) => AddIngredientDialog(
+                  onAddToRecipe: (ingredient) {
                     setState(() {
-                      batch.ingredients.add(fermentable);
+                      batch.ingredients.add(ingredient);
                       batch.save();
                     });
                   },

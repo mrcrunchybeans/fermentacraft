@@ -192,7 +192,7 @@ final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0
         if (converted != null && targetUnit != item.unit)
           _buildDetailRow(
             "Converted",
-  "${NumberFormat.simpleCurrency().format(converted ?? 0.0)} / $targetUnit"
+  "${NumberFormat.simpleCurrency().format(converted)} / $targetUnit"
           ),
         Padding(
           padding: const EdgeInsets.only(left: 16.0, top: 8),
@@ -229,7 +229,7 @@ final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0
     itemCount: entries.length,
     itemBuilder: (_, i) {
       final e = entries[i];
-final cost = NumberFormat.simpleCurrency().format(e.totalCost ?? 0.0);
+final cost = NumberFormat.simpleCurrency().format(e.totalCost);
       final date = DateFormat.yMMMd().format(e.date);
       return ListTile(
         leading: const Icon(Icons.shopping_cart),

@@ -100,8 +100,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
 
           const Divider(),
 
-          const Text("Fermentables", style: TextStyle(fontWeight: FontWeight.bold)),
-          ...recipe.fermentables.map((f) => ListTile(
+          const Text("Ingredients", style: TextStyle(fontWeight: FontWeight.bold)),
+          ...recipe.ingredients.map((f) => ListTile(
             title: Text(f['name'] ?? 'Unnamed'),
             subtitle: Text("${f['amount']} ${f['unit']}, OG: ${f['og']?.toStringAsFixed(3) ?? '—'}"),
           )),

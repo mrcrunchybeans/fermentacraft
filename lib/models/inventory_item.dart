@@ -30,6 +30,9 @@ class InventoryItem extends HiveObject {
   @HiveField(7)
   String category;
 
+  @HiveField(8)
+  DateTime? expirationDate;
+
   InventoryItem({
     required this.name,
     required this.amountInStock,
@@ -38,6 +41,7 @@ class InventoryItem extends HiveObject {
     this.costPerUnit,
     required this.category,
     this.notes,
+    this.expirationDate,
     List<PurchaseTransaction>? purchaseHistory,
   }) : purchaseHistory = purchaseHistory ?? [];
 

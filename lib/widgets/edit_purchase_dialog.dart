@@ -23,6 +23,7 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
   late double amount;
   late double cost;
   late DateTime date;
+  DateTime? expirationDate;
 
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _amountController;
@@ -32,8 +33,9 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
   void initState() {
     super.initState();
     amount = widget.entry.amount;
-    cost = widget.entry.totalCost ?? 0.0;
+    cost = widget.entry.cost;
     date = widget.entry.date;
+    expirationDate = widget.entry.expirationDate;
 
     _amountController = TextEditingController(text: amount.toString());
     _costController = TextEditingController(text: cost.toStringAsFixed(2));
@@ -46,27 +48,39 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
     super.dispose();
   }
 
+  void _updateItemExpirationDate() {
+    final allDates = widget.item.purchaseHistory
+        .where((tx) => tx.expirationDate != null)
+        .map((tx) => tx.expirationDate!)
+        .toList();
+
+    if (allDates.isEmpty) {
+      widget.item.expirationDate = null;
+    } else {
+      allDates.sort((a, b) => a.compareTo(b));
+      widget.item.expirationDate = allDates.first;
+    }
+  }
+
   void _recalculateAndSave() {
-  final totalAmount = widget.item.purchaseHistory.fold<double>(
-    0,
-    (sum, tx) => sum + (tx.amount),
-  );
+    final totalAmount = widget.item.purchaseHistory.fold<double>(
+      0,
+      (sum, tx) => sum + tx.amount,
+    );
 
-  final totalCost = widget.item.purchaseHistory.fold<double>(
-    0,
-    (sum, tx) => sum + (tx.totalCost ?? 0),
-  );
+    final totalCost = widget.item.purchaseHistory.fold<double>(
+      0,
+      (sum, tx) => sum + tx.cost,
+    );
 
-  widget.item.amountInStock = totalAmount;
+    widget.item.amountInStock = totalAmount;
 
-  final costPerUnit = (totalAmount > 0) ? (totalCost / totalAmount) : 0.0;
+    final costPerUnit = (totalAmount > 0) ? (totalCost / totalAmount) : 0.0;
+    widget.item.costPerUnit = costPerUnit.isNaN ? 0.0 : costPerUnit;
 
-  // Safe fallback in case something later uses .isNegative on costPerUnit
-  widget.item.costPerUnit = costPerUnit.isNaN ? 0.0 : costPerUnit;
-
-  widget.item.save();
-}
-
+    _updateItemExpirationDate();
+    widget.item.save();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,6 +141,29 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
                   ),
                 ],
               ),
+              Row(
+                children: [
+                  const Text("Expires: "),
+                  Text(expirationDate != null
+                      ? DateFormat.yMMMd().format(expirationDate!)
+                      : 'Not set'),
+                  const Spacer(),
+                  TextButton(
+                    child: const Text('Set'),
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: expirationDate ?? DateTime.now().add(const Duration(days: 365)),
+                        firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime(2040),
+                      );
+                      if (picked != null) {
+                        setState(() => expirationDate = picked);
+                      }
+                    },
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -137,6 +174,7 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
           onPressed: () => Navigator.pop(context),
         ),
         TextButton(
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
           child: const Text('Delete'),
           onPressed: () {
             widget.item.purchaseHistory.removeAt(widget.index);
@@ -153,6 +191,7 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
                 amount: amount,
                 cost: cost,
                 date: date,
+                expirationDate: expirationDate,
               );
               widget.item.purchaseHistory[widget.index] = updated;
               _recalculateAndSave();
