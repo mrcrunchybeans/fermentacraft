@@ -86,7 +86,7 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
         fermentationStages: selectedRecipe?.fermentationStages != null
     ? selectedRecipe!.fermentationStages.map((e) {
         if (e is FermentationStage) return e;
-        return FermentationStage.fromMap(e);
+        return FermentationStage.fromJson(e);
       }).toList()
       .cast<FermentationStage>() // ✅ cast to correct type
     : [],

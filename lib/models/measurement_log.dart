@@ -3,7 +3,7 @@ import 'package:hive/hive.dart';
 part 'measurement_log.g.dart';
 
 @HiveType(typeId: 12)
-class MeasurementLog {
+class MeasurementLog extends HiveObject { // Added extends HiveObject
   @HiveField(0)
   DateTime timestamp;
 
@@ -30,5 +30,15 @@ class MeasurementLog {
       'tempC': tempC,
       'pH': pH,
     };
+  }
+
+  // Add this factory for consistency
+  factory MeasurementLog.fromJson(Map<String, dynamic> json) {
+    return MeasurementLog(
+      timestamp: DateTime.parse(json['timestamp']),
+      sg: (json['sg'] as num).toDouble(),
+      tempC: (json['tempC'] as num?)?.toDouble(),
+      pH: (json['pH'] as num?)?.toDouble(),
+    );
   }
 }

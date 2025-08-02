@@ -16,18 +16,16 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return InventoryItem(
       name: fields[0] as String,
       amountInStock: fields[1] as double,
       unit: fields[2] as String,
       unitType: fields[3] as UnitType,
       costPerUnit: fields[4] as double?,
-      category: fields[7] as String,
       notes: fields[5] as String?,
+      category: fields[7] as String,
       expirationDate: fields[8] as DateTime?,
-      purchaseHistory:
-          (fields[6] as List).cast<PurchaseTransaction>(),
+      purchaseHistory: (fields[6] as List).cast<PurchaseTransaction>(),
     );
   }
 

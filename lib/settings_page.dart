@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:hive/hive.dart';
 import '../utils/data_management.dart';
 import '../models/settings_model.dart';
-import '../utils/temp_display.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -21,7 +19,7 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<SettingsModel>(context);
+    final settings = context.watch<SettingsModel>();
 
     return Scaffold(
       appBar: AppBar(title: const Text("Settings")),
@@ -43,10 +41,9 @@ class SettingsPage extends StatelessWidget {
                       ButtonSegment(value: false, label: Text("Fahrenheit (°F)")),
                     ],
                     selected: {settings.useCelsius},
-                    onSelectionChanged: (Set<bool> newSelection) async {
-                      settings.toggleUnit();
-                      await Hive.box('settings').put('useCelsius', newSelection.first);
-                      TempDisplay.setUseFahrenheit(!newSelection.first);
+                    onSelectionChanged: (Set<bool> newSelection) {
+                      // Let the SettingsModel handle the state change
+                      settings.setUnit(isCelsius: newSelection.first);
                     },
                   ),
                 ],
@@ -88,19 +85,17 @@ class SettingsPage extends StatelessWidget {
                   leading: const Icon(Icons.upload_file),
                   title: const Text("Export Data"),
                   subtitle: const Text("Save a backup of all your recipes and inventory."),
-                          onTap: () {
-          // UPDATED: Call the export service
-          DataManagementService.exportData(context);
-        },
+                  onTap: () {
+                    DataManagementService.exportData(context);
+                  },
                 ),
                 ListTile(
                   leading: const Icon(Icons.download_for_offline),
                   title: const Text("Import Data"),
                   subtitle: const Text("Restore from a backup file."),
                   onTap: () {
-          // UPDATED: Call the import service
-          DataManagementService.importData(context);
-        },
+                    DataManagementService.importData(context);
+                  },
                 ),
               ],
             ),
@@ -127,9 +122,14 @@ class SettingsPage extends StatelessWidget {
                       ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                        onPressed: () {
-                          // Placeholder for clearing all Hive boxes
-                          Navigator.pop(context);
+                        onPressed: () async {
+                          // Call the service to clear the data
+                          await DataManagementService.clearAllData();
+
+                          // Check if the widget is still in the tree before using context
+                          if (!context.mounted) return;
+
+                          Navigator.pop(context); // Close the dialog
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text("All data has been cleared.")),
                           );

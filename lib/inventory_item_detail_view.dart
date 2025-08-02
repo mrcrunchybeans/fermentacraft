@@ -28,7 +28,8 @@ class InventoryItemDetailView extends StatefulWidget {
         builder: (_) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500),
+            // FIX: Added a maxHeight to constrain the dialog's height
+            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
             child: InventoryItemDetailView(item: item),
           ),
         ),
@@ -54,62 +55,67 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
     targetUnit = item.unit;
   }
 
-Widget _buildDetailRow(String label, String value) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-    child: Row(
-      children: [
-        Text(
-          "$label:",
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(width: 8),
-        Expanded(child: Text(value)),
-      ],
-    ),
-  );
-}
-
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "$label:",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0.0);
+    final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit);
 
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(item.name,
+    // --- RESTRUCTURED LAYOUT ---
+    return Column(
+      // REMOVED: mainAxisSize.min to allow Expanded to work correctly.
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(item.name,
               style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          TabBar(
+        ),
+        TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Details'),
+            Tab(text: 'Purchase History'),
+          ],
+        ),
+        // This Expanded widget now correctly fills the available space
+        Expanded(
+          child: TabBarView(
             controller: _tabController,
-            tabs: const [
-              Tab(text: 'Details'),
-              Tab(text: 'Purchase History'),
+            children: [
+              _buildDetailsTab(costFormatted),
+              _buildPurchaseHistoryTab(),
             ],
           ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildDetailsTab(costFormatted),
-                _buildPurchaseHistoryTab(),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
+        ),
+        // --- CLEANED UP: Action buttons are now in a consistent bar ---
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               TextButton(
                 child: const Text("Close"),
                 onPressed: () => Navigator.pop(context),
               ),
-              ElevatedButton(
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add_shopping_cart),
+                label: const Text("Log Purchase"),
                 onPressed: () async {
                   final updated = await showDialog<bool>(
                     context: context,
@@ -119,58 +125,24 @@ final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0
                     setState(() {});
                   }
                 },
-                child: const Text("Log Purchase"),
               ),
               IconButton(
                 icon: const Icon(Icons.edit),
-                tooltip: 'Edit Item',
+                tooltip: 'Edit Item Details',
                 onPressed: () async {
                   final result = await showDialog<bool>(
                     context: context,
                     builder: (_) => EditInventoryDialog(item: item),
                   );
                   if (result == true && mounted) {
-                    setState(() {
-                      item = widget.item; // reassign after edit
-                    });
+                    setState(() {});
                   }
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete, color: Colors.red),
-                tooltip: 'Delete Item',
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text("Delete Item"),
-                      content: Text("Are you sure you want to delete '${item.name}'?"),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text("Cancel"),
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            item.delete();
-                            Navigator.pop(context); // confirm
-                            Navigator.pop(context); // detail view
-                          },
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.red,
-                          ),
-                          child: const Text("Delete"),
-                        ),
-                      ],
-                    ),
-                  );
                 },
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -179,26 +151,27 @@ final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0
       amount: 1.0,
       fromUnit: item.unit,
       toUnit: targetUnit,
-      costPerUnit: item.costPerUnit ?? 0.0
-
-
+      costPerUnit: item.costPerUnit,
     );
 
     return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        _buildDetailRow("Category", item.unitType.toString().split('.').last),
-        _buildDetailRow("Amount in Stock", "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)}"),
-        _buildDetailRow("Cost per Unit", "$costFormatted / ${item.unit}"),
+        _buildDetailRow("Category", item.category),
+        _buildDetailRow("Amount in Stock", "${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
+        if (item.expirationDate != null)
+           _buildDetailRow("Earliest Expiration", DateFormat.yMMMd().format(item.expirationDate!)),
+        _buildDetailRow("Avg. Cost per Unit", "$costFormatted / ${item.unit}"),
         if (converted != null && targetUnit != item.unit)
           _buildDetailRow(
-            "Converted",
-  "${NumberFormat.simpleCurrency().format(converted)} / $targetUnit"
+            "Converted Cost",
+            "${NumberFormat.simpleCurrency().format(converted)} / $targetUnit",
           ),
         Padding(
           padding: const EdgeInsets.only(left: 16.0, top: 8),
           child: Row(
             children: [
-              const Text("View as:"),
+              const Text("View cost as:"),
               const SizedBox(width: 12),
               DropdownButton<String>(
                 value: targetUnit,
@@ -212,92 +185,58 @@ final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit ?? 0
         ),
         if (item.notes != null && item.notes!.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 16.0, left: 16, right: 16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Text(item.notes!, style: TextStyle(color: Colors.grey.shade600)),
           ),
       ],
     );
   }
 
- Widget _buildPurchaseHistoryTab() {
-  final entries = item.purchaseHistory;
-  if (entries.isEmpty) {
-    return const Center(child: Text("No purchases logged."));
-  }
-
-  return ListView.builder(
-    itemCount: entries.length,
-    itemBuilder: (_, i) {
-      final e = entries[i];
-final cost = NumberFormat.simpleCurrency().format(e.totalCost);
-      final date = DateFormat.yMMMd().format(e.date);
-      return ListTile(
-        leading: const Icon(Icons.shopping_cart),
-        title: Text("${e.amount} ${item.getDisplayUnit(e.amount)} @ $cost"),
-        subtitle: Text(date),
-        trailing: Wrap(
-          spacing: 8,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.blue),
-              tooltip: 'Edit Purchase',
-              onPressed: () async {
-  final updated = await showDialog<PurchaseTransaction>(
-    context: context,
-builder: (_) => EditPurchaseDialog(
-  entry: e,
-  item: item,
-  index: i,
-),
-  );
-  if (updated != null && mounted) {
-    setState(() {
-      item.purchaseHistory[i] = updated;
-      item.save();
-    });
-  }
-},
-
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              tooltip: 'Delete Purchase',
-              onPressed: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text("Delete Purchase"),
-                    content: const Text("Are you sure you want to delete this purchase?"),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text("Cancel"),
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.red,
-                        ),
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text("Delete"),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirmed == true && mounted) {
-                  setState(() {
-                   final newList = List<PurchaseTransaction>.from(item.purchaseHistory)..removeAt(i);
-item.purchaseHistory = newList;
-                    item.save();
-                  });
-                }
-              },
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+  Widget _buildPurchaseHistoryTab() {
+    final entries = item.purchaseHistory;
+    if (entries.isEmpty) {
+      return const Center(child: Text("No purchases logged."));
     }
+
+    // Sort by date, most recent first
+    entries.sort((a, b) => b.date.compareTo(a.date));
+
+    return ListView.builder(
+      itemCount: entries.length,
+      itemBuilder: (_, i) {
+        final e = entries[i];
+        final cost = NumberFormat.simpleCurrency().format(e.cost);
+        final date = DateFormat.yMMMd().format(e.date);
+        return ListTile(
+          leading: const Icon(Icons.shopping_cart),
+          title: Text("${e.amount.toStringAsFixed(2)} ${item.getDisplayUnit(e.amount)} for $cost"),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Purchased: $date"),
+              if (e.expirationDate != null)
+                Text("Expires: ${DateFormat.yMMMd().format(e.expirationDate!)}", style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.edit, color: Colors.blue),
+            tooltip: 'Edit Purchase',
+            onPressed: () async {
+              final updated = await showDialog<PurchaseTransaction>(
+                context: context,
+                builder: (_) => EditPurchaseDialog(
+                  entry: e,
+                  item: item,
+                  index: i,
+                ),
+              );
+              if (updated != null && mounted) {
+                setState(() {});
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+}

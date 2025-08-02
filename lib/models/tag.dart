@@ -18,4 +18,9 @@ class Tag extends HiveObject {
         name: json['name'],
       );
   // --- END of added code ---
+
+  @override
+  String toString() {
+    return name;
+  }
 }

@@ -3,6 +3,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/inventory_item.dart';
 import '../models/unit_type.dart';
 import '../utils/unit_conversion.dart';
+import '../models/purchase_transaction.dart';
+import 'package:collection/collection.dart';
 
 class AddInventoryDialog extends StatefulWidget {
   const AddInventoryDialog({super.key});
@@ -27,24 +29,46 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
     'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gallon', 'package'
   ];
 
-  void _saveInventoryItem() {
+  void _saveInventoryItem() async {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
 
-      final newItem = InventoryItem(
-        name: _name,
-        amountInStock: _amount,
-        unit: _unit,
-        unitType: _unitType,
-        costPerUnit: _cost,
-        notes: _notes,
-        category: _category,
+      final inventoryBox = Hive.box<InventoryItem>('inventory');
+
+      final existingItem = inventoryBox.values.firstWhereOrNull(
+        (item) => item.name.toLowerCase() == _name.toLowerCase(),
+      );
+
+      final transaction = PurchaseTransaction(
+        date: DateTime.now(),
+        amount: _amount,
+        cost: _cost,
         expirationDate: _expirationDate,
       );
 
-      Hive.box<InventoryItem>('inventory').add(newItem);
-      Navigator.of(context).pop();
-    }
+      if (existingItem != null) {
+        // Update existing item
+        existingItem.purchaseHistory.add(transaction);
+        existingItem.recalculateAmountInStock();
+      } else {
+        // Create new item
+        final newItem = InventoryItem(
+          name: _name,
+          amountInStock: _amount,
+          unit: _unit,
+          unitType: _unitType,
+          costPerUnit: _cost,
+          notes: _notes,
+          category: _category,
+          expirationDate: _expirationDate,
+          purchaseHistory: [transaction],
+        );
+        await inventoryBox.add(newItem);
+      }
+
+if (mounted) {
+  Navigator.of(context).pop();
+}    }
   }
 
   void _pickExpirationDate() async {

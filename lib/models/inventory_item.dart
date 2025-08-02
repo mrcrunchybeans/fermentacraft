@@ -10,7 +10,7 @@ class InventoryItem extends HiveObject {
   String name;
 
   @HiveField(1)
-  double amountInStock;
+  double amountInStock; // Will be auto-computed from purchaseHistory
 
   @HiveField(2)
   String unit;
@@ -47,26 +47,55 @@ class InventoryItem extends HiveObject {
 
   double get safeCostPerUnit => costPerUnit ?? 0.0;
 
-  String get safeCostPerUnitFormatted =>
-      '\$${safeCostPerUnit.toStringAsFixed(2)}';
+  String get safeCostPerUnitFormatted => '\$${safeCostPerUnit.toStringAsFixed(2)}';
 
-  // --- CORRECTED toJson and fromJson Methods ---
+  void recalculateAmountInStock() {
+    amountInStock = purchaseHistory.fold(0.0, (sum, p) => sum + p.amount);
+    save();
+  }
+
+  void addPurchase(PurchaseTransaction purchase) {
+    purchaseHistory.add(purchase);
+    recalculateAmountInStock();
+  }
+
+  /// Deducts using FIFO by expiration date
+  void deduct(double amountToDeduct) {
+    purchaseHistory.sort((a, b) {
+      final aExp = a.expirationDate ?? DateTime(2100);
+      final bExp = b.expirationDate ?? DateTime(2100);
+      return aExp.compareTo(bExp);
+    });
+
+    double remaining = amountToDeduct;
+
+    for (var purchase in purchaseHistory) {
+      if (remaining <= 0) break;
+      final deduct = remaining < purchase.amount ? remaining : purchase.amount;
+      purchase.amount -= deduct;
+      remaining -= deduct;
+    }
+
+    purchaseHistory.removeWhere((p) => p.amount <= 0);
+    recalculateAmountInStock();
+  }
 
   Map<String, dynamic> toJson() => {
         'name': name,
         'amountInStock': amountInStock,
         'unit': unit,
-        'unitType': unitType.name, // Converts the enum to a string
+        'unitType': unitType.name,
         'costPerUnit': costPerUnit,
         'notes': notes,
         'category': category,
         'expirationDate': expirationDate?.toIso8601String(),
-        // Convert each PurchaseTransaction to a simple map for JSON
-        'purchaseHistory': purchaseHistory.map((p) => {
-          'date': p.date.toIso8601String(),
-          'amount': p.amount,
-          'cost': p.cost,
-          'expirationDate': p.expirationDate?.toIso8601String(),
+        'purchaseHistory': purchaseHistory.map((p) {
+          return <String, dynamic>{
+            'date': p.date.toIso8601String(),
+            'amount': p.amount,
+            'cost': p.cost,
+            'expirationDate': p.expirationDate?.toIso8601String(),
+          };
         }).toList(),
       };
 
@@ -79,12 +108,11 @@ class InventoryItem extends HiveObject {
         notes: json['notes'],
         category: json['category'],
         expirationDate: json['expirationDate'] != null ? DateTime.parse(json['expirationDate']) : null,
-        // Reconstruct each PurchaseTransaction from its map representation
         purchaseHistory: (json['purchaseHistory'] as List).map((pJson) => PurchaseTransaction(
-          date: DateTime.parse(pJson['date']),
-          amount: (pJson['amount'] as num).toDouble(),
-          cost: (pJson['cost'] as num).toDouble(),
-          expirationDate: pJson['expirationDate'] != null ? DateTime.parse(pJson['expirationDate']) : null,
-        )).toList(),
+              date: DateTime.parse(pJson['date']),
+              amount: (pJson['amount'] as num).toDouble(),
+              cost: (pJson['cost'] as num).toDouble(),
+              expirationDate: pJson['expirationDate'] != null ? DateTime.parse(pJson['expirationDate']) : null,
+            )).toList(),
       );
 }

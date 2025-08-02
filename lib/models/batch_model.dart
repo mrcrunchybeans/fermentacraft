@@ -21,7 +21,7 @@ class BatchModel extends HiveObject {
   DateTime startDate;
 
   @HiveField(4)
-  DateTime? bottleDate; // Used for "Packaging Date"
+  DateTime? bottleDate;
 
   @HiveField(5)
   double? batchVolume;
@@ -31,19 +31,19 @@ class BatchModel extends HiveObject {
   List<FermentationStage> get safeFermentationStages => fermentationStages;
 
   @HiveField(7)
-  List<Map<String, dynamic>> measurementLogs; // Kept for legacy if needed
+  List<Map<String, dynamic>> measurementLogs;
 
   @HiveField(8)
-  String status; // Planning, Brewing, Fermenting, Completed
+  String status;
 
   @HiveField(9)
-  String? notes; // Used for "Lessons Learned" / Final Notes
+  String? notes;
 
   @HiveField(10)
-  Map<String, bool> deductedIngredients; // name → deducted
+  Map<String, bool> deductedIngredients;
 
   @HiveField(11)
-  String? type; // e.g., Cider, Wine, Mead
+  String? type;
 
   @HiveField(12)
   double? plannedOg;
@@ -111,8 +111,6 @@ class BatchModel extends HiveObject {
   @HiveField(32)
   String? finalYieldUnit;
 
-
-
   BatchModel({
     required this.id,
     required this.name,
@@ -139,11 +137,10 @@ class BatchModel extends HiveObject {
     this.og,
     this.fg,
     this.abv,
+    List<Measurement>? measurements,
     this.fsuDate,
-    this.measurements = const [],
     this.packagingDate,
     this.finalNotes,
-    // ✅ NEW Constructor parameters
     this.tastingRating,
     this.tastingNotes,
     this.packagingMethod,
@@ -153,45 +150,54 @@ class BatchModel extends HiveObject {
         deductedIngredients = deductedIngredients ?? {},
         ingredients = ingredients ?? [],
         plannedEvents = plannedEvents ?? [],
-        additives = additives ?? [];
+        additives = additives ?? [],
+        measurements = measurements ?? [];
 
-        Map<String, dynamic> toJson() => {
-  'id': id,
-  'name': name,
-  'recipeId': recipeId,
-  'startDate': startDate.toIso8601String(),
-  'bottleDate': bottleDate?.toIso8601String(),
-  'batchVolume': batchVolume,
-  'fermentationStages': fermentationStages.map((fs) => fs.toJson()).toList(),
-  'measurementLogs': measurementLogs,
-  'status': status,
-  'notes': notes,
-  'deductedIngredients': deductedIngredients,
-  'type': type,
-  'plannedOg': plannedOg,
-  'plannedAbv': plannedAbv,
-  'ingredients': ingredients,
-  'plannedEvents': plannedEvents?.map((e) => e.toJson()).toList(),
-  'additives': additives,
-  'yeast': yeast,
-  'createdAt': createdAt.toIso8601String(),
-  'tags': tags.map((tag) => tag.toJson()).toList(),
-  'og': og,
-  'fg': fg,
-  'abv': abv,
-  'measurements': measurements.map((m) => m.toJson()).toList(),
-  'fsuDate': fsuDate?.toIso8601String(),
-  'prepNotes': prepNotes,
-  'tastingRating': tastingRating,
-  'tastingNotes': tastingNotes,
-  'packagingMethod': packagingMethod,
-  'finalYield': finalYield,
-  'packagingDate': packagingDate?.toIso8601String(),
-  'finalNotes': finalNotes,
-  'finalYieldUnit': finalYieldUnit,
-};
+  Map<String, dynamic> toJson() {
+    Map<String, dynamic> safelyConvertMap(Map sourceMap) {
+      final Map<String, dynamic> newMap = {};
+      sourceMap.forEach((key, value) {
+        newMap[key.toString()] = value is DateTime ? value.toIso8601String() : value;
+      });
+      return newMap;
+    }
 
-// Add this factory constructor inside your BatchModel class
+    return {
+      'id': id,
+      'name': name,
+      'recipeId': recipeId,
+      'startDate': startDate.toIso8601String(),
+      'bottleDate': bottleDate?.toIso8601String(),
+      'batchVolume': batchVolume,
+      'fermentationStages': fermentationStages.map((fs) => fs.toJson()).toList(),
+      'measurementLogs': measurementLogs.map((log) => safelyConvertMap(log)).toList(),
+      'status': status,
+      'notes': notes,
+      'deductedIngredients': deductedIngredients,
+      'type': type,
+      'plannedOg': plannedOg,
+      'plannedAbv': plannedAbv,
+      'ingredients': ingredients.map((ing) => safelyConvertMap(ing)).toList(),
+      'plannedEvents': plannedEvents?.map((e) => e.toJson()).toList(),
+      'additives': additives.map((add) => safelyConvertMap(add)).toList(),
+      'yeast': yeast != null ? safelyConvertMap(yeast!) : null,
+      'createdAt': createdAt.toIso8601String(),
+      'tags': tags.map((tag) => tag.toJson()).toList(),
+      'og': og,
+      'fg': fg,
+      'abv': abv,
+      'measurements': measurements.map((m) => m.toJson()).toList(),
+      'fsuDate': fsuDate?.toIso8601String(),
+      'prepNotes': prepNotes,
+      'tastingRating': tastingRating,
+      'tastingNotes': tastingNotes,
+      'packagingMethod': packagingMethod,
+      'finalYield': finalYield,
+      'packagingDate': packagingDate?.toIso8601String(),
+      'finalNotes': finalNotes,
+      'finalYieldUnit': finalYieldUnit,
+    };
+  }
 
   factory BatchModel.fromJson(Map<String, dynamic> json) => BatchModel(
         id: json['id'],
@@ -203,20 +209,20 @@ class BatchModel extends HiveObject {
         bottleDate: json['bottleDate'] != null ? DateTime.parse(json['bottleDate']) : null,
         batchVolume: json['batchVolume'],
         fermentationStages: (json['fermentationStages'] as List)
-            .map((fsJson) => FermentationStage.fromJson(fsJson))
+            .map((fsJson) => FermentationStage.fromJson(Map<String, dynamic>.from(fsJson)))
             .toList(),
-        measurementLogs: List<Map<String, dynamic>>.from(json['measurementLogs']),
-        status: json['status'],
+        measurementLogs: List<Map<String, dynamic>>.from(json['measurementLogs'] ?? []),
+        status: json['status'] ?? 'Planning',
         notes: json['notes'],
-        deductedIngredients: Map<String, bool>.from(json['deductedIngredients']),
+        deductedIngredients: Map<String, bool>.from(json['deductedIngredients'] ?? {}),
         type: json['type'],
         plannedOg: json['plannedOg'],
         plannedAbv: json['plannedAbv'],
-        ingredients: List<Map<String, dynamic>>.from(json['ingredients']),
+        ingredients: List<Map<String, dynamic>>.from(json['ingredients'] ?? []),
         plannedEvents: (json['plannedEvents'] as List?)
             ?.map((eJson) => PlannedEvent.fromJson(eJson))
             .toList(),
-        additives: List<Map<String, dynamic>>.from(json['additives']),
+        additives: List<Map<String, dynamic>>.from(json['additives'] ?? []),
         yeast: json['yeast'] != null ? Map<String, dynamic>.from(json['yeast']) : null,
         og: json['og'],
         fg: json['fg'],
@@ -227,12 +233,12 @@ class BatchModel extends HiveObject {
         fsuDate: json['fsuDate'] != null ? DateTime.parse(json['fsuDate']) : null,
         prepNotes: json['prepNotes'],
         tastingRating: json['tastingRating'],
-        tastingNotes: json['tastingNotes'] != null ? Map<String, String>.from(json['tastingNotes']) : null,
+        tastingNotes:
+            json['tastingNotes'] != null ? Map<String, String>.from(json['tastingNotes']) : null,
         packagingMethod: json['packagingMethod'],
         finalYield: json['finalYield'],
         packagingDate: json['packagingDate'] != null ? DateTime.parse(json['packagingDate']) : null,
         finalNotes: json['finalNotes'],
         finalYieldUnit: json['finalYieldUnit'],
       );
-        
 }

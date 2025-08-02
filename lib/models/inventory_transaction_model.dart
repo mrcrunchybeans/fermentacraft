@@ -3,7 +3,7 @@ import 'package:hive/hive.dart';
 part 'inventory_transaction_model.g.dart';
 
 @HiveType(typeId: 21)
-class InventoryTransaction {
+class InventoryTransaction extends HiveObject { // Added extends HiveObject
   @HiveField(0)
   DateTime date;
 
@@ -25,5 +25,14 @@ class InventoryTransaction {
       'amount': amount,
       'cost': cost,
     };
+  }
+
+  // Add this factory for consistency
+  factory InventoryTransaction.fromJson(Map<String, dynamic> json) {
+    return InventoryTransaction(
+      date: DateTime.parse(json['date']),
+      amount: (json['amount'] as num).toDouble(),
+      cost: (json['cost'] as num).toDouble(),
+    );
   }
 }

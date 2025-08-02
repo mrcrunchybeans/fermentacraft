@@ -113,7 +113,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       additives = List<Map<String, dynamic>>.from(recipe.additives);
       ingredients = List<Map<String, dynamic>>.from(recipe.ingredients);
       fermentationStages = recipe.fermentationStages
-          .map((e) => FermentationStage.fromMap(e))
+          .map((e) => FermentationStage.fromJson(e))
           .toList();
       og = recipe.og;
       fg = recipe.fg!;
@@ -199,13 +199,22 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     }
   }
 
-  void addIngredient(Map<String, dynamic> f) {
-    setState(() {
-      ingredients.add(f);
-    });
-    calculateStats();
-    _updateMeasuredMustSGIfNotOverridden();
-  }
+// In RecipeBuilderPage.dart
+void addIngredient(Map<String, dynamic> ingredientMap) {
+  // Create a clean copy and convert any DateTime values
+  final cleanIngredient = Map<String, dynamic>.from(ingredientMap);
+  cleanIngredient.forEach((key, value) {
+    if (value is DateTime) {
+      cleanIngredient[key] = value.toIso8601String();
+    }
+  });
+
+  setState(() {
+    ingredients.add(cleanIngredient);
+  });
+  calculateStats();
+  _updateMeasuredMustSGIfNotOverridden();
+}
 
   void editIngredient(int index) async {
     final existing = ingredients[index];
@@ -241,11 +250,20 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     );
   }
 
-  void addYeast(Map<String, dynamic> y) {
-    setState(() {
-      yeast = [y];
-    });
-  }
+// In RecipeBuilderPage.dart
+void addYeast(Map<String, dynamic> yeastMap) {
+  // Create a clean copy and convert any DateTime values
+  final cleanYeast = Map<String, dynamic>.from(yeastMap);
+  cleanYeast.forEach((key, value) {
+    if (value is DateTime) {
+      cleanYeast[key] = value.toIso8601String();
+    }
+  });
+
+  setState(() {
+    yeast = [cleanYeast];
+  });
+}
 
   void editYeast() async {
     if (yeast.isEmpty) return;
@@ -285,11 +303,20 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     );
   }
 
-  void addAdditive(Map<String, dynamic> a) {
-    setState(() {
-      additives.add(a);
-    });
-  }
+// In RecipeBuilderPage.dart
+void addAdditive(Map<String, dynamic> additiveMap) {
+  // Create a clean copy and convert any DateTime values
+  final cleanAdditive = Map<String, dynamic>.from(additiveMap);
+  cleanAdditive.forEach((key, value) {
+    if (value is DateTime) {
+      cleanAdditive[key] = value.toIso8601String();
+    }
+  });
+
+  setState(() {
+    additives.add(cleanAdditive);
+  });
+}
 
   void saveRecipe() {
     final recipeName = nameController.text.trim();
@@ -546,13 +573,20 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                               purchaseHistory: [purchase],
                               expirationDate: ingredient['expirationDate'],
                             );
+                            // ... inside the onAddToInventory callback for ingredients
                             final box = await Hive.openBox<InventoryItem>('inventory');
                             await box.add(item);
                             if (!mounted) return;
                             scaffoldMessenger.showSnackBar(
                               SnackBar(content: Text("Added '${item.name}' to Inventory")),
                             );
-                            addIngredient(ingredient);
+                            
+                            // FIX: Create a clean map for the recipe before adding it
+                            final recipeIngredient = Map<String, dynamic>.from(ingredient);
+                            recipeIngredient['purchaseDate'] = (recipeIngredient['purchaseDate'] as DateTime?)?.toIso8601String();
+                            recipeIngredient['expirationDate'] = (recipeIngredient['expirationDate'] as DateTime?)?.toIso8601String();
+
+                            addIngredient(recipeIngredient); // <-- CORRECT: Adds the clean map
                           },
                         ),
                       );
@@ -671,14 +705,21 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
               purchaseHistory: [purchase],
               expirationDate: yeastData['expirationDate'],
             );
-            final box = await Hive.openBox<InventoryItem>('inventory');
-            await box.add(item);
-            if (!mounted) return;
-            scaffoldMessenger.showSnackBar(
-              SnackBar(content: Text("Added '${item.name}' to Inventory")),
-            );
-            addYeast(yeastData);
-          },
+            // ... inside the onAddToInventory callback for yeast
+              final box = await Hive.openBox<InventoryItem>('inventory');
+              await box.add(item);
+              if (!mounted) return;
+              scaffoldMessenger.showSnackBar(
+                SnackBar(content: Text("Added '${item.name}' to Inventory")),
+              );
+
+              // FIX: Create a clean map for the recipe before adding it
+              final recipeYeast = Map<String, dynamic>.from(yeastData);
+              recipeYeast['purchaseDate'] = (recipeYeast['purchaseDate'] as DateTime?)?.toIso8601String();
+              recipeYeast['expirationDate'] = (recipeYeast['expirationDate'] as DateTime?)?.toIso8601String();
+
+              addYeast(recipeYeast); // <-- CORRECT: Adds the clean map
+            },
         ),
       );
     }

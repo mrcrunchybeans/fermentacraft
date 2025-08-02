@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/measurement.dart';
 import 'package:flutter_application_1/models/planned_event.dart';
 import 'package:flutter_application_1/models/tag_manager.dart';
-import 'package:flutter_application_1/utils/temp_display.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'models/inventory_action.dart';
 import 'models/purchase_transaction.dart';
 import 'models/recipe_model.dart';
 import 'batch_log_page.dart';
@@ -36,7 +36,8 @@ void main() async {
   Hive.registerAdapter(InventoryTransactionAdapter());
   Hive.registerAdapter(UnitTypeAdapter());
   Hive.registerAdapter(PurchaseTransactionAdapter());
-
+  Hive.registerAdapter(InventoryActionAdapter());
+  await Hive.openBox<InventoryAction>('inventory_actions');
   await Hive.openBox<RecipeModel>('recipes');
   await Hive.openBox('settings');
   await Hive.openBox<Tag>('tags');
@@ -46,17 +47,11 @@ void main() async {
   await Hive.openBox<InventoryItem>('inventory');
   await Hive.openBox<InventoryTransaction>('inventoryTransactions');
 
-  final useCelsius = Hive.box('settings').get('useCelsius', defaultValue: true);
-  TempDisplay.setUseFahrenheit(!useCelsius);
-
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) {
-          final model = SettingsModel();
-          model.setUnitFromStorage(useCelsius);
-          return model;
-        }),
+        // The SettingsModel now loads its own state in its constructor.
+        ChangeNotifierProvider(create: (_) => SettingsModel()),
         ChangeNotifierProvider(create: (_) => TagManager()),
       ],
       child: const CiderCraftApp(),
@@ -69,22 +64,24 @@ class CiderCraftApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX 1: You need to get the settings model from the provider to use it.
-    final settings = Provider.of<SettingsModel>(context);
+    // Watch for changes in SettingsModel to rebuild the app theme
+    final settings = context.watch<SettingsModel>();
 
     return MaterialApp(
       title: 'CiderCraft',
-      // These lines now correctly use the settings model
       themeMode: settings.themeMode,
+      // Using the modern ColorScheme for theming
       theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.pink),
         brightness: Brightness.light,
-        primarySwatch: Colors.pink,
       ),
       darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.pink,
+          brightness: Brightness.dark,
+        ),
         brightness: Brightness.dark,
-        primarySwatch: Colors.pink,
       ),
-      // FIX 2: Removed extra closing parenthesis that was causing a syntax error.
       home: const HomeScreen(),
     );
   }

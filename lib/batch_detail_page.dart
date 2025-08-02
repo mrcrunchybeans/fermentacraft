@@ -4,6 +4,8 @@ import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
 import 'package:hive/hive.dart';
 import '../models/batch_model.dart';
 import '../models/planned_event.dart';
+import 'models/inventory_item.dart';
+import 'models/purchase_transaction.dart';
 import 'widgets/add_ingredient_dialog.dart';
 import '../widgets/add_additive_dialog.dart';
 import '../utils/batch_utils.dart';
@@ -12,7 +14,6 @@ import '../widgets/fermentation_chart.dart';
 import '../widgets/manage_stages_dialog.dart';
 import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
-
 
 class BatchDetailPage extends StatefulWidget {
   final BatchModel batch;
@@ -26,17 +27,13 @@ class BatchDetailPage extends StatefulWidget {
 class _BatchDetailPageState extends State<BatchDetailPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  // --- NEW CONTROLLERS for Completed Tab ---
   late TextEditingController _fgController;
   late TextEditingController _tastingAromaController;
   late TextEditingController _tastingAppearanceController;
   late TextEditingController _tastingFlavorController;
   late TextEditingController _finalYieldController;
   late TextEditingController _finalNotesController;
-  String _finalYieldUnit = 'gal'; // default unit
-
-
-  // --- NEW State for Completed Tab ---
+  String _finalYieldUnit = 'gal';
   int _tastingRating = 0;
   late TextEditingController _prepNotesController;
 
@@ -46,28 +43,31 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _tabController = TabController(length: 4, vsync: this);
     _prepNotesController =
         TextEditingController(text: widget.batch.prepNotes ?? '');
-  _fgController = TextEditingController(text: widget.batch.fg?.toString() ?? '');
-  _tastingRating = widget.batch.tastingRating ?? 0;
-  _tastingAromaController = TextEditingController(text: widget.batch.tastingNotes?['aroma'] ?? '');
-  _tastingAppearanceController = TextEditingController(text: widget.batch.tastingNotes?['appearance'] ?? '');
-  _tastingFlavorController = TextEditingController(text: widget.batch.tastingNotes?['flavor'] ?? '');
-  _finalYieldController = TextEditingController(text: widget.batch.finalYield?.toString() ?? '');
-  _finalYieldUnit = widget.batch.finalYieldUnit ?? 'gal';
-  _finalNotesController = TextEditingController(text: widget.batch.finalNotes ?? '');
-  _finalYieldUnit = widget.batch.packagingMethod ?? 'gal'; // fallback default
-
+    _fgController = TextEditingController(text: widget.batch.fg?.toString() ?? '');
+    _tastingRating = widget.batch.tastingRating ?? 0;
+    _tastingAromaController =
+        TextEditingController(text: widget.batch.tastingNotes?['aroma'] ?? '');
+    _tastingAppearanceController = TextEditingController(
+        text: widget.batch.tastingNotes?['appearance'] ?? '');
+    _tastingFlavorController =
+        TextEditingController(text: widget.batch.tastingNotes?['flavor'] ?? '');
+    _finalYieldController =
+        TextEditingController(text: widget.batch.finalYield?.toString() ?? '');
+    _finalYieldUnit = widget.batch.finalYieldUnit ?? 'gal';
+    _finalNotesController =
+        TextEditingController(text: widget.batch.finalNotes ?? '');
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _prepNotesController.dispose();
-  _fgController.dispose();
-  _tastingAromaController.dispose();
-  _tastingAppearanceController.dispose();
-  _tastingFlavorController.dispose();
-  _finalYieldController.dispose();
-  _finalNotesController.dispose();
+    _fgController.dispose();
+    _tastingAromaController.dispose();
+    _tastingAppearanceController.dispose();
+    _tastingFlavorController.dispose();
+    _finalYieldController.dispose();
+    _finalNotesController.dispose();
     super.dispose();
   }
 
@@ -84,9 +84,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _yeastSection(BatchModel batch, {bool showEditButton = true}) {
-    final yeast = batch.yeast != null
-        ? Map<String, dynamic>.from(batch.yeast!)
-        : null;
+    final yeast =
+        batch.yeast != null ? Map<String, dynamic>.from(batch.yeast!) : null;
+    final yeastName = yeast?['name'] ?? 'Unnamed Yeast';
+    final yeastAmount = (yeast?['amount'] as num?)?.toDouble() ?? 0.0;
+    final yeastUnit = yeast?['unit'] ?? '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,8 +99,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
         else
           ListTile(
             leading: const Icon(Icons.bubble_chart),
-            title: Text(
-                '${yeast['amount'] ?? ''} ${yeast['unit'] ?? ''} ${yeast['name'] ?? 'Unnamed'}'),
+            title: Text('$yeastAmount $yeastUnit $yeastName'),
           ),
         if (showEditButton) ...[
           const SizedBox(height: 8),
@@ -130,7 +131,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     return Column(
       children: batch.additives.map((rawAdditive) {
         final additive = Map<String, dynamic>.from(rawAdditive);
-
         final name = additive['name'] ?? 'Unnamed';
         final amount = additive['amount']?.toString() ?? '?';
         final unit = additive['unit'] ?? '';
@@ -146,17 +146,47 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
   Widget _ingredientsList(BatchModel batch) {
     if (batch.ingredients.isEmpty) return const Text('No ingredients added.');
+    final inventoryBox = Hive.box<InventoryItem>('inventory');
     return Column(
-      children: batch.ingredients.map((rawIngredient) {
-        final ingredient = Map<String, dynamic>.from(rawIngredient);
-
+      children: batch.ingredients.map((ingredientMap) {
+        final ingredient = Map<String, dynamic>.from(ingredientMap);
         final name = ingredient['name'] ?? 'Unnamed';
-        final amount = ingredient['amount']?.toString() ?? '?';
+        final amount = (ingredient['amount'] as num?)?.toDouble() ?? 0;
         final unit = ingredient['unit'] ?? '';
         final note = ingredient['note'] ?? '';
+        final inventoryItem = inventoryBox.values
+            .cast<InventoryItem?>()
+            .firstWhere(
+                (item) => item?.name.toLowerCase() == name.toLowerCase(),
+                orElse: () => null);
+        final inStock = inventoryItem?.amountInStock;
+        final sufficient = (inStock ?? 0) >= amount;
         return ListTile(
           title: Text('$amount $unit $name'),
-          subtitle: note.isNotEmpty ? Text(note) : null,
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (note.isNotEmpty) Text(note),
+              if (inventoryItem != null)
+                Row(
+                  children: [
+                    Text(
+                      'In stock: ${inStock?.toStringAsFixed(2) ?? 'N/A'} $unit',
+                      style: TextStyle(
+                        color: sufficient ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (!sufficient)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child:
+                            Icon(Icons.warning, color: Colors.red, size: 18),
+                      ),
+                  ],
+                ),
+            ],
+          ),
         );
       }).toList(),
     );
@@ -185,7 +215,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             Text(
                 'Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
             Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
-            Text('Target ABV: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%'),
+            Text(
+                'Target ABV: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%'),
           ],
         ),
       ),
@@ -229,6 +260,38 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   // --- Dialog and Logic Methods ---
+
+  Future<bool> _confirmInventoryDeduction({
+    required BuildContext context,
+    required String name,
+    required double inStock,
+    required double requested,
+    required String unit,
+  }) async {
+    if (inStock >= requested) return true;
+
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Not Enough Inventory'),
+            content: Text(
+              'Only ${inStock.toStringAsFixed(2)} $unit of "$name" in stock, but trying to deduct $requested.\n\nProceed anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Proceed'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   void _editBatchSummary(BatchModel batch) {
     final volumeController =
         TextEditingController(text: batch.batchVolume?.toString() ?? '');
@@ -252,12 +315,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             ),
             TextField(
               controller: ogController,
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Target OG'),
             ),
             TextField(
               controller: abvController,
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Target ABV (%)'),
             ),
           ],
@@ -319,15 +384,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     bool syncAdditives = true;
     bool syncStages = true;
     bool syncTargets = true;
-
-    final recipeBox = await Hive.openBox<RecipeModel>('recipes');
+    final recipeBox = Hive.box<RecipeModel>('recipes');
     List<RecipeModel> allRecipes = recipeBox.values.toList();
-
     if (!mounted) return;
-
-    RecipeModel? selectedRecipe = (batch.recipeId.isNotEmpty)
-        ? recipeBox.get(batch.recipeId)
-        : null;
+    RecipeModel? selectedRecipe =
+        (batch.recipeId.isNotEmpty) ? recipeBox.get(batch.recipeId) : null;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -391,7 +452,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                     title: const Text("Additives")),
                 CheckboxListTile(
                     value: syncStages,
-                    onChanged: (val) => setState(() => syncStages = val ?? true),
+                    onChanged: (val) =>
+                        setState(() => syncStages = val ?? true),
                     title: const Text("Fermentation Stages")),
                 CheckboxListTile(
                     value: syncTargets,
@@ -407,6 +469,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 child: const Text('Cancel')),
             TextButton(
               onPressed: () async {
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                final navigator = Navigator.of(dialogContext);
                 final newRecipe = RecipeModel(
                   name: batch.name,
                   createdAt: DateTime.now(),
@@ -416,14 +480,16 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   abv: batch.abv,
                   additives: batch.additives,
                   ingredients: batch.ingredients,
-                  fermentationStages:
-                      batch.safeFermentationStages.map((e) => e.toJson()).toList(),
+                  fermentationStages: batch.safeFermentationStages
+                      .map((e) => e.toJson())
+                      .toList(),
                   yeast: batch.yeast != null ? [batch.yeast!] : [],
                   notes: batch.notes ?? '',
                   batchVolume: batch.batchVolume,
                   plannedOg: batch.plannedOg,
                   plannedAbv: batch.plannedAbv,
                 );
+
                 await recipeBox.put(newRecipe.id, newRecipe);
 
                 if (!mounted) return;
@@ -433,16 +499,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   batch.save();
                 });
 
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-
-                if (mounted) {
-                  // ignore: use_build_context_synchronously
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Recipe saved and linked')),
-                  );
-                }
+                navigator.pop();
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(content: Text('Recipe saved and linked')),
+                );
               },
               child: const Text('Save as New Recipe'),
             ),
@@ -458,10 +518,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
 
     if (confirmed != true || !mounted) return;
-
     final recipe = selectedRecipe;
     if (recipe == null) return;
-
     widget.batch.save();
 
     setState(() {
@@ -477,26 +535,20 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       if (syncAdditives) {
         batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
       }
-      // In _showSyncFromRecipeDialog -> setState
-
-if (syncStages) {
-  batch.fermentationStages = recipe.fermentationStages
-      .map((stageMap) =>
-          FermentationStage.fromMap(Map<String, dynamic>.from(stageMap)))
-      .toList();
-
-  // --- NEW LOGIC TO SET STAGE DATES ---
-  if (batch.fermentationStages.isNotEmpty) {
-    // Use the batch's start date as the anchor, or today if it's not set.
-    DateTime nextStageStartDate = batch.startDate;
-    
-    for (var stage in batch.fermentationStages) {
-      stage.startDate = nextStageStartDate;
-      // Calculate the start date for the *next* stage.
-      nextStageStartDate = nextStageStartDate.add(Duration(days: stage.durationDays));
-    }
-  }
-}
+      if (syncStages) {
+        batch.fermentationStages = recipe.fermentationStages
+            .map((stageMap) =>
+                FermentationStage.fromJson(Map<String, dynamic>.from(stageMap)))
+            .toList();
+        if (batch.fermentationStages.isNotEmpty) {
+          DateTime nextStageStartDate = batch.startDate;
+          for (var stage in batch.fermentationStages) {
+            stage.startDate = nextStageStartDate;
+            nextStageStartDate =
+                nextStageStartDate.add(Duration(days: stage.durationDays));
+          }
+        }
+      }
       if (syncTargets) {
         batch.batchVolume = recipe.batchVolume;
         batch.plannedOg = recipe.plannedOg;
@@ -506,13 +558,12 @@ if (syncStages) {
     });
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Batch synced from recipe')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Batch synced from recipe')));
     }
   }
 
   Future<PlannedEvent?> _addPlannedEventDialog() async {
-    // Placeholder implementation
     return null;
   }
 
@@ -531,8 +582,6 @@ if (syncStages) {
       });
     }
   }
-
-  // --- Main Build Method ---
 
   @override
   Widget build(BuildContext context) {
@@ -561,8 +610,6 @@ if (syncStages) {
       ),
     );
   }
-
-  // --- Tab Builder Methods ---
 
   Widget _buildPlanningTab(BatchModel batch) {
     return SingleChildScrollView(
@@ -659,24 +706,272 @@ if (syncStages) {
   }
 
   Widget _buildPreparationTab(BatchModel batch) {
+    final inventoryBox = Hive.box<InventoryItem>('inventory');
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Ingredients Ready'),
-          _ingredientsList(batch),
-          const SizedBox(height: 16),
-          _yeastSection(batch, showEditButton: false),
-          const SizedBox(height: 16),
-          _sectionTitle('Additives'),
-          _additivesList(batch),
+          _sectionTitle('Inventory Checklist'),
+          ..._buildInventoryChecklist(batch, inventoryBox),
           const SizedBox(height: 16),
           _sectionTitle('Preparation Notes'),
           _buildPreparationNotesEditor(batch),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildInventoryChecklist(
+      BatchModel batch, Box<InventoryItem> inventoryBox) {
+    final widgets = <Widget>[];
+
+    // --- HELPER WIDGET BUILDERS ---
+
+    Widget buildItem(
+        {required Map<String, dynamic> itemData,
+        required int index,
+        required Function(bool) onDeductChanged}) {
+      final name = itemData['name'] ?? 'Unnamed';
+      final amount = (itemData['amount'] as num?)?.toDouble() ?? 0;
+      final unit = itemData['unit'] ?? '';
+      final note = itemData['note'] ?? '';
+      final shouldDeduct = itemData['deductFromInventory'] ?? false;
+      final inventoryItem = inventoryBox.values
+          .cast<InventoryItem?>()
+          .firstWhere((item) => item?.name.toLowerCase() == name.toLowerCase(),
+              orElse: () => null);
+      final inStock = inventoryItem?.amountInStock ?? 0;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            title: Text('$amount $unit $name'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (note.isNotEmpty) Text(note),
+                Row(
+                  children: [
+                    Text(
+                      'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                      style: TextStyle(
+                          color: inStock >= amount ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    if (inStock < amount)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child:
+                            Icon(Icons.warning, color: Colors.red, size: 18),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: CheckboxListTile(
+              value: shouldDeduct,
+              title: const Text('Deduct from Inventory'),
+              onChanged: (val) => onDeductChanged(val ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+          const Divider(),
+        ],
+      );
+    }
+
+    // --- BUILD THE LIST ---
+
+    widgets.add(const Text("Ingredients", style: TextStyle(fontWeight: FontWeight.bold)));
+    if (batch.ingredients.isEmpty) {
+      widgets.add(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8.0),
+        child: Text('No ingredients added.'),
+      ));
+    } else {
+      widgets.addAll(
+        batch.ingredients.asMap().entries.map(
+          (entry) {
+            final index = entry.key;
+            final ingredient = entry.value;
+            return buildItem(
+              itemData: ingredient,
+              index: index,
+              onDeductChanged: (newValue) async {
+                final name = ingredient['name'] ?? 'Unnamed';
+                final amount = (ingredient['amount'] as num?)?.toDouble() ?? 0;
+                final unit = ingredient['unit'] ?? '';
+                final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
+                    (item) => item?.name.toLowerCase() == name.toLowerCase(),
+                    orElse: () => null);
+
+                if (inventoryItem == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
+                  return;
+                }
+
+                if (newValue) {
+                  final confirmed = await _confirmInventoryDeduction(
+                    context: context,
+                    name: name,
+                    inStock: inventoryItem.amountInStock,
+                    requested: amount,
+                    unit: unit,
+                  );
+                  if (!confirmed) return;
+                }
+
+                setState(() {
+                  batch.ingredients[index]['deductFromInventory'] = newValue;
+                  if (newValue) {
+                    inventoryItem.deduct(amount);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
+                  } else {
+                    inventoryItem.addPurchase(PurchaseTransaction(
+                        date: DateTime.now(),
+                        amount: amount,
+                        cost: inventoryItem.costPerUnit ?? 0));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
+                  }
+                  batch.save();
+                  inventoryItem.save();
+                });
+              },
+            );
+          },
+        ),
+      );
+    }
+
+    widgets.add(const SizedBox(height: 16));
+    widgets.add(const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)));
+    if (batch.yeast == null) {
+      widgets.add(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8.0),
+        child: Text('No yeast added.'),
+      ));
+    } else {
+      widgets.add(
+        buildItem(
+          itemData: batch.yeast!,
+          index: -1, // Index isn't needed for a single item
+          onDeductChanged: (newValue) async {
+            final yeast = batch.yeast!;
+            final name = yeast['name'] ?? 'Unnamed Yeast';
+            final amount = (yeast['amount'] as num?)?.toDouble() ?? 0;
+            final unit = yeast['unit'] ?? '';
+            final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
+                (item) => item?.name.toLowerCase() == name.toLowerCase(),
+                orElse: () => null);
+            
+            if (inventoryItem == null) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
+                return;
+            }
+
+            if (newValue) {
+                final confirmed = await _confirmInventoryDeduction(
+                context: context,
+                name: name,
+                inStock: inventoryItem.amountInStock,
+                requested: amount,
+                unit: unit,
+                );
+                if (!confirmed) return;
+            }
+            
+            setState(() {
+                batch.yeast!['deductFromInventory'] = newValue;
+                if (newValue) {
+                inventoryItem.deduct(amount);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
+                } else {
+                inventoryItem.addPurchase(PurchaseTransaction(
+                    date: DateTime.now(),
+                    amount: amount,
+                    cost: inventoryItem.costPerUnit ?? 0,
+                ));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
+                }
+                inventoryItem.save();
+                batch.save();
+            });
+          },
+        ),
+      );
+    }
+
+    widgets.add(const SizedBox(height: 16));
+    widgets.add(const Text("Additives", style: TextStyle(fontWeight: FontWeight.bold)));
+    if (batch.additives.isEmpty) {
+      widgets.add(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8.0),
+        child: Text('No additives added.'),
+      ));
+    } else {
+      widgets.addAll(
+        batch.additives.asMap().entries.map(
+          (entry) {
+            final index = entry.key;
+            final additive = entry.value;
+            return buildItem(
+              itemData: additive,
+              index: index,
+              onDeductChanged: (newValue) async {
+                final name = additive['name'] ?? 'Unnamed';
+                final amount = (additive['amount'] as num?)?.toDouble() ?? 0;
+                final unit = additive['unit'] ?? '';
+                final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
+                    (item) => item?.name.toLowerCase() == name.toLowerCase(),
+                    orElse: () => null);
+
+                if (inventoryItem == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
+                  return;
+                }
+
+                if (newValue) {
+                  final confirmed = await _confirmInventoryDeduction(
+                    context: context,
+                    name: name,
+                    inStock: inventoryItem.amountInStock,
+                    requested: amount,
+                    unit: unit,
+                  );
+                  if (!confirmed) return;
+                }
+
+                setState(() {
+                  batch.additives[index]['deductFromInventory'] = newValue;
+                  if (newValue) {
+                    inventoryItem.deduct(amount);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
+                  } else {
+                    inventoryItem.addPurchase(PurchaseTransaction(
+                        date: DateTime.now(),
+                        amount: amount,
+                        cost: inventoryItem.costPerUnit ?? 0));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
+                  }
+                  batch.save();
+                  inventoryItem.save();
+                });
+              },
+            );
+          },
+        ),
+      );
+    }
+
+    return widgets;
   }
 
   Widget _buildFermentingTab(BatchModel batch) {
@@ -698,11 +993,9 @@ if (syncStages) {
               onPressed: () async {
                 final sortedMeasurements = batch.measurements.toList()
                   ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
                 final newMeasurement = await showDialog<Measurement>(
                     context: context,
                     builder: (_) => AddMeasurementDialog(
-                          // MODIFIED: Pass the required firstMeasurementDate
                           previousMeasurement: sortedMeasurements.isNotEmpty
                               ? sortedMeasurements.last
                               : null,
@@ -710,13 +1003,9 @@ if (syncStages) {
                               ? sortedMeasurements.first.timestamp
                               : null,
                         ));
-
                 if (newMeasurement != null) {
                   setState(() {
-                    final updatedMeasurements =
-                        List<Measurement>.from(batch.measurements);
-                    updatedMeasurements.add(newMeasurement);
-                    batch.measurements = updatedMeasurements;
+                    batch.measurements.add(newMeasurement);
                     batch.save();
                   });
                 }
@@ -733,20 +1022,17 @@ if (syncStages) {
               ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
             final index = sortedMeasurements
                 .indexWhere((m) => m.timestamp == measurementToEdit.timestamp);
-
             final updatedMeasurement = await showDialog<Measurement>(
               context: context,
               builder: (_) => AddMeasurementDialog(
                 existingMeasurement: measurementToEdit,
                 previousMeasurement:
                     (index > 0) ? sortedMeasurements[index - 1] : null,
-                // MODIFIED: Pass the required firstMeasurementDate here too
                 firstMeasurementDate: sortedMeasurements.isNotEmpty
                     ? sortedMeasurements.first.timestamp
                     : null,
               ),
             );
-
             if (updatedMeasurement != null) {
               setState(() {
                 final originalIndex = batch.measurements.indexWhere(
@@ -765,7 +1051,6 @@ if (syncStages) {
     );
   }
 
-   /// Builds the main "Completed" tab layout.
   Widget _buildCompletedTab(BatchModel batch) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -786,19 +1071,17 @@ if (syncStages) {
     );
   }
 
-  /// Card for Final Gravity input and Plan vs. Actual comparison.
   Widget _buildFinalStatsCard(BatchModel batch) {
-  final actualAbv = (batch.og != null && batch.fg != null)
-      ? calculateABV(batch.og!, batch.fg!)
-      : null;
-
+    final actualAbv =
+        (batch.og != null && batch.fg != null) ? calculateABV(batch.og!, batch.fg!) : null;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Final Stats', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text('Final Stats',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -807,7 +1090,8 @@ if (syncStages) {
                   width: 100,
                   child: TextField(
                     controller: _fgController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(hintText: 'e.g., 1.010'),
                     onChanged: (value) {
                       setState(() {
@@ -822,14 +1106,24 @@ if (syncStages) {
             const Divider(height: 24),
             Text.rich(TextSpan(children: [
               const TextSpan(text: 'OG: '),
-              TextSpan(text: batch.og?.toStringAsFixed(3) ?? '—', style: const TextStyle(fontWeight: FontWeight.bold)),
-              TextSpan(text: ' (Target: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'})', style: const TextStyle(color: Colors.grey)),
+              TextSpan(
+                  text: batch.og?.toStringAsFixed(3) ?? '—',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              TextSpan(
+                  text:
+                      ' (Target: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'})',
+                  style: const TextStyle(color: Colors.grey)),
             ])),
             const SizedBox(height: 4),
             Text.rich(TextSpan(children: [
               const TextSpan(text: 'ABV: '),
-              TextSpan(text: '${actualAbv?.toStringAsFixed(2) ?? '—'}%', style: const TextStyle(fontWeight: FontWeight.bold)),
-              TextSpan(text: ' (Target: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%)', style: const TextStyle(color: Colors.grey)),
+              TextSpan(
+                  text: '${actualAbv?.toStringAsFixed(2) ?? '—'}%',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              TextSpan(
+                  text:
+                      ' (Target: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%)',
+                  style: const TextStyle(color: Colors.grey)),
             ])),
           ],
         ),
@@ -837,7 +1131,6 @@ if (syncStages) {
     );
   }
 
-  /// Section for structured tasting notes.
   Widget _buildTastingNotesSection(BatchModel batch) {
     return Column(
       children: [
@@ -855,7 +1148,7 @@ if (syncStages) {
                   onPressed: () {
                     setState(() {
                       _tastingRating = index + 1;
-                      batch.tastingRating = _tastingRating; // Assumes model field
+                      batch.tastingRating = _tastingRating;
                       batch.save();
                     });
                   },
@@ -864,86 +1157,118 @@ if (syncStages) {
             ),
           ],
         ),
-        TextField(controller: _tastingAromaController, decoration: const InputDecoration(labelText: 'Aroma'), onChanged: (v) => batch.tastingNotes?['aroma'] = v),
-        TextField(controller: _tastingAppearanceController, decoration: const InputDecoration(labelText: 'Appearance'), onChanged: (v) => batch.tastingNotes?['appearance'] = v),
-        TextField(controller: _tastingFlavorController, decoration: const InputDecoration(labelText: 'Flavor & Mouthfeel'), onChanged: (v) => batch.tastingNotes?['flavor'] = v),
+        TextField(
+            controller: _tastingAromaController,
+            decoration: const InputDecoration(labelText: 'Aroma'),
+            onChanged: (v) {
+              batch.tastingNotes ??= {};
+              batch.tastingNotes!['aroma'] = v;
+              batch.save();
+            }),
+        TextField(
+            controller: _tastingAppearanceController,
+            decoration: const InputDecoration(labelText: 'Appearance'),
+            onChanged: (v) {
+              batch.tastingNotes ??= {};
+              batch.tastingNotes!['appearance'] = v;
+              batch.save();
+            }),
+        TextField(
+            controller: _tastingFlavorController,
+            decoration: const InputDecoration(labelText: 'Flavor & Mouthfeel'),
+            onChanged: (v) {
+              batch.tastingNotes ??= {};
+              batch.tastingNotes!['flavor'] = v;
+              batch.save();
+            }),
       ],
     );
   }
 
-  /// Section for logging packaging details.
   Widget _buildPackagingLogSection(BatchModel batch) {
     return Column(
       children: [
         ListTile(
           leading: const Icon(Icons.calendar_today),
           title: const Text('Packaging Date'),
-          subtitle: Text(batch.packagingDate?.toLocal().toString().split(' ')[0] ?? 'Not set'),
+          subtitle: Text(
+              batch.packagingDate?.toLocal().toString().split(' ')[0] ??
+                  'Not set'),
           onTap: () async {
-            final date = await showDatePicker(context: context, initialDate: batch.packagingDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2100));
+            final date = await showDatePicker(
+                context: context,
+                initialDate: batch.packagingDate ?? DateTime.now(),
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2100));
             if (date != null) {
               setState(() {
-               batch.packagingDate  = date;
-              batch.save();
-            });
+                batch.packagingDate = date;
+                batch.save();
+              });
             }
           },
         ),
         DropdownButtonFormField<String>(
           value: batch.packagingMethod,
           decoration: const InputDecoration(labelText: 'Packaging Method'),
-          items: ['Bottled', 'Kegged', 'Aged in Secondary'].map((method) => DropdownMenuItem(value: method, child: Text(method))).toList(),
+          items: ['Bottled', 'Kegged', 'Aged in Secondary']
+              .map((method) =>
+                  DropdownMenuItem(value: method, child: Text(method)))
+              .toList(),
           onChanged: (value) {
             if (value != null) {
               setState(() {
-              batch.packagingMethod = value;
-              batch.save();
-            });
+                batch.packagingMethod = value;
+                batch.save();
+              });
             }
           },
         ),
         Row(
-  children: [
-    Expanded(
-      child: TextField(
-        controller: _finalYieldController,
-        decoration: const InputDecoration(
-          labelText: 'Final Yield',
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _finalYieldController,
+                decoration: const InputDecoration(labelText: 'Final Yield'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (value) {
+                  batch.finalYield = double.tryParse(value);
+                  batch.save();
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            DropdownButton<String>(
+              value: _finalYieldUnit,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _finalYieldUnit = value;
+                    batch.finalYieldUnit = value;
+                    batch.save();
+                  });
+                }
+              },
+              items: [
+                'gal',
+                'L',
+                '12oz bottle',
+                '16oz bottle',
+                '32oz growler'
+              ].map((unit) {
+                return DropdownMenuItem<String>(
+                  value: unit,
+                  child: Text(unit),
+                );
+              }).toList(),
+            ),
+          ],
         ),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        onChanged: (value) {
-          batch.finalYield = double.tryParse(value);
-          batch.save();
-        },
-      ),
-    ),
-    const SizedBox(width: 12),
-    DropdownButton<String>(
-      value: _finalYieldUnit,
-      onChanged: (value) {
-        if (value != null) {
-          setState(() {
-            _finalYieldUnit = value;
-            batch.finalYieldUnit = value; // ✅ saves to model
-            batch.save();                 // ✅ persists in Hive
-          });
-        }
-      },
-      items: ['gal', 'L', '12oz bottle', '16oz bottle', '32oz growler'].map((unit) {
-        return DropdownMenuItem<String>(
-          value: unit,
-          child: Text(unit),
-        );
-      }).toList(),
-    ),
-  ],
-),
-
       ],
     );
   }
 
-  /// Section for the final "post-mortem" notes.
   Widget _buildLessonsLearnedSection(BatchModel batch) {
     return TextField(
       controller: _finalNotesController,
@@ -960,7 +1285,6 @@ if (syncStages) {
     );
   }
 
-  /// Buttons for final actions like cloning or saving as a recipe.
   Widget _buildCompletedActions(BatchModel batch) {
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
@@ -972,23 +1296,22 @@ if (syncStages) {
             icon: const Icon(Icons.save_alt),
             label: const Text('Save as Recipe'),
             onPressed: () {
-              // Placeholder for saving logic
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved as new recipe!')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Saved as new recipe!')));
             },
           ),
           ElevatedButton.icon(
             icon: const Icon(Icons.copy),
             label: const Text('Clone to New Batch'),
             onPressed: () {
-              // Placeholder for cloning logic
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch cloned!')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Batch cloned!')));
             },
           ),
         ],
       ),
     );
   }
-
 
   Widget _buildPreparationNotesEditor(BatchModel batch) {
     return Column(

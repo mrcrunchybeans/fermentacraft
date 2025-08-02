@@ -33,4 +33,16 @@ class PurchaseTransaction extends HiveObject {
       'expirationDate': expirationDate?.toIso8601String(),
     };
   }
+
+  // Add this factory for consistency
+  factory PurchaseTransaction.fromJson(Map<String, dynamic> json) {
+    return PurchaseTransaction(
+      date: DateTime.parse(json['date']),
+      amount: (json['amount'] as num).toDouble(),
+      cost: (json['cost'] as num).toDouble(),
+      expirationDate: json['expirationDate'] != null
+          ? DateTime.parse(json['expirationDate'])
+          : null,
+    );
+  }
 }
