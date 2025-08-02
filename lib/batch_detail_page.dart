@@ -16,7 +16,6 @@ import '../widgets/manage_stages_dialog.dart';
 import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
 
-// FIX: Added imports for the correct dialog, the UnitType enum, and the shopping list item.
 import 'widgets/add_inventory_dialog.dart'; 
 import '../models/unit_type.dart';
 import 'models/shopping_list_item.dart';
@@ -47,7 +46,22 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+
+    // FIX: Set the initial tab based on the batch's current status.
+    int initialTabIndex = 0;
+    switch (widget.batch.status) {
+      case 'Preparation':
+        initialTabIndex = 1;
+        break;
+      case 'Fermenting':
+        initialTabIndex = 2;
+        break;
+      case 'Completed':
+        initialTabIndex = 3;
+        break;
+    }
+    _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
+
     _prepNotesController =
         TextEditingController(text: widget.batch.prepNotes ?? '');
     _fgController = TextEditingController(text: widget.batch.fg?.toString() ?? '');
@@ -77,6 +91,59 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _finalNotesController.dispose();
     super.dispose();
   }
+
+  // --- Status Progression ---
+
+  // FIX: New function to handle updating the batch status and switching tabs.
+  void _updateBatchStatus(String newStatus) {
+    setState(() {
+      widget.batch.status = newStatus;
+      widget.batch.save();
+
+      int tabIndex = 0;
+      switch (newStatus) {
+        case 'Preparation':
+          tabIndex = 1;
+          break;
+        case 'Fermenting':
+          tabIndex = 2;
+          break;
+        case 'Completed':
+          tabIndex = 3;
+          break;
+      }
+      _tabController.animateTo(tabIndex);
+    });
+  }
+
+  // FIX: New reusable widget for the status progression button.
+  Widget _buildStatusProgressionButton({
+    required String currentStatus,
+    required String nextStatus,
+    required String buttonText,
+    IconData? icon,
+  }) {
+    if (widget.batch.status != currentStatus) {
+      return const SizedBox.shrink(); // Don't show the button if it's not the current status
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      child: Center(
+        child: ElevatedButton.icon(
+          icon: Icon(icon ?? Icons.arrow_forward_ios),
+          label: Text(buttonText),
+          onPressed: () => _updateBatchStatus(nextStatus),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            textStyle: Theme.of(context).textTheme.titleMedium,
+            backgroundColor: Theme.of(context).primaryColor,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
 
   // --- UI Building Helper Methods ---
 
@@ -708,6 +775,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               }
             },
           ),
+          // FIX: Added the status progression button to this tab.
+          _buildStatusProgressionButton(
+            currentStatus: 'Planning',
+            nextStatus: 'Preparation',
+            buttonText: 'Start Preparation',
+          ),
         ],
       ),
     );
@@ -725,6 +798,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           const SizedBox(height: 16),
           _sectionTitle('Preparation Notes'),
           _buildPreparationNotesEditor(batch),
+          // FIX: Added the status progression button to this tab.
+          _buildStatusProgressionButton(
+            currentStatus: 'Preparation',
+            nextStatus: 'Fermenting',
+            buttonText: 'Start Fermenting',
+          ),
         ],
       ),
     );
@@ -889,7 +968,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           trailing: (!sufficient && !shouldDeduct)
               ? ElevatedButton(
                   onPressed: () {
-                    // FIX: Implement the logic to add the item to the shopping list.
                     final shoppingBox = Hive.box<ShoppingListItem>('shopping_list');
                     final amountNeeded = amount - inStock;
 
@@ -1131,6 +1209,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           },
           onDeleteMeasurement: _handleDeleteMeasurement,
           onManageStages: () => _manageStages(batch),
+        ),
+        // FIX: Added the status progression button to this tab.
+        _buildStatusProgressionButton(
+          currentStatus: 'Fermenting',
+          nextStatus: 'Completed',
+          buttonText: 'Mark as Completed',
+          icon: Icons.check_circle_outline,
         ),
       ],
     );
