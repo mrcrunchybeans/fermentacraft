@@ -9,6 +9,7 @@ import 'models/purchase_transaction.dart';
 import 'models/recipe_model.dart';
 import 'batch_log_page.dart';
 import 'inventory_page.dart';
+import 'models/shopping_list_item.dart';
 import 'models/unit_type.dart';
 import 'recipe_list_page.dart';
 import 'settings_page.dart';
@@ -20,6 +21,7 @@ import 'models/fermentation_stage.dart';
 import 'models/measurement_log.dart';
 import 'models/inventory_item.dart';
 import 'models/inventory_transaction_model.dart';
+import 'shopping_list_page.dart';
 import 'home_page.dart';
 
 void main() async {
@@ -37,9 +39,11 @@ void main() async {
   Hive.registerAdapter(UnitTypeAdapter());
   Hive.registerAdapter(PurchaseTransactionAdapter());
   Hive.registerAdapter(InventoryActionAdapter());
+  Hive.registerAdapter(ShoppingListItemAdapter());
   await Hive.openBox<InventoryAction>('inventory_actions');
   await Hive.openBox<RecipeModel>('recipes');
   await Hive.openBox('settings');
+  await Hive.openBox<ShoppingListItem>('shopping_list'); // <-- Add this line
   await Hive.openBox<Tag>('tags');
   await Hive.openBox<BatchModel>('batches');
   await Hive.openBox<MeasurementLog>('measurementLogs');
@@ -162,6 +166,17 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.inventory),
               title: const Text('Inventory'),
               onTap: () => _selectPage('Inventory'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.shopping_cart_outlined),
+              title: const Text('Shopping List'),
+              onTap: () {
+                Navigator.pop(context); // Close the drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ShoppingListPage()),
+                );
+              },
             ),
             ListTile(
               leading: const Icon(Icons.science),

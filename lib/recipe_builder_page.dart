@@ -19,6 +19,9 @@ import 'widgets/add_yeast_dialog.dart';
 import 'dart:async';
 import 'models/purchase_transaction.dart';
 
+// FIX: Added the missing import for the UnitType enum.
+import 'models/unit_type.dart';
+
 final logger = Logger();
 
 double calculateAbv(double og, double fg) {
@@ -221,6 +224,8 @@ void addIngredient(Map<String, dynamic> ingredientMap) {
     await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => AddIngredientDialog(
+        // FIX: Added the required 'unitType' parameter.
+        unitType: inferUnitType(existing['unit'] ?? 'g'),
         existing: existing,
         onAddToRecipe: (updated) {
           setState(() {
@@ -552,6 +557,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                       await showDialog<Map<String, dynamic>>(
                         context: context,
                         builder: (_) => AddIngredientDialog(
+                          // FIX: Added the required 'unitType' parameter with a default value.
+                          unitType: UnitType.mass,
                           onAddToRecipe: addIngredient,
                           onAddToInventory: (ingredient) async {
                             final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -628,7 +635,7 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                     icon: const Icon(Icons.add),
                     label: const Text("Add Additive"),
                     onPressed: () async {
-                       await showDialog<Map<String, dynamic>>(
+                      await showDialog<Map<String, dynamic>>(
                         context: context,
                         builder: (_) => AddAdditiveDialog(
                           mustPH: 3.4,
@@ -676,54 +683,54 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                     label: Text(yeast.isEmpty ? "Add Yeast" : "Edit Yeast"),
                     onPressed: yeast.isEmpty
   ? () async {
-      // This is the line you asked about. It captures the context
-      // before the dialog is opened to safely show a confirmation message later.
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      
-      await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (_) => AddYeastDialog(
-          onAdd: addYeast,
-          // This is the logic that was missing. It creates the inventory
-          // item, saves it to the database, and uses the scaffoldMessenger.
-          onAddToInventory: (yeastData) async {
-            final purchase = PurchaseTransaction(
-              amount: yeastData['amount'] ?? 0.0,
-              cost: yeastData['cost'] ?? 0.0,
-              date: yeastData['purchaseDate'] ?? DateTime.now(),
-              expirationDate: yeastData['expirationDate'],
+    // This is the line you asked about. It captures the context
+    // before the dialog is opened to safely show a confirmation message later.
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    
+    await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => AddYeastDialog(
+        onAdd: addYeast,
+        // This is the logic that was missing. It creates the inventory
+        // item, saves it to the database, and uses the scaffoldMessenger.
+        onAddToInventory: (yeastData) async {
+          final purchase = PurchaseTransaction(
+            amount: yeastData['amount'] ?? 0.0,
+            cost: yeastData['cost'] ?? 0.0,
+            date: yeastData['purchaseDate'] ?? DateTime.now(),
+            expirationDate: yeastData['expirationDate'],
+          );
+          final item = InventoryItem(
+            name: yeastData['name'] ?? 'Unnamed',
+            amountInStock: yeastData['amount'] ?? 0.0,
+            unit: yeastData['unit'] ?? 'packets',
+            unitType: inferUnitType(yeastData['unit'] ?? 'packets'),
+            category: 'Yeast',
+            costPerUnit: (yeastData['amount'] ?? 0.0) > 0
+                ? (yeastData['cost'] ?? 0.0) / (yeastData['amount'] ?? 1.0)
+                : 0.0,
+            purchaseHistory: [purchase],
+            expirationDate: yeastData['expirationDate'],
+          );
+          // ... inside the onAddToInventory callback for yeast
+            final box = await Hive.openBox<InventoryItem>('inventory');
+            await box.add(item);
+            if (!mounted) return;
+            scaffoldMessenger.showSnackBar(
+              SnackBar(content: Text("Added '${item.name}' to Inventory")),
             );
-            final item = InventoryItem(
-              name: yeastData['name'] ?? 'Unnamed',
-              amountInStock: yeastData['amount'] ?? 0.0,
-              unit: yeastData['unit'] ?? 'packets',
-              unitType: inferUnitType(yeastData['unit'] ?? 'packets'),
-              category: 'Yeast',
-              costPerUnit: (yeastData['amount'] ?? 0.0) > 0
-                  ? (yeastData['cost'] ?? 0.0) / (yeastData['amount'] ?? 1.0)
-                  : 0.0,
-              purchaseHistory: [purchase],
-              expirationDate: yeastData['expirationDate'],
-            );
-            // ... inside the onAddToInventory callback for yeast
-              final box = await Hive.openBox<InventoryItem>('inventory');
-              await box.add(item);
-              if (!mounted) return;
-              scaffoldMessenger.showSnackBar(
-                SnackBar(content: Text("Added '${item.name}' to Inventory")),
-              );
 
-              // FIX: Create a clean map for the recipe before adding it
-              final recipeYeast = Map<String, dynamic>.from(yeastData);
-              recipeYeast['purchaseDate'] = (recipeYeast['purchaseDate'] as DateTime?)?.toIso8601String();
-              recipeYeast['expirationDate'] = (recipeYeast['expirationDate'] as DateTime?)?.toIso8601String();
+            // FIX: Create a clean map for the recipe before adding it
+            final recipeYeast = Map<String, dynamic>.from(yeastData);
+            recipeYeast['purchaseDate'] = (recipeYeast['purchaseDate'] as DateTime?)?.toIso8601String();
+            recipeYeast['expirationDate'] = (recipeYeast['expirationDate'] as DateTime?)?.toIso8601String();
 
-              addYeast(recipeYeast); // <-- CORRECT: Adds the clean map
-            },
-        ),
-      );
-    }
-                   : editYeast,),
+            addYeast(recipeYeast); // <-- CORRECT: Adds the clean map
+          },
+      ),
+    );
+  }
+                      : editYeast,),
                 ),
               ],
             ),
@@ -764,13 +771,13 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                     ),
                   );
                 }),
-                 Padding(
+                  Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.add),
                     label: const Text("Add Stage"),
                     onPressed: () async {
-                       await showDialog<Map<String, dynamic>>(
+                      await showDialog<Map<String, dynamic>>(
                         context: context,
                         builder: (_) => AddFermentationStageDialog(
                           onSave: (stage) {

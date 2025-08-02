@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/models/recipe_model.dart';
 import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
 import 'package:hive/hive.dart';
@@ -14,6 +15,12 @@ import '../widgets/fermentation_chart.dart';
 import '../widgets/manage_stages_dialog.dart';
 import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
+
+// FIX: Added imports for the correct dialog, the UnitType enum, and the shopping list item.
+import 'widgets/add_inventory_dialog.dart'; 
+import '../models/unit_type.dart';
+import 'models/shopping_list_item.dart';
+
 
 class BatchDetailPage extends StatefulWidget {
   final BatchModel batch;
@@ -635,6 +642,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               await showDialog<void>(
                 context: context,
                 builder: (_) => AddIngredientDialog(
+                  unitType: UnitType.mass,
                   onAddToRecipe: (ingredient) {
                     setState(() {
                       batch.ingredients.add(ingredient);
@@ -722,257 +730,334 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
+  // --- PREPARATION TAB WIDGETS ---
+
   List<Widget> _buildInventoryChecklist(
       BatchModel batch, Box<InventoryItem> inventoryBox) {
-    final widgets = <Widget>[];
+    return [
+      // --- INGREDIENTS ---
+      Card(
+        margin: const EdgeInsets.symmetric(vertical: 4.0),
+        child: ExpansionTile(
+          title: const Text("Ingredients",
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          initiallyExpanded: true,
+          children: batch.ingredients.isEmpty
+              ? [const ListTile(title: Text('No ingredients added.'))]
+              : batch.ingredients
+                  .asMap()
+                  .entries
+                  .map((entry) => _buildChecklistItem(
+                        itemData: entry.value,
+                        inventoryBox: inventoryBox,
+                        onChanged: (newValue) => _handleDeductionChange(
+                          itemType: 'ingredient',
+                          item: entry.value,
+                          index: entry.key,
+                          newValue: newValue,
+                          inventoryBox: inventoryBox,
+                        ),
+                      ))
+                  .toList(),
+        ),
+      ),
+      // --- YEAST ---
+      Card(
+        margin: const EdgeInsets.symmetric(vertical: 4.0),
+        child: ExpansionTile(
+          title: const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)),
+          initiallyExpanded: true,
+          children: batch.yeast == null
+              ? [const ListTile(title: Text('No yeast added.'))]
+              : [
+                  _buildChecklistItem(
+                    itemData: batch.yeast!,
+                    inventoryBox: inventoryBox,
+                    onChanged: (newValue) => _handleDeductionChange(
+                      itemType: 'yeast',
+                      item: batch.yeast!,
+                      newValue: newValue,
+                      inventoryBox: inventoryBox,
+                    ),
+                  )
+                ],
+        ),
+      ),
+      // --- ADDITIVES ---
+      Card(
+        margin: const EdgeInsets.symmetric(vertical: 4.0),
+        child: ExpansionTile(
+          title: const Text("Additives",
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          initiallyExpanded: true,
+          children: batch.additives.isEmpty
+              ? [const ListTile(title: Text('No additives added.'))]
+              : batch.additives
+                  .asMap()
+                  .entries
+                  .map((entry) => _buildChecklistItem(
+                        itemData: entry.value,
+                        inventoryBox: inventoryBox,
+                        onChanged: (newValue) => _handleDeductionChange(
+                          itemType: 'additive',
+                          item: entry.value,
+                          index: entry.key,
+                          newValue: newValue,
+                          inventoryBox: inventoryBox,
+                        ),
+                      ))
+                  .toList(),
+        ),
+      ),
+    ];
+  }
 
-    // --- HELPER WIDGET BUILDERS ---
+  Widget _buildChecklistItem({
+    required Map<String, dynamic> itemData,
+    required Box<InventoryItem> inventoryBox,
+    required Future<void> Function(bool) onChanged,
+  }) {
+    final name = itemData['name'] ?? 'Unnamed';
+    final amount = (itemData['amount'] as num?)?.toDouble() ?? 0;
+    final unit = itemData['unit'] ?? '';
+    final note = itemData['note'] ?? '';
+    final shouldDeduct = itemData['deductFromInventory'] ?? false;
+    final inventoryItem = inventoryBox.values
+        .cast<InventoryItem?>()
+        .firstWhere((item) => item?.name.toLowerCase() == name.toLowerCase(),
+            orElse: () => null);
+    final inStock = inventoryItem?.amountInStock ?? 0;
+    final sufficient = inStock >= amount;
 
-    Widget buildItem(
-        {required Map<String, dynamic> itemData,
-        required int index,
-        required Function(bool) onDeductChanged}) {
-      final name = itemData['name'] ?? 'Unnamed';
-      final amount = (itemData['amount'] as num?)?.toDouble() ?? 0;
-      final unit = itemData['unit'] ?? '';
-      final note = itemData['note'] ?? '';
-      final shouldDeduct = itemData['deductFromInventory'] ?? false;
-      final inventoryItem = inventoryBox.values
-          .cast<InventoryItem?>()
-          .firstWhere((item) => item?.name.toLowerCase() == name.toLowerCase(),
-              orElse: () => null);
-      final inStock = inventoryItem?.amountInStock ?? 0;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ListTile(
-            title: Text('$amount $unit $name'),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (note.isNotEmpty) Text(note),
+    return Column(
+      children: [
+        ListTile(
+          enabled: !shouldDeduct,
+          title: Text(
+            '$amount $unit $name',
+            style: TextStyle(
+              decoration:
+                  shouldDeduct ? TextDecoration.lineThrough : TextDecoration.none,
+              color: shouldDeduct ? Colors.grey : null,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (note.isNotEmpty) Text(note),
+              if (inventoryItem != null)
                 Row(
                   children: [
                     Text(
                       'In stock: ${inStock.toStringAsFixed(2)} $unit',
                       style: TextStyle(
-                          color: inStock >= amount ? Colors.green : Colors.red,
+                          color: sufficient ? Colors.green : Colors.red,
                           fontWeight: FontWeight.w500),
                     ),
-                    if (inStock < amount)
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline, size: 20),
+                      onPressed: () => _showQuickAddDialog(inventoryItem, unit),
+                      tooltip: 'Quick-add to inventory',
+                    ),
+                    if (!sufficient)
                       const Padding(
                         padding: EdgeInsets.only(left: 6),
-                        child:
-                            Icon(Icons.warning, color: Colors.red, size: 18),
+                        child: Icon(Icons.warning, color: Colors.red, size: 18),
                       ),
                   ],
+                )
+              else 
+                Row(
+                  children: [
+                    Text(
+                      'Not in Inventory',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.add_box_outlined, size: 20),
+                      label: const Text('Create'),
+                      onPressed: () => _showCreateInventoryItemDialog(name, unit),
+                    )
+                  ],
                 ),
-              ],
-            ),
+            ],
           ),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: CheckboxListTile(
-              value: shouldDeduct,
-              title: const Text('Deduct from Inventory'),
-              onChanged: (val) => onDeductChanged(val ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
+          trailing: (!sufficient && !shouldDeduct)
+              ? ElevatedButton(
+                  onPressed: () {
+                    // FIX: Implement the logic to add the item to the shopping list.
+                    final shoppingBox = Hive.box<ShoppingListItem>('shopping_list');
+                    final amountNeeded = amount - inStock;
+
+                    if (amountNeeded > 0) {
+                      final newItem = ShoppingListItem(
+                        name: name,
+                        amount: amountNeeded,
+                        unit: unit,
+                        recipeName: widget.batch.name,
+                      );
+                      shoppingBox.add(newItem);
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Added ${amountNeeded.toStringAsFixed(2)} $unit of "$name" to shopping list!'),
+                        duration: const Duration(seconds: 2),
+                      ));
+                    }
+                  },
+                  child: const Icon(Icons.add_shopping_cart),
+                )
+              : null,
+        ),
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          child: CheckboxListTile(
+            value: shouldDeduct,
+            title: const Text('Deduct from Inventory'),
+            onChanged: (val) => onChanged(val ?? false),
+            controlAffinity: ListTileControlAffinity.leading,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
           ),
-          const Divider(),
-        ],
-      );
-    }
-
-    // --- BUILD THE LIST ---
-
-    widgets.add(const Text("Ingredients", style: TextStyle(fontWeight: FontWeight.bold)));
-    if (batch.ingredients.isEmpty) {
-      widgets.add(const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: Text('No ingredients added.'),
-      ));
-    } else {
-      widgets.addAll(
-        batch.ingredients.asMap().entries.map(
-          (entry) {
-            final index = entry.key;
-            final ingredient = entry.value;
-            return buildItem(
-              itemData: ingredient,
-              index: index,
-              onDeductChanged: (newValue) async {
-                final name = ingredient['name'] ?? 'Unnamed';
-                final amount = (ingredient['amount'] as num?)?.toDouble() ?? 0;
-                final unit = ingredient['unit'] ?? '';
-                final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
-                    (item) => item?.name.toLowerCase() == name.toLowerCase(),
-                    orElse: () => null);
-
-                if (inventoryItem == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
-                  return;
-                }
-
-                if (newValue) {
-                  final confirmed = await _confirmInventoryDeduction(
-                    context: context,
-                    name: name,
-                    inStock: inventoryItem.amountInStock,
-                    requested: amount,
-                    unit: unit,
-                  );
-                  if (!confirmed) return;
-                }
-
-                setState(() {
-                  batch.ingredients[index]['deductFromInventory'] = newValue;
-                  if (newValue) {
-                    inventoryItem.deduct(amount);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
-                  } else {
-                    inventoryItem.addPurchase(PurchaseTransaction(
-                        date: DateTime.now(),
-                        amount: amount,
-                        cost: inventoryItem.costPerUnit ?? 0));
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
-                  }
-                  batch.save();
-                  inventoryItem.save();
-                });
-              },
-            );
-          },
         ),
-      );
-    }
-
-    widgets.add(const SizedBox(height: 16));
-    widgets.add(const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)));
-    if (batch.yeast == null) {
-      widgets.add(const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: Text('No yeast added.'),
-      ));
-    } else {
-      widgets.add(
-        buildItem(
-          itemData: batch.yeast!,
-          index: -1, // Index isn't needed for a single item
-          onDeductChanged: (newValue) async {
-            final yeast = batch.yeast!;
-            final name = yeast['name'] ?? 'Unnamed Yeast';
-            final amount = (yeast['amount'] as num?)?.toDouble() ?? 0;
-            final unit = yeast['unit'] ?? '';
-            final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
-                (item) => item?.name.toLowerCase() == name.toLowerCase(),
-                orElse: () => null);
-            
-            if (inventoryItem == null) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
-                return;
-            }
-
-            if (newValue) {
-                final confirmed = await _confirmInventoryDeduction(
-                context: context,
-                name: name,
-                inStock: inventoryItem.amountInStock,
-                requested: amount,
-                unit: unit,
-                );
-                if (!confirmed) return;
-            }
-            
-            setState(() {
-                batch.yeast!['deductFromInventory'] = newValue;
-                if (newValue) {
-                inventoryItem.deduct(amount);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
-                } else {
-                inventoryItem.addPurchase(PurchaseTransaction(
-                    date: DateTime.now(),
-                    amount: amount,
-                    cost: inventoryItem.costPerUnit ?? 0,
-                ));
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
-                }
-                inventoryItem.save();
-                batch.save();
-            });
-          },
-        ),
-      );
-    }
-
-    widgets.add(const SizedBox(height: 16));
-    widgets.add(const Text("Additives", style: TextStyle(fontWeight: FontWeight.bold)));
-    if (batch.additives.isEmpty) {
-      widgets.add(const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: Text('No additives added.'),
-      ));
-    } else {
-      widgets.addAll(
-        batch.additives.asMap().entries.map(
-          (entry) {
-            final index = entry.key;
-            final additive = entry.value;
-            return buildItem(
-              itemData: additive,
-              index: index,
-              onDeductChanged: (newValue) async {
-                final name = additive['name'] ?? 'Unnamed';
-                final amount = (additive['amount'] as num?)?.toDouble() ?? 0;
-                final unit = additive['unit'] ?? '';
-                final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
-                    (item) => item?.name.toLowerCase() == name.toLowerCase(),
-                    orElse: () => null);
-
-                if (inventoryItem == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
-                  return;
-                }
-
-                if (newValue) {
-                  final confirmed = await _confirmInventoryDeduction(
-                    context: context,
-                    name: name,
-                    inStock: inventoryItem.amountInStock,
-                    requested: amount,
-                    unit: unit,
-                  );
-                  if (!confirmed) return;
-                }
-
-                setState(() {
-                  batch.additives[index]['deductFromInventory'] = newValue;
-                  if (newValue) {
-                    inventoryItem.deduct(amount);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
-                  } else {
-                    inventoryItem.addPurchase(PurchaseTransaction(
-                        date: DateTime.now(),
-                        amount: amount,
-                        cost: inventoryItem.costPerUnit ?? 0));
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
-                  }
-                  batch.save();
-                  inventoryItem.save();
-                });
-              },
-            );
-          },
-        ),
-      );
-    }
-
-    return widgets;
+      ],
+    );
   }
+  
+  void _showQuickAddDialog(InventoryItem item, String unit) async {
+    final TextEditingController controller = TextEditingController();
+    final amount = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Quick-add to ${item.name}'),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            labelText: 'Amount to add ($unit)',
+            suffixText: unit,
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d*'))],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text);
+              if (value != null && value > 0) {
+                Navigator.pop(context, value);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (amount != null) {
+      setState(() {
+        item.addPurchase(PurchaseTransaction(
+          date: DateTime.now(),
+          amount: amount,
+          cost: item.costPerUnit ?? 0,
+        ));
+        item.save();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Added $amount $unit to ${item.name}')),
+        );
+      }
+    }
+  }
+
+  void _showCreateInventoryItemDialog(String name, String unit) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return const AddInventoryDialog();
+      },
+    ).then((_) {
+      setState(() {});
+    });
+  }
+
+  Future<void> _handleDeductionChange({
+    required String itemType, // 'ingredient', 'yeast', or 'additive'
+    required Map<String, dynamic> item,
+    int index = -1, // Use -1 for single items like yeast
+    required bool newValue,
+    required Box<InventoryItem> inventoryBox,
+  }) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    
+    final name = item['name'] ?? 'Unnamed';
+    final amount = (item['amount'] as num?)?.toDouble() ?? 0;
+    final unit = item['unit'] ?? '';
+    final inventoryItem = inventoryBox.values
+        .cast<InventoryItem?>()
+        .firstWhere((i) => i?.name.toLowerCase() == name.toLowerCase(),
+            orElse: () => null);
+
+    if (inventoryItem == null) {
+      if (!mounted) return;
+      scaffoldMessenger
+          .showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
+      return;
+    }
+
+    if (newValue) {
+      final confirmed = await _confirmInventoryDeduction(
+        context: context,
+        name: name,
+        inStock: inventoryItem.amountInStock,
+        requested: amount,
+        unit: unit,
+      );
+      if (!confirmed) return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      switch (itemType) {
+        case 'ingredient':
+          widget.batch.ingredients[index]['deductFromInventory'] = newValue;
+          break;
+        case 'yeast':
+          widget.batch.yeast!['deductFromInventory'] = newValue;
+          break;
+        case 'additive':
+          widget.batch.additives[index]['deductFromInventory'] = newValue;
+          break;
+      }
+
+      if (newValue) {
+        inventoryItem.deduct(amount);
+        scaffoldMessenger
+            .showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
+      } else {
+        inventoryItem.addPurchase(PurchaseTransaction(
+          date: DateTime.now(),
+          amount: amount,
+          cost: inventoryItem.costPerUnit ?? 0,
+        ));
+        scaffoldMessenger
+            .showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
+      }
+      widget.batch.save();
+      inventoryItem.save();
+    });
+  }
+
+  // --- FERMENTING TAB WIDGETS ---
 
   Widget _buildFermentingTab(BatchModel batch) {
     return ListView(
@@ -1050,6 +1135,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       ],
     );
   }
+
+  // --- COMPLETED TAB WIDGETS ---
 
   Widget _buildCompletedTab(BatchModel batch) {
     return SingleChildScrollView(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/unit_type.dart';
 import 'package:intl/intl.dart';
 import '../utils/utils.dart';
 
@@ -11,7 +12,7 @@ class AddIngredientDialog extends StatefulWidget {
     super.key,
     required this.onAddToRecipe,
     this.onAddToInventory,
-    this.existing,
+    this.existing, required UnitType unitType,
   });
 
   @override
