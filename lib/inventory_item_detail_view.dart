@@ -28,7 +28,6 @@ class InventoryItemDetailView extends StatefulWidget {
         builder: (_) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: ConstrainedBox(
-            // FIX: Added a maxHeight to constrain the dialog's height
             constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
             child: InventoryItemDetailView(item: item),
           ),
@@ -44,15 +43,22 @@ class InventoryItemDetailView extends StatefulWidget {
 class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late InventoryItem item;
+  // FIX: Removed the local 'item' variable to prevent stale data.
   String targetUnit = '';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    item = widget.item;
-    targetUnit = item.unit;
+    // FIX: Use widget.item directly to ensure data is always current.
+    targetUnit = widget.item.unit;
+  }
+
+  // FIX: Added the dispose method to clean up the TabController.
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -74,11 +80,11 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
 
   @override
   Widget build(BuildContext context) {
+    // FIX: Use widget.item to ensure data is always up-to-date.
+    final item = widget.item;
     final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit);
 
-    // --- RESTRUCTURED LAYOUT ---
     return Column(
-      // REMOVED: mainAxisSize.min to allow Expanded to work correctly.
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
@@ -92,17 +98,15 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
             Tab(text: 'Purchase History'),
           ],
         ),
-        // This Expanded widget now correctly fills the available space
         Expanded(
           child: TabBarView(
             controller: _tabController,
             children: [
-              _buildDetailsTab(costFormatted),
-              _buildPurchaseHistoryTab(),
+              _buildDetailsTab(item, costFormatted),
+              _buildPurchaseHistoryTab(item),
             ],
           ),
         ),
-        // --- CLEANED UP: Action buttons are now in a consistent bar ---
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.all(8.0),
@@ -146,7 +150,7 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
     );
   }
 
-  Widget _buildDetailsTab(String costFormatted) {
+  Widget _buildDetailsTab(InventoryItem item, String costFormatted) {
     final converted = UnitConversion.tryConvertCostPerUnit(
       amount: 1.0,
       fromUnit: item.unit,
@@ -192,7 +196,7 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
     );
   }
 
-  Widget _buildPurchaseHistoryTab() {
+  Widget _buildPurchaseHistoryTab(InventoryItem item) {
     final entries = item.purchaseHistory;
     if (entries.isEmpty) {
       return const Center(child: Text("No purchases logged."));

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/models/recipe_model.dart';
 import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
 import 'package:hive/hive.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // FIX: Import the wakelock package.
 import '../models/batch_model.dart';
 import '../models/planned_event.dart';
 import 'models/inventory_item.dart';
@@ -42,12 +43,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   String _finalYieldUnit = 'gal';
   int _tastingRating = 0;
   late TextEditingController _prepNotesController;
+  
+  // FIX: Added a state variable to track Brew Mode.
+  bool _isBrewModeEnabled = false;
 
   @override
   void initState() {
     super.initState();
-
-    // FIX: Set the initial tab based on the batch's current status.
     int initialTabIndex = 0;
     switch (widget.batch.status) {
       case 'Preparation':
@@ -81,6 +83,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
   @override
   void dispose() {
+    // FIX: Ensure wakelock is disabled when the page is closed.
+    if (_isBrewModeEnabled) {
+      WakelockPlus.disable();
+    }
     _tabController.dispose();
     _prepNotesController.dispose();
     _fgController.dispose();
@@ -92,9 +98,32 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     super.dispose();
   }
 
-  // --- Status Progression ---
+  // --- Status Progression & Brew Mode ---
 
-  // FIX: New function to handle updating the batch status and switching tabs.
+  // FIX: New function to toggle Brew Mode on and off.
+  void _toggleBrewMode() {
+    setState(() {
+      _isBrewModeEnabled = !_isBrewModeEnabled;
+      if (_isBrewModeEnabled) {
+        WakelockPlus.enable();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Brew Mode Enabled: Screen will stay on."),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        WakelockPlus.disable();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Brew Mode Disabled."),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
+  }
+
   void _updateBatchStatus(String newStatus) {
     setState(() {
       widget.batch.status = newStatus;
@@ -115,8 +144,54 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       _tabController.animateTo(tabIndex);
     });
   }
+  
+  Future<void> _showChangeStatusDialog() async {
+    String currentStatus = widget.batch.status;
+    final newStatus = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Change Batch Status'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: ['Planning', 'Preparation', 'Fermenting', 'Completed'].map((status) {
+                  return RadioListTile<String>(
+                    title: Text(status),
+                    value: status,
+                    groupValue: currentStatus,
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        setState(() {
+                          currentStatus = value;
+                        });
+                      }
+                    },
+                  );
+                }).toList(),
+              );
+            },
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            ElevatedButton(
+              child: const Text('Save'),
+              onPressed: () => Navigator.of(context).pop(currentStatus),
+            ),
+          ],
+        );
+      },
+    );
 
-  // FIX: New reusable widget for the status progression button.
+    if (newStatus != null && newStatus != widget.batch.status) {
+      _updateBatchStatus(newStatus);
+    }
+  }
+
   Widget _buildStatusProgressionButton({
     required String currentStatus,
     required String nextStatus,
@@ -124,7 +199,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     IconData? icon,
   }) {
     if (widget.batch.status != currentStatus) {
-      return const SizedBox.shrink(); // Don't show the button if it's not the current status
+      return const SizedBox.shrink(); 
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0),
@@ -276,16 +351,27 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Status & Targets',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Recipe Summary', style: Theme.of(context).textTheme.titleLarge),
                 IconButton(
                   icon: const Icon(Icons.edit),
+                  tooltip: 'Edit Targets',
                   onPressed: () => _editBatchSummary(batch),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text('Status: ${batch.status}'),
+            const Divider(),
+            Row(
+              children: [
+                Text('Status: ', style: Theme.of(context).textTheme.titleMedium),
+                Text(batch.status, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                OutlinedButton(
+                  onPressed: _showChangeStatusDialog,
+                  child: const Text('Change'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Text(
                 'Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
             Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
@@ -663,6 +749,17 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     return Scaffold(
       appBar: AppBar(
         title: Text(batch.name),
+        // FIX: Added the actions list to the AppBar for the Brew Mode button.
+        actions: [
+          IconButton(
+            icon: Icon(
+              _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
+              color: _isBrewModeEnabled ? Colors.amber : null,
+            ),
+            tooltip: 'Toggle Brew Mode',
+            onPressed: _toggleBrewMode,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -691,7 +788,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Recipe Summary'),
           _recipeSummaryCard(batch),
           const SizedBox(height: 16),
           ElevatedButton.icon(
@@ -775,7 +871,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               }
             },
           ),
-          // FIX: Added the status progression button to this tab.
           _buildStatusProgressionButton(
             currentStatus: 'Planning',
             nextStatus: 'Preparation',
@@ -798,7 +893,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           const SizedBox(height: 16),
           _sectionTitle('Preparation Notes'),
           _buildPreparationNotesEditor(batch),
-          // FIX: Added the status progression button to this tab.
           _buildStatusProgressionButton(
             currentStatus: 'Preparation',
             nextStatus: 'Fermenting',
@@ -1210,7 +1304,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           onDeleteMeasurement: _handleDeleteMeasurement,
           onManageStages: () => _manageStages(batch),
         ),
-        // FIX: Added the status progression button to this tab.
         _buildStatusProgressionButton(
           currentStatus: 'Fermenting',
           nextStatus: 'Completed',

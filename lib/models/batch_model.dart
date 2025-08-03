@@ -111,6 +111,10 @@ class BatchModel extends HiveObject {
   @HiveField(32)
   String? finalYieldUnit;
 
+  // FIX: Added a new field to track the archived status.
+  @HiveField(33)
+  bool isArchived;
+
   BatchModel({
     required this.id,
     required this.name,
@@ -145,6 +149,8 @@ class BatchModel extends HiveObject {
     this.tastingNotes,
     this.packagingMethod,
     this.finalYield,
+    // FIX: Added to the constructor with a default value.
+    this.isArchived = false,
   })  : fermentationStages = fermentationStages ?? [],
         measurementLogs = measurementLogs ?? [],
         deductedIngredients = deductedIngredients ?? {},
@@ -196,6 +202,8 @@ class BatchModel extends HiveObject {
       'packagingDate': packagingDate?.toIso8601String(),
       'finalNotes': finalNotes,
       'finalYieldUnit': finalYieldUnit,
+      // FIX: Added to the toJson method.
+      'isArchived': isArchived,
     };
   }
 
@@ -240,5 +248,7 @@ class BatchModel extends HiveObject {
         packagingDate: json['packagingDate'] != null ? DateTime.parse(json['packagingDate']) : null,
         finalNotes: json['finalNotes'],
         finalYieldUnit: json['finalYieldUnit'],
+        // FIX: Added to the fromJson factory.
+        isArchived: json['isArchived'] ?? false,
       );
 }

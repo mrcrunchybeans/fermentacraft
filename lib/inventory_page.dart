@@ -189,7 +189,8 @@ class _InventoryPageState extends State<InventoryPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)}",
+                                  // FIX: Formatted the amount to two decimal places.
+                                  "${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}",
                                 ),
                                 if (expirationText != null)
                                   Padding(
