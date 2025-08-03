@@ -14,10 +14,10 @@ class BatchLogPage extends StatefulWidget {
 
 class _BatchLogPageState extends State<BatchLogPage> {
   final DateFormat _dateFormat = DateFormat('MMM d, yyyy');
-  // FIX: Added state to toggle between active and archived views.
+  // State to toggle between active and archived views.
   bool _showArchived = false;
 
-  // FIX: New function to handle archiving/unarchiving a batch.
+  // Handles archiving/unarchiving a batch.
   void _toggleArchiveStatus(BatchModel batch) {
     final isArchiving = !batch.isArchived;
     showDialog(
@@ -50,9 +50,9 @@ class _BatchLogPageState extends State<BatchLogPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // FIX: Title changes based on the current view.
+        // Title changes based on the current view.
         title: Text(_showArchived ? 'Archived Batches' : 'Batches'),
-        // FIX: Added an action button to toggle the archived view.
+        // Action button to toggle the archived view.
         actions: [
           IconButton(
             icon: Icon(_showArchived ? Icons.inventory_2_outlined : Icons.archive_outlined),
@@ -68,7 +68,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
       body: ValueListenableBuilder<Box<BatchModel>>(
         valueListenable: Hive.box<BatchModel>('batches').listenable(),
         builder: (context, box, _) {
-          // FIX: Filter batches based on the current view (archived or not).
+          // Filter batches based on the current view (archived or not).
           final batches = box.values
               .where((batch) => batch.isArchived == _showArchived)
               .toList();
@@ -80,7 +80,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
                     : 'No batches yet. Tap + to create one.'));
           }
 
-          // FIX: Group batches into "Active" and "Completed".
+          // Group batches into "Active" and "Completed".
           final activeBatches =
               batches.where((b) => b.status != 'Completed').toList();
           final completedBatches =
@@ -108,7 +108,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
     );
   }
 
-  // FIX: New helper widget to build the expandable groups.
+  // Helper widget to build the expandable groups.
   Widget _buildBatchGroup(
       BuildContext context, String title, List<BatchModel> batches) {
     return Card(
@@ -121,12 +121,12 @@ class _BatchLogPageState extends State<BatchLogPage> {
                 ?.copyWith(fontWeight: FontWeight.bold)),
         initiallyExpanded: true,
         children: batches.map((batch) {
-          final sg = batch.measurements.isNotEmpty
-              ? batch.measurements.last.gravity?.toStringAsFixed(3)
+          final sg = batch.safeMeasurements.isNotEmpty
+              ? batch.safeMeasurements.last.gravity?.toStringAsFixed(3)
               : '—';
 
           return GestureDetector(
-            // FIX: Added long press to archive completed batches.
+            // Added long press to archive completed batches.
             onLongPress:
                 batch.status == 'Completed' || batch.isArchived
                     ? () => _toggleArchiveStatus(batch)

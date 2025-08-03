@@ -27,29 +27,26 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       batchVolume: fields[5] as double?,
       finalYieldUnit: fields[32] as String?,
       fermentationStages: (fields[6] as List).cast<FermentationStage>(),
-      // FIX: Safely cast maps within lists.
       measurementLogs: (fields[7] as List)
-          .map((e) => Map<String, dynamic>.from(e))
+          .map((e) => Map<String, dynamic>.from(e as Map))
           .toList(),
       status: fields[8] as String,
       notes: fields[9] as String?,
-      // FIX: Use Map.from for safer casting.
       deductedIngredients: Map<String, bool>.from(fields[10] as Map),
       type: fields[11] as String?,
       prepNotes: fields[25] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
-      // FIX: Safely cast maps within lists.
       ingredients: (fields[14] as List)
-          .map((e) => Map<String, dynamic>.from(e))
+          .map((e) => Map<String, dynamic>.from(e as Map))
           .toList(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
-      // FIX: Safely cast maps within lists.
       additives: (fields[16] as List)
-          .map((e) => Map<String, dynamic>.from(e))
+          .map((e) => Map<String, dynamic>.from(e as Map))
           .toList(),
-      // FIX: Use Map.from for safer casting.
-      yeast: fields[17] == null ? null : Map<String, dynamic>.from(fields[17] as Map),
+      yeast: fields[17] == null
+          ? null
+          : Map<String, dynamic>.from(fields[17] as Map),
       og: fields[20] as double?,
       fg: fields[21] as double?,
       abv: fields[22] as double?,
@@ -58,11 +55,12 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       packagingDate: fields[30] as DateTime?,
       finalNotes: fields[31] as String?,
       tastingRating: fields[26] as int?,
-      // FIX: Use Map.from for safer casting.
-      tastingNotes: fields[27] == null ? null : Map<String, String>.from(fields[27] as Map),
+      tastingNotes: fields[27] == null
+          ? null
+          : Map<String, String>.from(fields[27] as Map),
       packagingMethod: fields[28] as String?,
       finalYield: fields[29] as double?,
-      isArchived: fields[33] as bool,
+      isArchived: fields[33] as bool? ?? false,
     );
   }
 
