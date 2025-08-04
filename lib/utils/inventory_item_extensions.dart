@@ -43,6 +43,6 @@ extension InventoryItemDisplay on InventoryItem {
       
     }
 
-return totalAmount > 0 ? totalCost / totalAmount : (costPerUnit ?? 0.0);
+return totalAmount > 0 ? totalCost / totalAmount : (costPerUnit);
   }
 }

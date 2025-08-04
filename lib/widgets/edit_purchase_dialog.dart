@@ -6,13 +6,12 @@ import '../models/inventory_item.dart';
 class EditPurchaseDialog extends StatefulWidget {
   final PurchaseTransaction entry;
   final InventoryItem item;
-  final int index;
 
   const EditPurchaseDialog({
     super.key,
     required this.entry,
     required this.item,
-    required this.index,
+    // The 'index' is no longer needed
   });
 
   @override
@@ -20,25 +19,21 @@ class EditPurchaseDialog extends StatefulWidget {
 }
 
 class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
-  late double amount;
-  late double cost;
-  late DateTime date;
-  DateTime? expirationDate;
-
   final _formKey = GlobalKey<FormState>();
+  
+  // Local state for the form fields
   late TextEditingController _amountController;
   late TextEditingController _costController;
+  late DateTime _date;
+  DateTime? _expirationDate;
 
   @override
   void initState() {
     super.initState();
-    amount = widget.entry.amount;
-    cost = widget.entry.cost;
-    date = widget.entry.date;
-    expirationDate = widget.entry.expirationDate;
-
-    _amountController = TextEditingController(text: amount.toString());
-    _costController = TextEditingController(text: cost.toStringAsFixed(2));
+    _amountController = TextEditingController(text: widget.entry.amount.toString());
+    _costController = TextEditingController(text: widget.entry.cost.toStringAsFixed(2));
+    _date = widget.entry.date;
+    _expirationDate = widget.entry.expirationDate;
   }
 
   @override
@@ -48,47 +43,57 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
     super.dispose();
   }
 
-  void _updateItemExpirationDate() {
-    final allDates = widget.item.purchaseHistory
-        .where((tx) => tx.expirationDate != null)
-        .map((tx) => tx.expirationDate!)
-        .toList();
+  void _saveChanges() {
+    if (_formKey.currentState?.validate() ?? false) {
+      _formKey.currentState?.save();
 
-    if (allDates.isEmpty) {
-      widget.item.expirationDate = null;
-    } else {
-      allDates.sort((a, b) => a.compareTo(b));
-      widget.item.expirationDate = allDates.first;
+      // Update the properties of the specific transaction being edited
+      widget.entry.amount = double.tryParse(_amountController.text) ?? 0;
+      widget.entry.cost = double.tryParse(_costController.text) ?? 0;
+      widget.entry.date = _date;
+      widget.entry.expirationDate = _expirationDate;
+
+      // Important: Ensure the used amount doesn't exceed the new total amount
+      if (widget.entry.usedAmount > widget.entry.amount) {
+        widget.entry.usedAmount = widget.entry.amount;
+      }
+
+      // Simply save the parent item. The getters will recalculate everything automatically.
+      widget.item.save();
+      
+      Navigator.of(context).pop(widget.entry);
     }
   }
 
-  void _recalculateAndSave() {
-    final totalAmount = widget.item.purchaseHistory.fold<double>(
-      0,
-      (sum, tx) => sum + tx.amount,
+  void _deletePurchase() {
+    // Show a confirmation dialog before deleting
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Purchase?'),
+        content: const Text('Are you sure you want to delete this purchase entry? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              widget.item.purchaseHistory.remove(widget.entry);
+              widget.item.save();
+              Navigator.pop(dialogContext); // Close confirmation dialog
+              Navigator.pop(context); // Close edit dialog
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
-
-    final totalCost = widget.item.purchaseHistory.fold<double>(
-      0,
-      (sum, tx) => sum + tx.cost,
-    );
-
-    widget.item.amountInStock = totalAmount;
-
-    final costPerUnit = (totalAmount > 0) ? (totalCost / totalAmount) : 0.0;
-    widget.item.costPerUnit = costPerUnit.isNaN ? 0.0 : costPerUnit;
-
-    _updateItemExpirationDate();
-    widget.item.save();
   }
 
   @override
   Widget build(BuildContext context) {
-    double? unitCost;
-    if (amount > 0 && cost > 0) {
-      unitCost = cost / amount;
-    }
-
     return AlertDialog(
       title: const Text('Edit Purchase'),
       content: Form(
@@ -99,66 +104,53 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
             children: [
               TextFormField(
                 controller: _amountController,
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: 'Amount (${widget.item.unit})'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (val) => setState(() => amount = double.tryParse(val) ?? 0),
-                onSaved: (val) => amount = double.tryParse(val ?? '0') ?? 0,
                 validator: (val) => val == null || val.isEmpty ? "Required" : null,
               ),
               TextFormField(
                 controller: _costController,
                 decoration: const InputDecoration(labelText: 'Total Cost'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (val) => setState(() => cost = double.tryParse(val) ?? 0),
-                onSaved: (val) => cost = double.tryParse(val ?? '0') ?? 0,
                 validator: (val) => val == null || val.isEmpty ? "Required" : null,
               ),
-              const SizedBox(height: 12),
-              if (unitCost != null)
-                Text(
-                  "Cost per ${widget.item.unit}: \$${unitCost.toStringAsFixed(2)}",
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
+              // Date Pickers
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("Date: "),
-                  Text(DateFormat.yMMMd().format(date)),
-                  const Spacer(),
+                  Text("Purchased: ${DateFormat.yMMMd().format(_date)}"),
                   TextButton(
                     child: const Text('Change'),
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: date,
+                        initialDate: _date,
                         firstDate: DateTime(2000),
                         lastDate: DateTime.now(),
                       );
                       if (picked != null) {
-                        setState(() => date = picked);
+                        setState(() => _date = picked);
                       }
                     },
                   ),
                 ],
               ),
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("Expires: "),
-                  Text(expirationDate != null
-                      ? DateFormat.yMMMd().format(expirationDate!)
-                      : 'Not set'),
-                  const Spacer(),
+                  Text("Expires: ${_expirationDate != null ? DateFormat.yMMMd().format(_expirationDate!) : 'Not set'}"),
                   TextButton(
                     child: const Text('Set'),
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: expirationDate ?? DateTime.now().add(const Duration(days: 365)),
+                        initialDate: _expirationDate ?? DateTime.now().add(const Duration(days: 365)),
                         firstDate: DateTime.now().subtract(const Duration(days: 30)),
                         lastDate: DateTime(2040),
                       );
                       if (picked != null) {
-                        setState(() => expirationDate = picked);
+                        setState(() => _expirationDate = picked);
                       }
                     },
                   ),
@@ -170,34 +162,18 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
       ),
       actions: [
         TextButton(
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          onPressed: _deletePurchase,
+          child: const Text('Delete'),
+        ),
+        const Spacer(),
+        TextButton(
           child: const Text('Cancel'),
           onPressed: () => Navigator.pop(context),
         ),
-        TextButton(
-          style: TextButton.styleFrom(foregroundColor: Colors.red),
-          child: const Text('Delete'),
-          onPressed: () {
-            widget.item.purchaseHistory.removeAt(widget.index);
-            _recalculateAndSave();
-            Navigator.pop(context, null);
-          },
-        ),
         ElevatedButton(
+          onPressed: _saveChanges,
           child: const Text('Save'),
-          onPressed: () {
-            if (_formKey.currentState?.validate() ?? false) {
-              _formKey.currentState?.save();
-              final updated = PurchaseTransaction(
-                amount: amount,
-                cost: cost,
-                date: date,
-                expirationDate: expirationDate,
-              );
-              widget.item.purchaseHistory[widget.index] = updated;
-              _recalculateAndSave();
-              Navigator.pop(context, updated);
-            }
-          },
         ),
       ],
     );

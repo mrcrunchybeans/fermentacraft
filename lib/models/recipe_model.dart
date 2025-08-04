@@ -28,16 +28,16 @@ class RecipeModel extends HiveObject {
   double? abv;
 
   @HiveField(7)
-  List<Map<String, dynamic>> additives;
+  List<Map<dynamic, dynamic>> additives;
 
   @HiveField(8)
-  List<Map<String, dynamic>> ingredients;
+  List<Map<dynamic, dynamic>> ingredients;
 
   @HiveField(9)
-  List<Map<String, dynamic>> fermentationStages;
+  List<Map<dynamic, dynamic>> fermentationStages;
 
   @HiveField(10)
-  List<Map<String, dynamic>> yeast;
+  List<Map<dynamic, dynamic>> yeast;
 
   @HiveField(11)
   String notes;
@@ -62,10 +62,10 @@ class RecipeModel extends HiveObject {
     this.og,
     this.fg,
     this.abv,
-    List<Map<String, dynamic>>? additives,
-    List<Map<String, dynamic>>? ingredients,
-    List<Map<String, dynamic>>? fermentationStages,
-    List<Map<String, dynamic>>? yeast,
+    List<Map<dynamic, dynamic>>? additives,
+    List<Map<dynamic, dynamic>>? ingredients,
+    List<Map<dynamic, dynamic>>? fermentationStages,
+    List<Map<dynamic, dynamic>>? yeast,
     this.notes = '',
     this.lastOpened,
     this.batchVolume,

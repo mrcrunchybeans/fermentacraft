@@ -8,111 +8,104 @@ part 'inventory_item.g.dart';
 class InventoryItem extends HiveObject {
   @HiveField(0)
   String name;
-
   @HiveField(1)
-  double amountInStock; // Will be auto-computed from purchaseHistory
-
-  @HiveField(2)
   String unit;
-
-  @HiveField(3)
+  @HiveField(2)
   UnitType unitType;
-
-  @HiveField(4)
-  double? costPerUnit;
-
-  @HiveField(5)
+  @HiveField(3)
   String? notes;
-
-  @HiveField(6)
+  @HiveField(4)
   List<PurchaseTransaction> purchaseHistory;
-
-  @HiveField(7)
+  @HiveField(5)
   String category;
-
-  @HiveField(8)
-  DateTime? expirationDate;
 
   InventoryItem({
     required this.name,
-    required this.amountInStock,
     required this.unit,
     required this.unitType,
-    this.costPerUnit,
     required this.category,
     this.notes,
-    this.expirationDate,
     List<PurchaseTransaction>? purchaseHistory,
   }) : purchaseHistory = purchaseHistory ?? [];
 
-  double get safeCostPerUnit => costPerUnit ?? 0.0;
+  double get amountInStock =>
+      purchaseHistory.fold(0.0, (sum, p) => sum + p.remainingAmount);
 
-  String get safeCostPerUnitFormatted => '\$${safeCostPerUnit.toStringAsFixed(2)}';
-
-  void recalculateAmountInStock() {
-    amountInStock = purchaseHistory.fold(0.0, (sum, p) => sum + p.amount);
-    save();
+  DateTime? get expirationDate {
+    final available = purchaseHistory
+        .where((p) => p.remainingAmount > 0 && p.expirationDate != null)
+        .toList();
+    if (available.isEmpty) return null;
+    available.sort((a, b) => a.expirationDate!.compareTo(b.expirationDate!));
+    return available.first.expirationDate;
+  }
+  
+  double get costPerUnit {
+    if (amountInStock <= 0) return 0.0;
+    final totalCostOfStock = purchaseHistory.fold(0.0, (sum, p) {
+      if (p.amount <= 0) return sum;
+      final originalCostPerUnit = p.cost / p.amount;
+      return sum + (p.remainingAmount * originalCostPerUnit);
+    });
+    return totalCostOfStock / amountInStock;
   }
 
   void addPurchase(PurchaseTransaction purchase) {
     purchaseHistory.add(purchase);
-    recalculateAmountInStock();
+    save();
   }
 
-  /// Deducts using FIFO by expiration date
-  void deduct(double amountToDeduct) {
-    purchaseHistory.sort((a, b) {
-      final aExp = a.expirationDate ?? DateTime(2100);
-      final bExp = b.expirationDate ?? DateTime(2100);
-      return aExp.compareTo(bExp);
+  void use(double amountToDeduct) {
+    final available =
+        purchaseHistory.where((p) => p.remainingAmount > 0).toList();
+    available.sort((a, b) {
+      if (a.expirationDate == null) return 1;
+      if (b.expirationDate == null) return -1;
+      return a.expirationDate!.compareTo(b.expirationDate!);
     });
 
-    double remaining = amountToDeduct;
-
-    for (var purchase in purchaseHistory) {
-      if (remaining <= 0) break;
-      final deduct = remaining < purchase.amount ? remaining : purchase.amount;
-      purchase.amount -= deduct;
-      remaining -= deduct;
+    double remainingToDeduct = amountToDeduct;
+    for (var purchase in available) {
+      if (remainingToDeduct <= 0) break;
+      final canUse = remainingToDeduct < purchase.remainingAmount
+          ? remainingToDeduct
+          : purchase.remainingAmount;
+      purchase.usedAmount += canUse;
+      remainingToDeduct -= canUse;
     }
-
-    purchaseHistory.removeWhere((p) => p.amount <= 0);
-    recalculateAmountInStock();
+    save();
   }
 
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'amountInStock': amountInStock,
-        'unit': unit,
-        'unitType': unitType.name,
-        'costPerUnit': costPerUnit,
-        'notes': notes,
-        'category': category,
-        'expirationDate': expirationDate?.toIso8601String(),
-        'purchaseHistory': purchaseHistory.map((p) {
-          return <String, dynamic>{
-            'date': p.date.toIso8601String(),
-            'amount': p.amount,
-            'cost': p.cost,
-            'expirationDate': p.expirationDate?.toIso8601String(),
-          };
-        }).toList(),
-      };
+  void restore(double amountToRestore) {
+    final used = purchaseHistory.where((p) => p.usedAmount > 0).toList();
+    used.sort((a, b) {
+      if (a.expirationDate == null) return -1;
+      if (b.expirationDate == null) return 1;
+      return b.expirationDate!.compareTo(a.expirationDate!);
+    });
 
-  factory InventoryItem.fromJson(Map<String, dynamic> json) => InventoryItem(
-        name: json['name'],
-        amountInStock: (json['amountInStock'] as num).toDouble(),
-        unit: json['unit'],
-        unitType: UnitType.values.firstWhere((e) => e.name == json['unitType']),
-        costPerUnit: (json['costPerUnit'] as num?)?.toDouble(),
-        notes: json['notes'],
-        category: json['category'],
-        expirationDate: json['expirationDate'] != null ? DateTime.parse(json['expirationDate']) : null,
-        purchaseHistory: (json['purchaseHistory'] as List).map((pJson) => PurchaseTransaction(
-              date: DateTime.parse(pJson['date']),
-              amount: (pJson['amount'] as num).toDouble(),
-              cost: (pJson['cost'] as num).toDouble(),
-              expirationDate: pJson['expirationDate'] != null ? DateTime.parse(pJson['expirationDate']) : null,
-            )).toList(),
-      );
+    double remainingToRestore = amountToRestore;
+    for (var purchase in used) {
+      if (remainingToRestore <= 0) break;
+      final canRestore = remainingToRestore < purchase.usedAmount
+          ? remainingToRestore
+          : purchase.usedAmount;
+      purchase.usedAmount -= canRestore;
+      remainingToRestore -= canRestore;
+    }
+    save();
+  }
+
+  factory InventoryItem.fromJson(Map<String, dynamic> json) {
+    return InventoryItem(
+      name: json['name'],
+      unit: json['unit'],
+      unitType: UnitType.values.firstWhere((e) => e.name == json['unitType']),
+      category: json['category'],
+      notes: json['notes'],
+      purchaseHistory: (json['purchaseHistory'] as List)
+          .map((p) => PurchaseTransaction.fromJson(p))
+          .toList(),
+    );
+  }
 }

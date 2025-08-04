@@ -39,7 +39,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
   DateTime? expirationDate; // State for expiration date
   String unit = 'packets';
 
-  @override
+@override
   void initState() {
     super.initState();
     if (widget.existing != null) {
@@ -49,8 +49,23 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
       amountController.text = yeast['amount']?.toString() ?? '';
       unit = yeast['unit'] ?? 'packets';
       costController.text = yeast['cost']?.toString() ?? '';
-      purchaseDate = yeast['purchaseDate'] ?? DateTime.now();
-      expirationDate = yeast['expirationDate'];
+
+      // FIX: Safely handle dates that might be a String or a DateTime object
+      final pDate = yeast['purchaseDate'];
+      if (pDate is String) {
+        purchaseDate = DateTime.tryParse(pDate) ?? DateTime.now();
+      } else if (pDate is DateTime) {
+        purchaseDate = pDate;
+      } else {
+        purchaseDate = DateTime.now();
+      }
+
+      final expDate = yeast['expirationDate'];
+      if (expDate is String) {
+        expirationDate = DateTime.tryParse(expDate);
+      } else if (expDate is DateTime) {
+        expirationDate = expDate;
+      }
     }
   }
 

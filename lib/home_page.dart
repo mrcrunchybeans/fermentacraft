@@ -90,6 +90,13 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+    String _formatDaysLeft(int days) {
+    if (days < 0) return "Expired"; // Fallback for already expired items
+    if (days == 0) return "Expires today";
+    if (days == 1) return "Expires tomorrow";
+    return "Expires in $days days";
+  }
+
 
   Widget _buildDashboardCard(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap}) {
     return Card(
@@ -179,12 +186,21 @@ class _HomePageState extends State<HomePage> {
             ValueListenableBuilder(
               valueListenable: Hive.box<InventoryItem>('inventory').listenable(),
               builder: (context, Box<InventoryItem> box, _) {
-                final thirtyDaysFromNow = DateTime.now().add(const Duration(days: 30));
-                
+                // --- ROBUST DATE LOGIC ---
+                // 1. Get the current date with the time set to midnight (00:00:00)
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
+                // 2. Calculate the cutoff date 30 days from today
+                final thirtyDaysFromNow = today.add(const Duration(days: 30));
+
                 final expiringItems = box.values.where((item) {
                   if (item.expirationDate == null) return false;
-                  return item.expirationDate!.isBefore(thirtyDaysFromNow) &&
-                         item.expirationDate!.isAfter(DateTime.now());
+                  
+                  // 3. Normalize the item's expiration date to midnight
+                  final itemExpiryDate = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+                  
+                  // 4. Check if the date is within the next 30 days and not in the past
+                  return itemExpiryDate.isBefore(thirtyDaysFromNow) && !itemExpiryDate.isBefore(today);
                 }).toList();
 
                 expiringItems.sort((a, b) => a.expirationDate!.compareTo(b.expirationDate!));
@@ -199,13 +215,18 @@ class _HomePageState extends State<HomePage> {
                   itemCount: expiringItems.length,
                   itemBuilder: (context, index) {
                     final item = expiringItems[index];
-                    final daysLeft = item.expirationDate!.difference(DateTime.now()).inDays;
+                    
+                    // --- CLEARER DAYS LEFT CALCULATION ---
+                    final itemExpiryDate = DateTime(item.expirationDate!.year, item.expirationDate!.month, item.expirationDate!.day);
+                    final daysLeft = itemExpiryDate.difference(today).inDays;
+                    
                     return InkWell(
-                      onTap: () => InventoryItemDetailView.show(context, item),
+                      // --- NAVIGATION FIX ---
+                      onTap: () => InventoryItemDetailView.show(context, item.key),
                       child: ListTile(
                         leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
                         title: Text(item.name),
-                        subtitle: Text("Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}"),
+                        subtitle: Text(_formatDaysLeft(daysLeft)), // Use the helper
                         trailing: Text(DateFormat.yMMMd().format(item.expirationDate!)),
                       ),
                     );

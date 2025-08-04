@@ -1,36 +1,42 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/utils/inventory_item_extensions.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory_item.dart';
 import '../widgets/log_purchase_dialog.dart';
 import '../widgets/edit_inventory_dialog.dart';
 import '../utils/unit_conversion.dart';
-import 'models/purchase_transaction.dart';
 import 'widgets/edit_purchase_dialog.dart';
 
-class InventoryItemDetailView extends StatelessWidget {
-  final InventoryItem item;
+class InventoryItemDetailView extends StatefulWidget {
+  // Use the key for robust data fetching.
+  final dynamic itemKey;
 
-  const InventoryItemDetailView({super.key, required this.item});
+  const InventoryItemDetailView({super.key, required this.itemKey});
 
-  static void show(BuildContext context, InventoryItem item) {
+  // The show method now accepts the key.
+  static void show(BuildContext context, dynamic itemKey) {
+    final item = Hive.box<InventoryItem>('inventory').get(itemKey);
+    if (item == null) return; // Don't show if item doesn't exist
+
     if (MediaQuery.of(context).size.width < 600 || !kIsWeb) {
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: Text(item.name)),
-          body: InventoryItemDetailView(item: item),
-        ),
+        // The Scaffold is now inside the Stateful widget itself
+        builder: (_) => InventoryItemDetailView(itemKey: itemKey),
       ));
     } else {
       showDialog(
         context: context,
         builder: (_) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
             child: Material(
-              child: InventoryItemDetailView(item: item),
+              borderRadius: BorderRadius.circular(20),
+              clipBehavior: Clip.antiAlias,
+              child: InventoryItemDetailView(itemKey: itemKey),
             ),
           ),
         ),
@@ -39,77 +45,90 @@ class InventoryItemDetailView extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit);
-    // ✅ Normalize unit here to prevent dropdown crash
-    String targetUnit = UnitConversion.normalizeUnit(item.unit);
+  State<InventoryItemDetailView> createState() =>
+      _InventoryItemDetailViewState();
+}
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(item.name),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Details'),
-              Tab(text: 'Purchase History'),
-            ],
+class _InventoryItemDetailViewState extends State<InventoryItemDetailView> {
+  late String targetUnit;
+
+  @override
+  void initState() {
+    super.initState();
+    // Perform an initial lookup to set the default unit.
+    final item = Hive.box<InventoryItem>('inventory').get(widget.itemKey);
+    targetUnit = UnitConversion.normalizeUnit(item?.unit ?? 'grams');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrap the entire UI in a ValueListenableBuilder to get live data.
+    return ValueListenableBuilder<Box<InventoryItem>>(
+      valueListenable: Hive.box<InventoryItem>('inventory').listenable(),
+      builder: (context, box, _) {
+        final item = box.get(widget.itemKey);
+
+        if (item == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Item Not Found")),
+            body: const Center(child: Text("This item may have been deleted.")),
+          );
+        }
+
+        return DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(item.name),
+              bottom: const TabBar(
+                tabs: [
+                  Tab(text: 'Details'),
+                  Tab(text: 'Purchase History'),
+                ],
+              ),
+            ),
+            body: TabBarView(
+              children: [
+                _buildDetailsTab(item, context),
+                _buildPurchaseHistoryTab(item, context),
+              ],
+            ),
+            bottomNavigationBar: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  TextButton(
+                    child: const Text("Close"),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.add_shopping_cart),
+                    label: const Text("Log Purchase"),
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => LogPurchaseDialog(item: item),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    tooltip: 'Edit Item Details',
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => EditInventoryDialog(item: item),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildDetailsTab(item, costFormatted, context, targetUnit),
-            _buildPurchaseHistoryTab(item, context),
-          ],
-        ),
-        bottomNavigationBar: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              TextButton(
-                child: const Text("Close"),
-                onPressed: () => Navigator.pop(context),
-              ),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.add_shopping_cart),
-                label: const Text("Log Purchase"),
-                onPressed: () async {
-                  final updated = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => LogPurchaseDialog(item: item),
-                  );
-                  if (updated == true && context.mounted) {
-                    (context as Element).markNeedsBuild();
-                  }
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Edit Item Details',
-                onPressed: () async {
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => EditInventoryDialog(item: item),
-                  );
-                  if (result == true && context.mounted) {
-                    (context as Element).markNeedsBuild();
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildDetailsTab(
-    InventoryItem item,
-    String costFormatted,
-    BuildContext context,
-    String targetUnit,
-  ) {
+  Widget _buildDetailsTab(InventoryItem item, BuildContext context) {
+    final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit);
     final converted = UnitConversion.tryConvertCostPerUnit(
       amount: 1.0,
       fromUnit: item.unit,
@@ -126,7 +145,8 @@ class InventoryItemDetailView extends StatelessWidget {
           "${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}",
         ),
         if (item.expirationDate != null)
-          _buildDetailRow("Earliest Expiration", DateFormat.yMMMd().format(item.expirationDate!)),
+          _buildDetailRow(
+              "Earliest Expiration", DateFormat.yMMMd().format(item.expirationDate!)),
         _buildDetailRow("Avg. Cost per Unit", "$costFormatted / ${item.unit}"),
         if (converted != null && targetUnit != item.unit)
           _buildDetailRow(
@@ -142,12 +162,14 @@ class InventoryItemDetailView extends StatelessWidget {
               DropdownButton<String>(
                 value: targetUnit,
                 items: UnitConversion.getUnitListFor(item.unitType)
-                    .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
+                    .map((unit) =>
+                        DropdownMenuItem(value: unit, child: Text(unit)))
                     .toList(),
                 onChanged: (val) {
                   if (val != null) {
-                    targetUnit = val;
-                    (context as Element).markNeedsBuild();
+                    setState(() {
+                      targetUnit = val;
+                    });
                   }
                 },
               ),
@@ -157,7 +179,8 @@ class InventoryItemDetailView extends StatelessWidget {
         if (item.notes != null && item.notes!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Text(item.notes!, style: TextStyle(color: Colors.grey.shade600)),
+            child:
+                Text(item.notes!, style: TextStyle(color: Colors.grey.shade600)),
           ),
       ],
     );
@@ -177,7 +200,8 @@ class InventoryItemDetailView extends StatelessWidget {
         final date = DateFormat.yMMMd().format(e.date);
         return ListTile(
           leading: const Icon(Icons.shopping_cart),
-          title: Text("${e.amount.toStringAsFixed(2)} ${item.getDisplayUnit(e.amount)} for $cost"),
+          title: Text(
+              "${e.amount.toStringAsFixed(2)} ${item.getDisplayUnit(e.amount)} for $cost"),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -190,18 +214,14 @@ class InventoryItemDetailView extends StatelessWidget {
           trailing: IconButton(
             icon: const Icon(Icons.edit, color: Colors.blue),
             tooltip: 'Edit Purchase',
-            onPressed: () async {
-              final updated = await showDialog<PurchaseTransaction>(
+            onPressed: () {
+              showDialog(
                 context: context,
                 builder: (_) => EditPurchaseDialog(
                   entry: e,
                   item: item,
-                  index: i,
                 ),
               );
-              if (updated != null && context.mounted) {
-                (context as Element).markNeedsBuild();
-              }
             },
           ),
         );

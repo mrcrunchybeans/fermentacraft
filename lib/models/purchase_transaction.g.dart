@@ -14,20 +14,21 @@ class PurchaseTransactionAdapter extends TypeAdapter<PurchaseTransaction> {
   PurchaseTransaction read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return PurchaseTransaction(
       date: fields[0] as DateTime,
       amount: fields[1] as double,
       cost: fields[2] as double,
       expirationDate: fields[3] as DateTime?,
+      usedAmount: fields[4] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, PurchaseTransaction obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.date)
       ..writeByte(1)
@@ -35,7 +36,9 @@ class PurchaseTransactionAdapter extends TypeAdapter<PurchaseTransaction> {
       ..writeByte(2)
       ..write(obj.cost)
       ..writeByte(3)
-      ..write(obj.expirationDate);
+      ..write(obj.expirationDate)
+      ..writeByte(4)
+      ..write(obj.usedAmount);
   }
 
   @override

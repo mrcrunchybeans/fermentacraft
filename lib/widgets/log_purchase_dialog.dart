@@ -15,6 +15,7 @@ class LogPurchaseDialog extends StatefulWidget {
 class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
   final _formKey = GlobalKey<FormState>();
   DateTime _date = DateTime.now();
+  DateTime? _expirationDate; // Added for expiration date logging
   double _amount = 0;
   double _cost = 0;
 
@@ -22,52 +23,43 @@ class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
   final _costController = TextEditingController();
 
   void _saveTransaction() {
-    // 1. First, validate the form.
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
 
-      // 2. Create the transaction.
+      // FIX: The logic is now much simpler.
+      
+      // 1. Create the new transaction.
       final transaction = PurchaseTransaction(
         amount: _amount,
         cost: _cost,
         date: _date,
+        expirationDate: _expirationDate,
       );
-      widget.item.purchaseHistory.add(transaction);
 
-      // 3. Recalculate the weighted cost for the entire inventory.
-      double runningTotalAmount = 0;
-      double runningTotalCost = 0;
+      // 2. Add it to the item's history using the helper method.
+      //    This automatically saves the parent item.
+      widget.item.addPurchase(transaction);
 
-      for (final tx in widget.item.purchaseHistory) {
-          runningTotalAmount += tx.amount;
-          runningTotalCost += tx.cost;
-      }
-
-      // 4. Update the parent inventory item.
-      widget.item.amountInStock = runningTotalAmount;
-      widget.item.costPerUnit = runningTotalAmount > 0 ? runningTotalCost / runningTotalAmount : 0;
-      widget.item.save();
-
-      // 5. Defensively clear controllers before popping the dialog.
-      // This prevents a common framework error where a text field with invalid
-      // input (e.g., a single ".") crashes upon disposal.
-      _amountController.clear();
-      _costController.clear();
-
-      // 6. Close the dialog.
-      Navigator.of(context).pop();
+      // 3. Close the dialog.
+      Navigator.of(context).pop(true);
     }
   }
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate(bool isExpiration) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: (isExpiration ? _expirationDate : _date) ?? DateTime.now(),
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
     );
     if (picked != null) {
-      setState(() => _date = picked);
+      setState(() {
+        if (isExpiration) {
+          _expirationDate = picked;
+        } else {
+          _date = picked;
+        }
+      });
     }
   }
 
@@ -81,67 +73,65 @@ class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
   @override
   Widget build(BuildContext context) {
     double? unitCost;
-    if (_amount > 0 && _cost > 0) {
-      unitCost = _cost / _amount;
+    final currentAmount = double.tryParse(_amountController.text) ?? 0;
+    final currentCost = double.tryParse(_costController.text) ?? 0;
+    if (currentAmount > 0 && currentCost > 0) {
+      unitCost = currentCost / currentAmount;
     }
 
     return AlertDialog(
       title: Text("Log Purchase: ${widget.item.name}"),
       content: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.calendar_today),
-              label: Text("Date: ${DateFormat.yMMMd().format(_date)}"),
-              onPressed: _pickDate,
-            ),
-            TextFormField(
-              controller: _amountController,
-              decoration: const InputDecoration(labelText: "Amount Purchased"),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (val) => setState(() => _amount = double.tryParse(val) ?? 0),
-              onSaved: (val) => _amount = double.tryParse(val ?? '0') ?? 0,
-              validator: (val) {
-                if (val == null || val.isEmpty) {
-                  return "Required";
-                }
-                if (double.tryParse(val) == null) {
-                  return "Please enter a valid number";
-                }
-                if (double.parse(val) <= 0) {
-                  return "Amount must be positive";
-                }
-                return null; // The input is valid
-              },
-            ),
-            TextFormField(
-              controller: _costController,
-              decoration: const InputDecoration(labelText: "Total Cost (\$)"),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (val) => setState(() => _cost = double.tryParse(val) ?? 0),
-              onSaved: (val) => _cost = double.tryParse(val ?? '0') ?? 0,
-              validator: (val) {
-                if (val == null || val.isEmpty) {
-                  return "Required";
-                }
-                if (double.tryParse(val) == null) {
-                  return "Please enter a valid number";
-                }
-                if (double.parse(val) <= 0) {
-                  return "Cost must be positive";
-                }
-                return null; // The input is valid
-              },
-            ),
-            const SizedBox(height: 8),
-            if (unitCost != null)
-              Text(
-                "Cost per ${widget.item.unit}: \$${unitCost.toStringAsFixed(2)}",
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _amountController,
+                decoration: InputDecoration(labelText: "Amount Purchased (${widget.item.unit})"),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onSaved: (val) => _amount = double.tryParse(val ?? '0') ?? 0,
+                validator: (val) {
+                  if (val == null || val.isEmpty) return "Required";
+                  if ((double.tryParse(val) ?? 0) <= 0) return "Must be positive";
+                  return null;
+                },
               ),
-          ],
+              TextFormField(
+                controller: _costController,
+                decoration: const InputDecoration(labelText: "Total Cost (\$)"),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onSaved: (val) => _cost = double.tryParse(val ?? '0') ?? 0,
+                validator: (val) {
+                  if (val == null || val.isEmpty) return "Required";
+                   if ((double.tryParse(val) ?? 0) <= 0) return "Must be positive";
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              if (unitCost != null)
+                Text(
+                  "Cost per ${widget.item.unit}: \$${unitCost.toStringAsFixed(2)}",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Purchased: ${DateFormat.yMMMd().format(_date)}"),
+                  TextButton(child: const Text('Change'), onPressed: () => _pickDate(false)),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                   Text("Expires: ${_expirationDate != null ? DateFormat.yMMMd().format(_expirationDate!) : 'Not set'}"),
+                  TextButton(child: const Text('Set'), onPressed: () => _pickDate(true)),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       actions: [

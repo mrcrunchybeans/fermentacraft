@@ -16,6 +16,7 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return BatchModel(
       id: fields[0] as String,
       name: fields[1] as String,
@@ -26,27 +27,24 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
       finalYieldUnit: fields[32] as String?,
-      fermentationStages: (fields[6] as List).cast<FermentationStage>(),
-      measurementLogs: (fields[7] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList(),
+      fermentationStages:
+          (fields[6] as List).cast<FermentationStage>(),
+      measurementLogs:
+          (fields[7] as List).cast<Map<String, dynamic>>(),
       status: fields[8] as String,
       notes: fields[9] as String?,
-      deductedIngredients: Map<String, bool>.from(fields[10] as Map),
+      deductedIngredients:
+          (fields[10] as Map).cast<String, bool>(),
       type: fields[11] as String?,
       prepNotes: fields[25] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
-      ingredients: (fields[14] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList(),
+      ingredients:
+          (fields[14] as List).cast<Map<String, dynamic>>(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
-      additives: (fields[16] as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList(),
-      yeast: fields[17] == null
-          ? null
-          : Map<String, dynamic>.from(fields[17] as Map),
+      additives:
+          (fields[16] as List).cast<Map<String, dynamic>>(),
+      yeast: (fields[17] as List).cast<Map>(),
       og: fields[20] as double?,
       fg: fields[21] as double?,
       abv: fields[22] as double?,
@@ -55,12 +53,11 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       packagingDate: fields[30] as DateTime?,
       finalNotes: fields[31] as String?,
       tastingRating: fields[26] as int?,
-      tastingNotes: fields[27] == null
-          ? null
-          : Map<String, String>.from(fields[27] as Map),
+      tastingNotes:
+          (fields[27] as Map?)?.cast<String, String>(),
       packagingMethod: fields[28] as String?,
       finalYield: fields[29] as double?,
-      isArchived: fields[33] as bool? ?? false,
+      isArchived: fields[33] as bool,
     );
   }
 

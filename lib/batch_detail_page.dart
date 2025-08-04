@@ -8,6 +8,7 @@ import '../models/batch_model.dart';
 import '../models/planned_event.dart';
 import 'models/inventory_item.dart';
 import 'models/purchase_transaction.dart';
+import 'utils/unit_conversion.dart';
 import 'widgets/add_ingredient_dialog.dart';
 import '../widgets/add_additive_dialog.dart';
 import '../utils/batch_utils.dart';
@@ -112,8 +113,60 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     super.dispose();
   }
 
-  // FIX 1: All methods, including build(), now live inside the State class.
-  
+Future<void> _editIngredientDialog(BatchModel batch, int index) async {
+  final existing = batch.ingredients[index];
+  final correctedMap = Map<String, dynamic>.from(existing);
+
+  if (correctedMap['purchaseDate'] is String) {
+    correctedMap['purchaseDate'] = DateTime.tryParse(correctedMap['purchaseDate']);
+  }
+  if (correctedMap['expirationDate'] is String) {
+    correctedMap['expirationDate'] = DateTime.tryParse(correctedMap['expirationDate']);
+  }
+
+  await showDialog(
+    context: context,
+    builder: (_) => AddIngredientDialog(
+      unitType: inferUnitType(correctedMap['unit'] ?? 'g'),
+      existing: correctedMap,
+      onAddToRecipe: (updated) {
+        batch.ingredients[index] = updated;
+        batch.save();
+      },
+    ),
+  );
+}
+
+  Future<void> _editAdditiveDialog(BatchModel batch, int index) async {
+    final existing = batch.additives[index];
+    await showDialog(
+      context: context,
+      builder: (_) => AddAdditiveDialog(
+        mustPH: 3.4,
+        volume: batch.batchVolume ?? 5.0,
+        existing: Map<String, dynamic>.from(existing),
+        onAdd: (updated) {
+          batch.additives[index] = updated;
+          batch.save();
+        },
+      ),
+    );
+  }
+
+  Future<void> _editYeastDialog(BatchModel batch, int index) async {
+    final existing = batch.yeast[index];
+    await showDialog(
+      context: context,
+      builder: (_) => AddYeastDialog(
+        existing: Map<String, dynamic>.from(existing),
+        onAdd: (updated) {
+          batch.yeast[index] = updated;
+          batch.save();
+        },
+      ),
+    );
+  }
+
   void _toggleBrewMode() {
     setState(() {
       _isBrewModeEnabled = !_isBrewModeEnabled;
@@ -242,113 +295,302 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
-  Widget _yeastSection(BatchModel batch, {bool showEditButton = true}) {
-    final yeast =
-        batch.yeast != null ? Map<String, dynamic>.from(batch.yeast!) : null;
-    final yeastName = yeast?['name'] ?? 'Unnamed Yeast';
-    final yeastAmount = (yeast?['amount'] as num?)?.toDouble() ?? 0.0;
-    final yeastUnit = yeast?['unit'] ?? '';
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Box<BatchModel>>(
+      valueListenable: Hive.box<BatchModel>('batches').listenable(),
+      builder: (context, batchBox, _) {
+        final batch = batchBox.get(widget.batchKey);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle('Yeast'),
-        if (yeast == null)
-          const Text('No yeast selected.')
-        else
-          ListTile(
-            leading: const Icon(Icons.bubble_chart),
-            title: Text('$yeastAmount $yeastUnit $yeastName'),
+        if (batch == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Batch Not Found")),
+            body: const Center(
+              child: Text("This batch may have been deleted."),
+            ),
+          );
+        }
+
+        return ValueListenableBuilder<Box<InventoryItem>>(
+          valueListenable: Hive.box<InventoryItem>('inventory').listenable(),
+          builder: (context, inventoryBox, _) {
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(batch.name),
+                actions: [
+                  IconButton(
+                    icon: Icon(
+                      _isBrewModeEnabled
+                          ? Icons.lightbulb
+                          : Icons.lightbulb_outline,
+                      color: _isBrewModeEnabled ? Colors.amber : null,
+                    ),
+                    tooltip: 'Toggle Brew Mode',
+                    onPressed: _toggleBrewMode,
+                  ),
+                ],
+                bottom: TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(text: 'Planning'),
+                    Tab(text: 'Preparation'),
+                    Tab(text: 'Fermenting'),
+                    Tab(text: 'Completed'),
+                  ],
+                ),
+              ),
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildPlanningTab(batch),
+                  _buildPreparationTab(batch),
+                  _buildFermentingTab(batch),
+                  _buildCompletedTab(batch),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPlanningTab(BatchModel batch) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _recipeSummaryCard(batch),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.sync),
+            label: const Text('Sync From Recipe'),
+            onPressed: () => _showSyncFromRecipeDialog(batch),
           ),
-        if (showEditButton) ...[
+          _sectionTitle('Ingredients'),
+          _ingredientsList(batch),
           const SizedBox(height: 8),
           ElevatedButton.icon(
-            icon: const Icon(Icons.edit),
-            label: Text(yeast == null ? 'Add Yeast' : 'Edit Yeast'),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Ingredient'),
             onPressed: () async {
-              await showDialog(
+              await showDialog<void>(
                 context: context,
-                builder: (_) => AddYeastDialog(
-                  existing: batch.yeast,
-                  onAdd: (newYeast) {
-                    batch.yeast = newYeast;
+                builder: (_) => AddIngredientDialog(
+                  unitType: UnitType.mass,
+                  onAddToRecipe: (ingredient) {
+                    batch.ingredients.add(ingredient);
                     batch.save();
                   },
                 ),
               );
             },
           ),
-        ]
-      ],
+          const SizedBox(height: 16),
+          // UPDATED YEAST SECTION
+          _sectionTitle('Yeast'),
+          _yeastList(batch),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Add Yeast'),
+            onPressed: () async {
+              await showDialog(
+                context: context,
+                builder: (_) => AddYeastDialog(
+                  onAdd: (newYeast) {
+                    batch.yeast.add(newYeast);
+                    batch.save();
+                  },
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          _sectionTitle('Additives'),
+          _additivesList(batch),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Add Additive'),
+            onPressed: () async {
+              await showDialog<void>(
+                context: context,
+                builder: (_) => AddAdditiveDialog(
+                  mustPH: estimateMustPH(batch),
+                  volume: batch.batchVolume ?? 5.0,
+                  onAdd: (additive) {
+                    batch.additives.add(additive);
+                    batch.save();
+                  },
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          _sectionTitle('Fermentation Profile'),
+          _fermentationStagesList(batch),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.settings),
+            label: const Text('Manage Stages'),
+            onPressed: () => _manageStages(batch),
+          ),
+          const SizedBox(height: 16),
+          _sectionTitle('Planned Events'),
+          _plannedEventsList(batch),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Add Planned Event'),
+            onPressed: () => _addPlannedEventDialog(batch),
+          ),
+          _buildStatusProgressionButton(
+            batch: batch,
+            currentStatus: 'Planning',
+            nextStatus: 'Preparation',
+            buttonText: 'Start Preparation',
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _additivesList(BatchModel batch) {
-    if (batch.additives.isEmpty) return const Text('No additives added.');
-    return Column(
-      children: batch.additives.map((rawAdditive) {
-        final additive = Map<String, dynamic>.from(rawAdditive);
-        final name = additive['name'] ?? 'Unnamed';
-        final amount = additive['amount']?.toString() ?? '?';
-        final unit = additive['unit'] ?? '';
-        final note = additive['note'] ?? '';
-        return ListTile(
-          leading: const Icon(Icons.science),
-          title: Text('$amount $unit $name'),
-          subtitle: note.isNotEmpty ? Text(note) : null,
-        );
-      }).toList(),
-    );
-  }
+  // --- PLANNING TAB LIST WIDGETS ---
+  // All list widgets now support long-press to edit.
 
   Widget _ingredientsList(BatchModel batch) {
     if (batch.ingredients.isEmpty) return const Text('No ingredients added.');
     final inventoryBox = Hive.box<InventoryItem>('inventory');
     return Column(
-      children: batch.ingredients.map((ingredientMap) {
+      children: batch.ingredients.asMap().entries.map((entry) {
+        final index = entry.key;
+        final ingredientMap = entry.value;
         final ingredient = Map<String, dynamic>.from(ingredientMap);
-        final name = ingredient['name'] ?? 'Unnamed';
+        final name = ingredient['name'] as String? ?? 'Unnamed';
         final amount = (ingredient['amount'] as num?)?.toDouble() ?? 0;
-        final unit = ingredient['unit'] ?? '';
-        final note = ingredient['note'] ?? '';
-        final inventoryItem = inventoryBox.values
-            .cast<InventoryItem?>()
-            .firstWhere(
-                (item) => item?.name.toLowerCase() == name.toLowerCase(),
-                orElse: () => null);
-        final inStock = inventoryItem?.amountInStock;
-        final sufficient = (inStock ?? 0) >= amount;
-        return ListTile(
-          title: Text('$amount $unit $name'),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (note.isNotEmpty) Text(note),
-              if (inventoryItem != null)
-                Row(
-                  children: [
-                    Text(
-                      'In stock: ${inStock?.toStringAsFixed(2) ?? 'N/A'} $unit',
+        final unit = ingredient['unit'] as String? ?? '';
+        final note = ingredient['note'] as String? ?? '';
+        final inventoryItem = inventoryBox.values.firstWhere(
+          (item) => item.name.toLowerCase() == name.toLowerCase(),
+          orElse: () => InventoryItem(name: '', unit: '', unitType: UnitType.volume, category: '', purchaseHistory: []),
+        );
+        final inStock = inventoryItem.amountInStock;
+        final sufficient = inStock >= amount;
+
+        return InkWell(
+          onLongPress: () => _editIngredientDialog(batch, index),
+          child: ListTile(
+            leading: const Icon(Icons.liquor_outlined),
+            title: Text('$amount $unit $name'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (note.isNotEmpty) Text(note),
+                if (inventoryItem.name.isNotEmpty)
+                   Text(
+                      'In stock: ${inStock.toStringAsFixed(2)} $unit',
                       style: TextStyle(
                         color: sufficient ? Colors.green : Colors.red,
                         fontWeight: FontWeight.w500,
                       ),
-                    ),
-                    if (!sufficient)
-                      const Padding(
-                        padding: EdgeInsets.only(left: 6),
-                        child:
-                            Icon(Icons.warning, color: Colors.red, size: 18),
-                      ),
-                  ],
-                ),
-            ],
+                    )
+                else
+                   const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
           ),
         );
       }).toList(),
     );
   }
 
+  Widget _additivesList(BatchModel batch) {
+    if (batch.additives.isEmpty) return const Text('No additives added.');
+    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    return Column(
+      children: batch.additives.asMap().entries.map((entry) {
+        final index = entry.key;
+        final additiveMap = entry.value;
+        final additive = Map<String, dynamic>.from(additiveMap);
+        final name = additive['name'] as String? ?? 'Unnamed';
+        final amount = (additive['amount'] as num?)?.toDouble() ?? 0;
+        final unit = additive['unit'] as String? ?? '';
+        final note = additive['note'] as String? ?? '';
+        final inventoryItem = inventoryBox.values.firstWhere(
+          (item) => item.name.toLowerCase() == name.toLowerCase(),
+          orElse: () => InventoryItem(name: '', unit: '', unitType: UnitType.volume, category: '', purchaseHistory: []),
+        );
+        final inStock = inventoryItem.amountInStock;
+        final sufficient = inStock >= amount;
+
+        return InkWell(
+          onLongPress: () => _editAdditiveDialog(batch, index),
+          child: ListTile(
+            leading: const Icon(Icons.science),
+            title: Text('$amount $unit $name'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (note.isNotEmpty) Text(note),
+                if (inventoryItem.name.isNotEmpty)
+                   Text(
+                      'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                      style: TextStyle(
+                        color: sufficient ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    )
+                else
+                   const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _yeastList(BatchModel batch) {
+    if (batch.yeast.isEmpty) return const Text('No yeast added.');
+    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    return Column(
+      children: batch.yeast.asMap().entries.map((entry) {
+        final index = entry.key;
+        final yeastMap = entry.value;
+        final yeast = Map<String, dynamic>.from(yeastMap);
+        final name = yeast['name'] as String? ?? 'Unnamed Yeast';
+        final amount = (yeast['amount'] as num?)?.toDouble() ?? 0;
+        final unit = yeast['unit'] as String? ?? '';
+        final inventoryItem = inventoryBox.values.firstWhere(
+          (item) => item.name.toLowerCase() == name.toLowerCase(),
+          orElse: () => InventoryItem(name: '', unit: '', unitType: UnitType.mass, category: '', purchaseHistory: []),
+        );
+        final inStock = inventoryItem.amountInStock;
+        final sufficient = inStock >= amount;
+
+        return InkWell(
+          onLongPress: () => _editYeastDialog(batch, index),
+          child: ListTile(
+            leading: const Icon(Icons.bubble_chart),
+            title: Text('$amount $unit $name'),
+            subtitle: inventoryItem.name.isNotEmpty
+                ? Text(
+                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                    style: TextStyle(
+                      color: sufficient ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                : const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+   
   Widget _recipeSummaryCard(BatchModel batch) {
     return Card(
       child: Padding(
@@ -649,7 +891,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   fermentationStages: batch.safeFermentationStages
                       .map((e) => e.toJson())
                       .toList(),
-                  yeast: batch.yeast != null ? [batch.yeast!] : [],
+                  yeast: batch.yeast,
                   notes: batch.notes ?? '',
                   batchVolume: batch.batchVolume,
                   plannedOg: batch.plannedOg,
@@ -684,11 +926,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     if (confirmed != true || !mounted) return;
     final recipe = selectedRecipe;
     if (recipe == null) return;
-
     if (syncYeast) {
-      batch.yeast = recipe.yeast.isNotEmpty
-          ? Map<String, dynamic>.from(recipe.yeast.first)
-          : null;
+      batch.yeast = List<Map<String, dynamic>>.from(recipe.yeast);
     }
     if (syncIngredients) {
       batch.ingredients =
@@ -748,145 +987,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     }
   }
   
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<Box<BatchModel>>(
-      valueListenable: Hive.box<BatchModel>('batches').listenable(),
-      builder: (context, box, _) {
-        final batch = box.get(widget.batchKey);
-
-        if (batch == null) {
-          return Scaffold(
-            appBar: AppBar(title: const Text("Batch Not Found")),
-            body: const Center(
-              child: Text("This batch may have been deleted."),
-            ),
-          );
-        }
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(batch.name),
-            actions: [
-              IconButton(
-                icon: Icon(
-                  _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
-                  color: _isBrewModeEnabled ? Colors.amber : null,
-                ),
-                tooltip: 'Toggle Brew Mode',
-                onPressed: _toggleBrewMode,
-              ),
-            ],
-            bottom: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: 'Planning'),
-                Tab(text: 'Preparation'),
-                Tab(text: 'Fermenting'),
-                Tab(text: 'Completed'),
-              ],
-            ),
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildPlanningTab(batch),
-              _buildPreparationTab(batch),
-              _buildFermentingTab(batch),
-              _buildCompletedTab(batch),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPlanningTab(BatchModel batch) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _recipeSummaryCard(batch),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.sync),
-            label: const Text('Sync From Recipe'),
-            onPressed: () => _showSyncFromRecipeDialog(batch),
-          ),
-          _sectionTitle('Ingredients'),
-          _ingredientsList(batch),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add Ingredient'),
-            onPressed: () async {
-              await showDialog<void>(
-                context: context,
-                builder: (_) => AddIngredientDialog(
-                  // FIX 2: Added missing 'unitType' parameter.
-                  unitType: UnitType.mass,
-                  onAddToRecipe: (ingredient) {
-                    batch.ingredients.add(ingredient);
-                    batch.save();
-                  },
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          _yeastSection(batch),
-          const SizedBox(height: 16),
-          _sectionTitle('Additives'),
-          _additivesList(batch),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add Additive'),
-            onPressed: () async {
-              final estimatedPH = estimateMustPH(batch);
-              final volume = batch.batchVolume ?? 5;
-              await showDialog<void>(
-                context: context,
-                builder: (_) => AddAdditiveDialog(
-                  mustPH: estimatedPH,
-                  volume: volume,
-                  onAdd: (additive) {
-                    batch.additives.add(additive);
-                    batch.save();
-                  },
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
-          _sectionTitle('Fermentation Profile'),
-          _fermentationStagesList(batch),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.settings),
-            label: const Text('Manage Stages'),
-            onPressed: () => _manageStages(batch),
-          ),
-          const SizedBox(height: 16),
-          _sectionTitle('Planned Events'),
-          _plannedEventsList(batch),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add Planned Event'),
-            onPressed: () => _addPlannedEventDialog(batch),
-          ),
-          _buildStatusProgressionButton(
-            batch: batch,
-            currentStatus: 'Planning',
-            nextStatus: 'Preparation',
-            buttonText: 'Start Preparation',
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildPreparationTab(BatchModel batch) {
     // Sync controller with the latest model state
@@ -919,7 +1019,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
-  List<Widget> _buildInventoryChecklist(
+List<Widget> _buildInventoryChecklist(
       BatchModel batch, Box<InventoryItem> inventoryBox) {
     return [
       Card(
@@ -955,22 +1055,26 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           title:
               const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)),
           initiallyExpanded: true,
-          children: batch.yeast == null
+          // FIX: Updated this section to handle a list of yeasts, not just one.
+          children: batch.yeast.isEmpty
               ? [const ListTile(title: Text('No yeast added.'))]
-              : [
-                  _buildChecklistItem(
-                    batch: batch,
-                    itemData: batch.yeast!,
-                    inventoryBox: inventoryBox,
-                    onChanged: (newValue) => _handleDeductionChange(
-                      batch: batch,
-                      itemType: 'yeast',
-                      item: batch.yeast!,
-                      newValue: newValue,
-                      inventoryBox: inventoryBox,
-                    ),
-                  )
-                ],
+              : batch.yeast
+                  .asMap()
+                  .entries
+                  .map((entry) => _buildChecklistItem(
+                        batch: batch,
+                        itemData: Map<String, dynamic>.from(entry.value),
+                        inventoryBox: inventoryBox,
+                        onChanged: (newValue) => _handleDeductionChange(
+                          batch: batch,
+                          itemType: 'yeast',
+                          item: entry.value,
+                          index: entry.key,
+                          newValue: newValue,
+                          inventoryBox: inventoryBox,
+                        ),
+                      ))
+                  .toList(),
         ),
       ),
       Card(
@@ -1161,7 +1265,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       item.addPurchase(PurchaseTransaction(
         date: DateTime.now(),
         amount: amount,
-        cost: item.costPerUnit ?? 0,
+        cost: item.costPerUnit,
       ));
       item.save();
       if (mounted) {
@@ -1181,30 +1285,21 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
-  Future<void> _handleDeductionChange({
+    Future<void> _handleDeductionChange({
     required BatchModel batch,
     required String itemType,
-    required Map<String, dynamic> item,
+    required Map<dynamic, dynamic> item,
     int index = -1,
     required bool newValue,
     required Box<InventoryItem> inventoryBox,
   }) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
-    final name = item['name'] ?? 'Unnamed';
+    final name = item['name'] as String? ?? 'Unnamed';
     final amount = (item['amount'] as num?)?.toDouble() ?? 0;
-    final unit = item['unit'] ?? '';
+    final unit = item['unit'] as String? ?? '';
     final inventoryItem = inventoryBox.values
-        .cast<InventoryItem?>()
-        .firstWhere((i) => i?.name.toLowerCase() == name.toLowerCase(),
-            orElse: () => null);
-
-    if (inventoryItem == null) {
-      if (!mounted) return;
-      scaffoldMessenger
-          .showSnackBar(SnackBar(content: Text('No inventory found for "$name"')));
-      return;
-    }
+        .firstWhere((i) => i.name.toLowerCase() == name.toLowerCase());
 
     if (newValue) {
       final confirmed = await _confirmInventoryDeduction(
@@ -1221,26 +1316,23 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
     switch (itemType) {
       case 'ingredient':
-        batch.ingredients[index]['deductFromInventory'] = newValue;
+        (batch.ingredients[index])['deductFromInventory'] = newValue;
         break;
-      case 'yeast':
-        batch.yeast!['deductFromInventory'] = newValue;
-        break;
+    case 'yeast':
+      (batch.yeast[index])['deductFromInventory'] = newValue;
+      break;
       case 'additive':
-        batch.additives[index]['deductFromInventory'] = newValue;
+        (batch.additives[index])['deductFromInventory'] = newValue;
         break;
     }
-
+    
+    // Call the new FEFO methods
     if (newValue) {
-      inventoryItem.deduct(amount);
+      inventoryItem.use(amount); // <-- Use the new method
       scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text('Deducted $amount $unit from $name')));
+          SnackBar(content: Text('Used $amount $unit from $name')));
     } else {
-      inventoryItem.addPurchase(PurchaseTransaction(
-        date: DateTime.now(),
-        amount: amount,
-        cost: inventoryItem.costPerUnit ?? 0,
-      ));
+      inventoryItem.restore(amount); // <-- Use the new method
       scaffoldMessenger.showSnackBar(
           SnackBar(content: Text('Restored $amount $unit to $name')));
     }

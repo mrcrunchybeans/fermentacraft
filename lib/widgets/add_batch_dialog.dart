@@ -79,17 +79,12 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
         additives: selectedRecipe?.additives != null
             ? List<Map<String, dynamic>>.from(selectedRecipe!.additives)
             : [],
-        yeast: (selectedRecipe?.yeast != null &&
-                selectedRecipe!.yeast.isNotEmpty)
-            ? Map<String, dynamic>.from(selectedRecipe.yeast.first)
-            : null,
-        fermentationStages: selectedRecipe?.fermentationStages != null
-    ? selectedRecipe!.fermentationStages.map((e) {
-        if (e is FermentationStage) return e;
-        return FermentationStage.fromJson(e);
-      }).toList()
-      .cast<FermentationStage>() // ✅ cast to correct type
-    : [],
+        yeast: selectedRecipe?.yeast != null
+            ? List<Map<dynamic, dynamic>>.from(selectedRecipe!.yeast)
+            : [],
+        fermentationStages: selectedRecipe?.fermentationStages
+            .map((e) => FermentationStage.fromJson(Map<String, dynamic>.from(e)))
+            .toList(),
         measurementLogs: [],
         plannedEvents: [],
         deductedIngredients: {},

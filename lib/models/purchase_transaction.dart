@@ -6,35 +6,27 @@ part 'purchase_transaction.g.dart';
 class PurchaseTransaction extends HiveObject {
   @HiveField(0)
   DateTime date;
-
   @HiveField(1)
   double amount;
-
   @HiveField(2)
   double cost;
-
   @HiveField(3)
   DateTime? expirationDate;
+  @HiveField(4)
+  double usedAmount;
+
+  double get remainingAmount => amount - usedAmount;
+  double get totalCost => cost;
+
 
   PurchaseTransaction({
     required this.date,
     required this.amount,
     required this.cost,
     this.expirationDate,
+    this.usedAmount = 0.0,
   });
 
-  double get totalCost => cost;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'date': date.toIso8601String(),
-      'amount': amount,
-      'cost': cost,
-      'expirationDate': expirationDate?.toIso8601String(),
-    };
-  }
-
-  // Add this factory for consistency
   factory PurchaseTransaction.fromJson(Map<String, dynamic> json) {
     return PurchaseTransaction(
       date: DateTime.parse(json['date']),
@@ -43,6 +35,7 @@ class PurchaseTransaction extends HiveObject {
       expirationDate: json['expirationDate'] != null
           ? DateTime.parse(json['expirationDate'])
           : null,
+      usedAmount: (json['usedAmount'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

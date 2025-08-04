@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/inventory_item.dart';
-import '../models/unit_type.dart';
-import '../utils/unit_conversion.dart';
+import 'package:flutter_application_1/models/inventory_item.dart';
+import 'package:flutter_application_1/models/unit_type.dart';
+import 'package:flutter_application_1/utils/unit_conversion.dart';
+import 'package:intl/intl.dart';
 
 class EditInventoryDialog extends StatefulWidget {
   final InventoryItem item;
@@ -14,57 +15,51 @@ class EditInventoryDialog extends StatefulWidget {
 
 class _EditInventoryDialogState extends State<EditInventoryDialog> {
   final _formKey = GlobalKey<FormState>();
-  late String _name;
-  late String _category;
-  late UnitType _unitType;
-  late double _amount;
-  late String _unit;
-  late double _cost;
-  String? _notes;
-  DateTime? _expirationDate;
 
+  // --- Editable Properties ---
+  late TextEditingController _nameController;
+  late TextEditingController _notesController;
+  late String _category;
+  late String _unit;
+  late UnitType _unitType;
+  
+  // --- Data for Dropdowns ---
   final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
+  late List<String> _unitOptions;
 
   @override
   void initState() {
     super.initState();
     final item = widget.item;
-    _name = item.name;
+    
+    // Initialize controllers for editable fields
+    _nameController = TextEditingController(text: item.name);
+    _notesController = TextEditingController(text: item.notes);
     _category = item.category;
+    _unit = item.unit;
     _unitType = item.unitType;
-    _amount = item.amountInStock;
-    _unit = UnitConversion.normalizeUnit(item.unit);
-    _cost = item.costPerUnit ?? 0;
-    _notes = item.notes;
-    _expirationDate = item.expirationDate;
-  }
 
-  void _pickExpirationDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _expirationDate ?? DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
-    );
-    if (picked != null) {
-      setState(() => _expirationDate = picked);
-    }
+    _unitOptions = UnitConversion.getUnitListFor(_unitType);
+  }
+  
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _notesController.dispose();
+    super.dispose();
   }
 
   void _saveEdits() {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
 
-      widget.item
-        ..name = _name
-        ..category = _category
-        ..unitType = _unitType
-        ..amountInStock = _amount
-        ..unit = _unit
-        ..costPerUnit = _cost
-        ..notes = _notes
-        ..expirationDate = _expirationDate;
-
+      // Only save the properties that can be directly changed
+      widget.item.name = _nameController.text.trim();
+      widget.item.category = _category;
+      widget.item.unit = _unit;
+      widget.item.unitType = _unitType;
+      widget.item.notes = _notesController.text.trim();
+      
       widget.item.save();
 
       Navigator.of(context).pop(true);
@@ -73,8 +68,6 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final unitOptions = UnitConversion.getUnitListFor(_unitType);
-
     return AlertDialog(
       title: const Text('Edit Inventory Item'),
       content: SingleChildScrollView(
@@ -82,11 +75,12 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // --- Editable Fields ---
               TextFormField(
-                initialValue: _name,
+                controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Name'),
-                onSaved: (val) => _name = val!.trim(),
                 validator: (val) => val == null || val.isEmpty ? 'Required' : null,
               ),
               DropdownButtonFormField<String>(
@@ -97,43 +91,32 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 onChanged: (val) => setState(() => _category = val!),
                 decoration: const InputDecoration(labelText: 'Category'),
               ),
-              DropdownButtonFormField<UnitType>(
-                value: _unitType,
-                items: UnitType.values
-                    .map((type) => DropdownMenuItem(
-                          value: type,
-                          child: Text(type.name),
-                        ))
-                    .toList(),
-                  onChanged: (val) => setState(() {
-                    _unitType = val!;
-                    final newList = UnitConversion.getUnitListFor(_unitType);
-
-                    if (!newList.contains(_unit)) {
-                      _unit = newList.isNotEmpty ? newList.first : 'unit'; // ✅ Prevents crash
-                      if (newList.isEmpty) {
-                        debugPrint('⚠️ No units defined for $_unitType');
-                      }
-                    }
-                  }),
-                decoration: const InputDecoration(labelText: 'Unit Type'),
-              ),
               Row(
                 children: [
                   Expanded(
-                    child: TextFormField(
-                      initialValue: _amount.toString(),
-                      decoration: const InputDecoration(labelText: 'Amount in Stock'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onSaved: (val) => _amount = double.tryParse(val ?? '0') ?? 0,
-                      validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                    child: DropdownButtonFormField<UnitType>(
+                      value: _unitType,
+                      items: UnitType.values
+                          .map((type) => DropdownMenuItem(
+                                value: type,
+                                child: Text(type.name),
+                              ))
+                          .toList(),
+                          onChanged: (val) => setState(() {
+                            _unitType = val!;
+                            _unitOptions = UnitConversion.getUnitListFor(_unitType);
+                            if (!_unitOptions.contains(_unit)) {
+                              _unit = _unitOptions.isNotEmpty ? _unitOptions.first : '';
+                            }
+                          }),
+                      decoration: const InputDecoration(labelText: 'Unit Type'),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: unitOptions.contains(_unit) ? _unit : null,
-                      items: unitOptions
+                      value: _unit,
+                      items: _unitOptions
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),
                       onChanged: (val) => setState(() => _unit = val!),
@@ -143,34 +126,46 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 ],
               ),
               TextFormField(
-                initialValue: _cost.toStringAsFixed(2),
-                decoration: const InputDecoration(labelText: 'Cost per Unit (\$)'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onSaved: (val) => _cost = double.tryParse(val ?? '0') ?? 0,
-                validator: (val) => val == null || val.isEmpty ? 'Required' : null,
-              ),
-              TextFormField(
-                initialValue: _notes,
+                controller: _notesController,
                 decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                onSaved: (val) => _notes = val?.trim(),
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text('Expiration:'),
-                  const SizedBox(width: 12),
-                  Text(
-                    _expirationDate != null
-                        ? "${_expirationDate!.month}/${_expirationDate!.day}/${_expirationDate!.year}"
-                        : 'None selected',
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _pickExpirationDate,
-                    child: const Text('Pick Date'),
-                  ),
-                ],
+
+              const Divider(height: 32),
+
+              // --- Read-Only Calculated Fields ---
+              Text(
+                "Calculated from Purchase History:",
+                style: Theme.of(context).textTheme.labelSmall
               ),
+              const SizedBox(height: 8),
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text("Amount in Stock"),
+                trailing: Text(widget.item.amountInStock.toStringAsFixed(2)),
+              ),
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text("Avg. Cost per Unit"),
+                trailing: Text(NumberFormat.simpleCurrency().format(widget.item.costPerUnit)),
+              ),
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text("Earliest Expiration"),
+                trailing: Text(widget.item.expirationDate != null
+                  ? DateFormat.yMMMd().format(widget.item.expirationDate!)
+                  : "N/A"
+                ),
+              ),
+               Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  "To change amount, cost, or expiration, edit the entries in the 'Purchase History' tab.",
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600)
+                ),
+              )
             ],
           ),
         ),

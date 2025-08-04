@@ -10,111 +10,83 @@ part 'batch_model.g.dart';
 class BatchModel extends HiveObject {
   @HiveField(0)
   String id;
-
   @HiveField(1)
   String name;
-
   @HiveField(2)
   String recipeId;
-
   @HiveField(3)
   DateTime startDate;
-
   @HiveField(4)
   DateTime? bottleDate;
-
   @HiveField(5)
   double? batchVolume;
-
   @HiveField(6)
   List<FermentationStage> fermentationStages;
-  List<FermentationStage> get safeFermentationStages => fermentationStages;
-
   @HiveField(7)
   List<Map<String, dynamic>> measurementLogs;
-
   @HiveField(8)
   String status;
-
   @HiveField(9)
   String? notes;
-
   @HiveField(10)
   Map<String, bool> deductedIngredients;
-
   @HiveField(11)
   String? type;
-
   @HiveField(12)
   double? plannedOg;
-
   @HiveField(13)
   double? plannedAbv;
-
   @HiveField(14)
   List<Map<String, dynamic>> ingredients;
-  List<Map<String, dynamic>> get safeIngredients => ingredients;
-
   @HiveField(15)
   List<PlannedEvent>? plannedEvents;
-  List<PlannedEvent> get safePlannedEvents => plannedEvents ?? [];
-
   @HiveField(16)
   List<Map<String, dynamic>> additives;
-  List<Map<String, dynamic>> get safeAdditives => additives;
 
+  // UPDATED: Yeast is now a List to match ingredients/additives.
   @HiveField(17)
-  Map<String, dynamic>? yeast;
+  List<Map<dynamic, dynamic>> yeast;
 
   @HiveField(18)
   DateTime createdAt;
-
   @HiveField(19)
   List<Tag> tags;
-
   @HiveField(20)
   double? og;
-
   @HiveField(21)
   double? fg;
-
   @HiveField(22)
   double? abv;
-
   @HiveField(23)
   List<Measurement> measurements;
-  List<Measurement> get safeMeasurements => measurements;
-
-
   @HiveField(24)
   DateTime? fsuDate;
-
   @HiveField(25)
   String? prepNotes;
-
   @HiveField(26)
   int? tastingRating;
-
   @HiveField(27)
   Map<String, String>? tastingNotes;
-
   @HiveField(28)
   String? packagingMethod;
-
   @HiveField(29)
   double? finalYield;
-
   @HiveField(30)
   DateTime? packagingDate;
-
   @HiveField(31)
   String? finalNotes;
-
   @HiveField(32)
   String? finalYieldUnit;
-
   @HiveField(33)
   bool isArchived;
+
+  // Getters for safe access
+  List<FermentationStage> get safeFermentationStages => fermentationStages;
+  List<PlannedEvent> get safePlannedEvents => plannedEvents ?? [];
+  List<Measurement> get safeMeasurements => measurements;
+  List<Map<String, dynamic>> get safeIngredients =>
+    ingredients.map((i) => Map<String, dynamic>.from(i)).toList();
+
 
   BatchModel({
     required this.id,
@@ -138,7 +110,7 @@ class BatchModel extends HiveObject {
     List<Map<String, dynamic>>? ingredients,
     List<PlannedEvent>? plannedEvents,
     List<Map<String, dynamic>>? additives,
-    this.yeast,
+    List<Map<dynamic, dynamic>>? yeast, // UPDATED: Constructor parameter
     this.og,
     this.fg,
     this.abv,
@@ -157,13 +129,15 @@ class BatchModel extends HiveObject {
         ingredients = ingredients ?? [],
         plannedEvents = plannedEvents ?? [],
         additives = additives ?? [],
-        measurements = measurements ?? [];
+        measurements = measurements ?? [],
+        yeast = yeast ?? []; // UPDATED: Constructor initializer
 
   Map<String, dynamic> toJson() {
     Map<String, dynamic> safelyConvertMap(Map sourceMap) {
       final Map<String, dynamic> newMap = {};
       sourceMap.forEach((key, value) {
-        newMap[key.toString()] = value is DateTime ? value.toIso8601String() : value;
+        newMap[key.toString()] =
+            value is DateTime ? value.toIso8601String() : value;
       });
       return newMap;
     }
@@ -186,7 +160,8 @@ class BatchModel extends HiveObject {
       'ingredients': ingredients.map((ing) => safelyConvertMap(ing)).toList(),
       'plannedEvents': plannedEvents?.map((e) => e.toJson()).toList(),
       'additives': additives.map((add) => safelyConvertMap(add)).toList(),
-      'yeast': yeast != null ? safelyConvertMap(yeast!) : null,
+      // UPDATED: Handle a list of yeasts
+      'yeast': yeast.map((y) => safelyConvertMap(y)).toList(),
       'createdAt': createdAt.toIso8601String(),
       'tags': tags.map((tag) => tag.toJson()).toList(),
       'og': og,
@@ -230,7 +205,8 @@ class BatchModel extends HiveObject {
             ?.map((eJson) => PlannedEvent.fromJson(eJson))
             .toList(),
         additives: List<Map<String, dynamic>>.from(json['additives'] ?? []),
-        yeast: json['yeast'] != null ? Map<String, dynamic>.from(json['yeast']) : null,
+        // UPDATED: Handle a list of yeasts
+        yeast: List<Map<dynamic, dynamic>>.from(json['yeast'] ?? []),
         og: json['og'],
         fg: json['fg'],
         abv: json['abv'],

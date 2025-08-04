@@ -18,8 +18,6 @@ import 'widgets/tag_picker_dialog.dart';
 import 'widgets/add_yeast_dialog.dart';
 import 'dart:async';
 import 'models/purchase_transaction.dart';
-
-// FIX: Added the missing import for the UnitType enum.
 import 'models/unit_type.dart';
 
 final logger = Logger();
@@ -38,7 +36,7 @@ class RecipeBuilderPage extends StatefulWidget {
 
   final RecipeModel? existingRecipe;
   final bool isClone;
-  final int? recipeKey;
+  final dynamic recipeKey;
 
   @override
   State<RecipeBuilderPage> createState() => _RecipeBuilderPageState();
@@ -46,11 +44,11 @@ class RecipeBuilderPage extends StatefulWidget {
 
 class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   double abv = 0.0;
-  List<Map<String, dynamic>> additives = [];
+  List<Map<dynamic, dynamic>> additives = [];
   double? batchVolumeGallons;
   double? desiredAbv;
   final TextEditingController desiredAbvController = TextEditingController();
-  List<Map<String, dynamic>> ingredients = [];
+  List<Map<dynamic, dynamic>> ingredients = [];
   List<FermentationStage> fermentationStages = [];
   double fg = 1.010;
   double? measuredMustSG;
@@ -75,7 +73,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   TextEditingController volumeController = TextEditingController(text: "5.0");
   double? waterToAddLiters;
   double? weightedAverageOG;
-  List<Map<String, dynamic>> yeast = [];
+  List<Map<dynamic, dynamic>> yeast = [];
 
   @override
   void initState() {
@@ -113,15 +111,15 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       final recipe = widget.existingRecipe!;
       nameController.text = recipe.name;
       notesController.text = recipe.notes;
-      additives = List<Map<String, dynamic>>.from(recipe.additives);
-      ingredients = List<Map<String, dynamic>>.from(recipe.ingredients);
+      additives = List<Map<dynamic, dynamic>>.from(recipe.additives);
+      ingredients = List<Map<dynamic, dynamic>>.from(recipe.ingredients);
       fermentationStages = recipe.fermentationStages
-          .map((e) => FermentationStage.fromJson(e))
+          .map((e) => FermentationStage.fromJson(Map<String, dynamic>.from(e)))
           .toList();
       og = recipe.og;
       fg = recipe.fg!;
       abv = recipe.abv!;
-      yeast = List<Map<String, dynamic>>.from(recipe.yeast);
+      yeast = List<Map<dynamic, dynamic>>.from(recipe.yeast);
       tags = List<Tag>.from(recipe.tags);
     }
 
@@ -175,7 +173,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       weightedOGSum += (og as double) * amountInGallons;
     }
 
-    weightedAverageOG = totalVolumeGallons > 0 ? weightedOGSum / totalVolumeGallons : null;
+    weightedAverageOG =
+        totalVolumeGallons > 0 ? weightedOGSum / totalVolumeGallons : null;
     _updateMeasuredMustSGIfNotOverridden();
     batchVolumeGallons = totalVolumeGallons;
 
@@ -202,31 +201,28 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     }
   }
 
-// In RecipeBuilderPage.dart
-void addIngredient(Map<String, dynamic> ingredientMap) {
-  // Create a clean copy and convert any DateTime values
-  final cleanIngredient = Map<String, dynamic>.from(ingredientMap);
-  cleanIngredient.forEach((key, value) {
-    if (value is DateTime) {
-      cleanIngredient[key] = value.toIso8601String();
-    }
-  });
+  void addIngredient(Map<String, dynamic> ingredientMap) {
+    final cleanIngredient = Map<String, dynamic>.from(ingredientMap);
+    cleanIngredient.forEach((key, value) {
+      if (value is DateTime) {
+        cleanIngredient[key] = value.toIso8601String();
+      }
+    });
 
-  setState(() {
-    ingredients.add(cleanIngredient);
-  });
-  calculateStats();
-  _updateMeasuredMustSGIfNotOverridden();
-}
+    setState(() {
+      ingredients.add(cleanIngredient);
+    });
+    calculateStats();
+    _updateMeasuredMustSGIfNotOverridden();
+  }
 
   void editIngredient(int index) async {
     final existing = ingredients[index];
     await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => AddIngredientDialog(
-        // FIX: Added the required 'unitType' parameter.
         unitType: inferUnitType(existing['unit'] ?? 'g'),
-        existing: existing,
+        existing: Map<String, dynamic>.from(existing),
         onAddToRecipe: (updated) {
           setState(() {
             ingredients[index] = updated;
@@ -244,7 +240,7 @@ void addIngredient(Map<String, dynamic> ingredientMap) {
       builder: (_) => AddAdditiveDialog(
         mustPH: 3.4,
         volume: 5.0,
-        existing: existing,
+        existing: Map<String, dynamic>.from(existing),
         onAdd: (updated) {
           setState(() {
             additives[index] = updated;
@@ -255,20 +251,18 @@ void addIngredient(Map<String, dynamic> ingredientMap) {
     );
   }
 
-// In RecipeBuilderPage.dart
-void addYeast(Map<String, dynamic> yeastMap) {
-  // Create a clean copy and convert any DateTime values
-  final cleanYeast = Map<String, dynamic>.from(yeastMap);
-  cleanYeast.forEach((key, value) {
-    if (value is DateTime) {
-      cleanYeast[key] = value.toIso8601String();
-    }
-  });
+  void addYeast(Map<String, dynamic> yeastMap) {
+    final cleanYeast = Map<String, dynamic>.from(yeastMap);
+    cleanYeast.forEach((key, value) {
+      if (value is DateTime) {
+        cleanYeast[key] = value.toIso8601String();
+      }
+    });
 
-  setState(() {
-    yeast = [cleanYeast];
-  });
-}
+    setState(() {
+      yeast = [cleanYeast];
+    });
+  }
 
   void editYeast() async {
     if (yeast.isEmpty) return;
@@ -277,26 +271,23 @@ void addYeast(Map<String, dynamic> yeastMap) {
       context: context,
       builder: (_) => AddYeastDialog(
         onAdd: addYeast,
-        existing: yeast.first,
+        existing: Map<String, dynamic>.from(yeast.first),
         onAddToInventory: (yeastData) async {
           final purchase = PurchaseTransaction(
-            amount: yeastData['amount'] ?? 0.0,
-            cost: yeastData['cost'] ?? 0.0,
-            date: yeastData['purchaseDate'] ?? DateTime.now(),
-            expirationDate: yeastData['expirationDate'],
+            amount: (yeastData['amount'] as num?)?.toDouble() ?? 0.0,
+            cost: (yeastData['cost'] as num?)?.toDouble() ?? 0.0,
+            date: yeastData['purchaseDate'] as DateTime? ?? DateTime.now(),
+            expirationDate: yeastData['expirationDate'] as DateTime?,
           );
+          // FIX: Use the new InventoryItem constructor pattern
           final item = InventoryItem(
-            name: yeastData['name'] ?? 'Unnamed',
-            amountInStock: yeastData['amount'] ?? 0.0,
-            unit: yeastData['unit'] ?? 'packets',
-            unitType: inferUnitType(yeastData['unit'] ?? 'packets'),
+            name: yeastData['name'] as String? ?? 'Unnamed',
+            unit: yeastData['unit'] as String? ?? 'packets',
+            unitType: inferUnitType(yeastData['unit'] as String? ?? 'packets'),
             category: 'Yeast',
-            costPerUnit: (yeastData['amount'] ?? 0.0) > 0
-                ? (yeastData['cost'] ?? 0.0) / (yeastData['amount'] ?? 0.0)
-                : 0.0,
             purchaseHistory: [purchase],
           );
-          final box = await Hive.openBox<InventoryItem>('inventory');
+          final box = Hive.box<InventoryItem>('inventory');
           await box.add(item);
           if (!mounted) return;
           scaffoldMessenger.showSnackBar(
@@ -308,20 +299,18 @@ void addYeast(Map<String, dynamic> yeastMap) {
     );
   }
 
-// In RecipeBuilderPage.dart
-void addAdditive(Map<String, dynamic> additiveMap) {
-  // Create a clean copy and convert any DateTime values
-  final cleanAdditive = Map<String, dynamic>.from(additiveMap);
-  cleanAdditive.forEach((key, value) {
-    if (value is DateTime) {
-      cleanAdditive[key] = value.toIso8601String();
-    }
-  });
+  void addAdditive(Map<String, dynamic> additiveMap) {
+    final cleanAdditive = Map<String, dynamic>.from(additiveMap);
+    cleanAdditive.forEach((key, value) {
+      if (value is DateTime) {
+        cleanAdditive[key] = value.toIso8601String();
+      }
+    });
 
-  setState(() {
-    additives.add(cleanAdditive);
-  });
-}
+    setState(() {
+      additives.add(cleanAdditive);
+    });
+  }
 
   void saveRecipe() {
     final recipeName = nameController.text.trim();
@@ -364,9 +353,10 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                 await box.add(newRecipe);
               }
               if (!mounted) return;
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
+              Navigator.of(context).pop(); 
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const RecipeListPage()),
+                (route) => route.isFirst,
               );
             },
             child: const Text("Save"),
@@ -396,7 +386,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                 : batchVolume;
 
     if (sgDelta > 0) {
-      sugarNeededGrams = sgDelta / selectedSugarType.sgPerGramPerLiter * batchLiters;
+      sugarNeededGrams =
+          sgDelta / selectedSugarType.sgPerGramPerLiter * batchLiters;
     } else if (sgDelta < 0) {
       final dilutionRatio = measuredMustSG! / targetMustSG!;
       final newTotalVolume = batchLiters * dilutionRatio;
@@ -423,15 +414,14 @@ void addAdditive(Map<String, dynamic> additiveMap) {
     List<String> parts = [];
     if (gallons > 0) parts.add("$gallons gal");
     if (cups > 0) parts.add("$cups cup${cups > 1 ? 's' : ''}");
-    
+
     if (ounces >= 0.1 || parts.isEmpty) {
       parts.add("${ounces.toStringAsFixed(1)} fl oz");
     }
-    
+
     return parts.join(' ');
   }
 
-  // --- HELPER METHODS RESTORED & UPDATED ---
   Widget _sectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
@@ -466,7 +456,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existingRecipe == null ? "Recipe Builder" : "Edit Recipe"),
+        title: Text(
+            widget.existingRecipe == null ? "Recipe Builder" : "Edit Recipe"),
         actions: [
           IconButton(onPressed: saveRecipe, icon: const Icon(Icons.save)),
         ],
@@ -474,7 +465,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          // --- GENERAL INFO ---
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -510,15 +500,14 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                       child: Wrap(
                         spacing: 8,
                         runSpacing: 4,
-                        children: tags.map((tag) => Chip(label: Text(tag.name))).toList(),
+                        children:
+                            tags.map((tag) => Chip(label: Text(tag.name))).toList(),
                       ),
                     ),
                 ],
               ),
             ),
           ),
-
-          // --- INGREDIENTS SECTION ---
           _sectionTitle("Ingredients"),
           Card(
             child: Column(
@@ -533,11 +522,14 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                   final f = entry.value;
                   return ListTile(
                     title: Text(f['name'] ?? 'Unnamed'),
-                    subtitle: Text("${f['amount'] ?? '—'} ${f['unit'] ?? ''}, OG: ${f['og']?.toStringAsFixed(3) ?? '—'}"),
+                    subtitle: Text(
+                        "${f['amount'] ?? '—'} ${f['unit'] ?? ''}, OG: ${f['og']?.toStringAsFixed(3) ?? '—'}"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(icon: const Icon(Icons.edit), onPressed: () => editIngredient(i)),
+                        IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => editIngredient(i)),
                         IconButton(
                             icon: const Icon(Icons.delete),
                             onPressed: () {
@@ -557,43 +549,36 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                       await showDialog<Map<String, dynamic>>(
                         context: context,
                         builder: (_) => AddIngredientDialog(
-                          // FIX: Added the required 'unitType' parameter with a default value.
                           unitType: UnitType.mass,
                           onAddToRecipe: addIngredient,
-                          onAddToInventory: (ingredient) async {
-                            final scaffoldMessenger = ScaffoldMessenger.of(context);
+                          onAddToInventory: (ingredientData) async {
+                            final scaffoldMessenger =
+                                ScaffoldMessenger.of(context);
                             final purchase = PurchaseTransaction(
-                              amount: ingredient['amount'] ?? 0.0,
-                              cost: ingredient['cost'] ?? 0.0,
-                              date: ingredient['purchaseDate'] ?? DateTime.now(),
-                              expirationDate: ingredient['expirationDate'],
+                              amount: (ingredientData['amount'] as num?)?.toDouble() ?? 0.0,
+                              cost: (ingredientData['cost'] as num?)?.toDouble() ?? 0.0,
+                              date: ingredientData['purchaseDate'] as DateTime? ?? DateTime.now(),
+                              expirationDate: ingredientData['expirationDate'] as DateTime?,
                             );
+                            
+                            // FIX: Use the new InventoryItem constructor
                             final item = InventoryItem(
-                              name: ingredient['name'] ?? 'Unnamed',
-                              amountInStock: ingredient['amount'] ?? 0.0,
-                              unit: ingredient['unit'] ?? 'oz',
-                              unitType: inferUnitType(ingredient['unit'] ?? 'oz'),
-                              category: ingredient['type'] ?? 'Other',
-                              costPerUnit: (ingredient['amount'] ?? 0.0) > 0
-                                  ? (ingredient['cost'] ?? 0.0) / (ingredient['amount'] ?? 1.0)
-                                  : 0.0,
+                              name: ingredientData['name'] as String? ?? 'Unnamed',
+                              unit: ingredientData['unit'] as String? ?? 'oz',
+                              unitType: inferUnitType(ingredientData['unit'] as String? ?? 'oz'),
+                              category: ingredientData['type'] as String? ?? 'Other',
                               purchaseHistory: [purchase],
-                              expirationDate: ingredient['expirationDate'],
                             );
-                            // ... inside the onAddToInventory callback for ingredients
-                            final box = await Hive.openBox<InventoryItem>('inventory');
+                            
+                            final box = Hive.box<InventoryItem>('inventory');
                             await box.add(item);
                             if (!mounted) return;
                             scaffoldMessenger.showSnackBar(
-                              SnackBar(content: Text("Added '${item.name}' to Inventory")),
+                              SnackBar(
+                                  content:
+                                      Text("Added '${item.name}' to Inventory")),
                             );
-                            
-                            // FIX: Create a clean map for the recipe before adding it
-                            final recipeIngredient = Map<String, dynamic>.from(ingredient);
-                            recipeIngredient['purchaseDate'] = (recipeIngredient['purchaseDate'] as DateTime?)?.toIso8601String();
-                            recipeIngredient['expirationDate'] = (recipeIngredient['expirationDate'] as DateTime?)?.toIso8601String();
-
-                            addIngredient(recipeIngredient); // <-- CORRECT: Adds the clean map
+                            addIngredient(Map<String, dynamic>.from(ingredientData));
                           },
                         ),
                       );
@@ -603,8 +588,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
               ],
             ),
           ),
-
-          // --- ADDITIVES SECTION ---
           _sectionTitle("Additives"),
           Card(
             child: Column(
@@ -623,8 +606,12 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(icon: const Icon(Icons.edit), onPressed: () => editAdditive(i)),
-                        IconButton(icon: const Icon(Icons.delete), onPressed: () => setState(() => additives.removeAt(i))),
+                        IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => editAdditive(i)),
+                        IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => setState(() => additives.removeAt(i))),
                       ],
                     ),
                   );
@@ -649,8 +636,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
               ],
             ),
           ),
-
-          // --- YEAST SECTION ---
           _sectionTitle("Yeast"),
           Card(
             child: Column(
@@ -663,15 +648,19 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                 ...yeast.map((y) {
                   final amount = y['amount'];
                   final unit = y['unit'];
-                  final displayUnit = (unit == 'packets' && amount == 1.0) ? 'packet' : unit;
+                  final displayUnit =
+                      (unit == 'packets' && amount == 1.0) ? 'packet' : unit;
                   return ListTile(
                     title: Text(y['name']),
                     subtitle: Text("$amount $displayUnit"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(icon: const Icon(Icons.edit), onPressed: editYeast),
-                        IconButton(icon: const Icon(Icons.delete), onPressed: () => setState(() => yeast.clear())),
+                        IconButton(
+                            icon: const Icon(Icons.edit), onPressed: editYeast),
+                        IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => setState(() => yeast.clear())),
                       ],
                     ),
                   );
@@ -682,61 +671,50 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                     icon: const Icon(Icons.add),
                     label: Text(yeast.isEmpty ? "Add Yeast" : "Edit Yeast"),
                     onPressed: yeast.isEmpty
-  ? () async {
-    // This is the line you asked about. It captures the context
-    // before the dialog is opened to safely show a confirmation message later.
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
-    await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => AddYeastDialog(
-        onAdd: addYeast,
-        // This is the logic that was missing. It creates the inventory
-        // item, saves it to the database, and uses the scaffoldMessenger.
-        onAddToInventory: (yeastData) async {
-          final purchase = PurchaseTransaction(
-            amount: yeastData['amount'] ?? 0.0,
-            cost: yeastData['cost'] ?? 0.0,
-            date: yeastData['purchaseDate'] ?? DateTime.now(),
-            expirationDate: yeastData['expirationDate'],
-          );
-          final item = InventoryItem(
-            name: yeastData['name'] ?? 'Unnamed',
-            amountInStock: yeastData['amount'] ?? 0.0,
-            unit: yeastData['unit'] ?? 'packets',
-            unitType: inferUnitType(yeastData['unit'] ?? 'packets'),
-            category: 'Yeast',
-            costPerUnit: (yeastData['amount'] ?? 0.0) > 0
-                ? (yeastData['cost'] ?? 0.0) / (yeastData['amount'] ?? 1.0)
-                : 0.0,
-            purchaseHistory: [purchase],
-            expirationDate: yeastData['expirationDate'],
-          );
-          // ... inside the onAddToInventory callback for yeast
-            final box = await Hive.openBox<InventoryItem>('inventory');
-            await box.add(item);
-            if (!mounted) return;
-            scaffoldMessenger.showSnackBar(
-              SnackBar(content: Text("Added '${item.name}' to Inventory")),
-            );
+                        ? () async {
+                            final scaffoldMessenger =
+                                ScaffoldMessenger.of(context);
 
-            // FIX: Create a clean map for the recipe before adding it
-            final recipeYeast = Map<String, dynamic>.from(yeastData);
-            recipeYeast['purchaseDate'] = (recipeYeast['purchaseDate'] as DateTime?)?.toIso8601String();
-            recipeYeast['expirationDate'] = (recipeYeast['expirationDate'] as DateTime?)?.toIso8601String();
+                            await showDialog<Map<String, dynamic>>(
+                              context: context,
+                              builder: (_) => AddYeastDialog(
+                                onAdd: addYeast,
+                                onAddToInventory: (yeastData) async {
+                                  final purchase = PurchaseTransaction(
+                                    amount: (yeastData['amount'] as num?)?.toDouble() ?? 0.0,
+                                    cost: (yeastData['cost'] as num?)?.toDouble() ?? 0.0,
+                                    date: yeastData['purchaseDate'] as DateTime? ?? DateTime.now(),
+                                    expirationDate: yeastData['expirationDate'] as DateTime?,
+                                  );
 
-            addYeast(recipeYeast); // <-- CORRECT: Adds the clean map
-          },
-      ),
-    );
-  }
-                      : editYeast,),
+                                  // FIX: Use the new InventoryItem constructor
+                                  final item = InventoryItem(
+                                    name: yeastData['name'] as String? ?? 'Unnamed',
+                                    unit: yeastData['unit'] as String? ?? 'packets',
+                                    unitType: inferUnitType(yeastData['unit'] as String? ?? 'packets'),
+                                    category: 'Yeast',
+                                    purchaseHistory: [purchase],
+                                  );
+                                  
+                                  final box = Hive.box<InventoryItem>('inventory');
+                                  await box.add(item);
+                                  if (!mounted) return;
+                                  scaffoldMessenger.showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            "Added '${item.name}' to Inventory")),
+                                  );
+                                  addYeast(Map<String, dynamic>.from(yeastData));
+                                },
+                              ),
+                            );
+                          }
+                        : editYeast,
+                  ),
                 ),
               ],
             ),
           ),
-
-          // --- FERMENTATION SECTION ---
           _sectionTitle("Fermentation"),
           Card(
             child: Column(
@@ -751,7 +729,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                   final stage = entry.value;
                   return ListTile(
                     title: Text(stage.name),
-                    subtitle: Text("${stage.durationDays} days @ ${TempDisplay.format(stage.targetTempC!)}"),
+                    subtitle: Text(
+                        "${stage.durationDays} days @ ${TempDisplay.format(stage.targetTempC!)}"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -762,16 +741,20 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                                 context: context,
                                 builder: (_) => AddFermentationStageDialog(
                                   existing: stage,
-                                  onSave: (updated) => setState(() => fermentationStages[i] = updated),
+                                  onSave: (updated) => setState(
+                                      () => fermentationStages[i] = updated),
                                 ),
                               );
                             }),
-                        IconButton(icon: const Icon(Icons.delete), onPressed: () => setState(() => fermentationStages.removeAt(i))),
+                        IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () =>
+                                setState(() => fermentationStages.removeAt(i))),
                       ],
                     ),
                   );
                 }),
-                  Padding(
+                Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.add),
@@ -791,8 +774,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
               ],
             ),
           ),
-
-          // --- NOTES SECTION ---
           _sectionTitle("Notes"),
           Card(
             child: Padding(
@@ -807,8 +788,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
               ),
             ),
           ),
-
-          // --- GRAVITY & ABV SECTION ---
           _sectionTitle("Gravity & ABV"),
           Card(
             child: Padding(
@@ -822,7 +801,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                   _buildCalculatedABVSection(),
                   TextFormField(
                     initialValue: fg.toStringAsFixed(3),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(labelText: "Final Gravity"),
                     onChanged: (val) {
                       final parsed = double.tryParse(val);
@@ -838,8 +818,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
               ),
             ),
           ),
-          
-          // --- ADVANCED TOOLS ---
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0),
             child: Row(
@@ -853,7 +831,6 @@ void addAdditive(Map<String, dynamic> additiveMap) {
               ],
             ),
           ),
-
           if (showAdvanced)
             Card(
               child: Padding(
@@ -861,7 +838,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Gravity Adjustment", style: Theme.of(context).textTheme.titleLarge),
+                    Text("Gravity Adjustment",
+                        style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -872,7 +850,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                               labelText: "Batch Volume",
                               border: OutlineInputBorder(),
                             ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
                             onChanged: (_) {
                               setState(() {
                                 userOverrodeBatchVolume = true;
@@ -908,7 +887,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                         labelText: "Measured Initial SG (Must)",
                         border: OutlineInputBorder(),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -917,7 +897,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                         labelText: "Target Initial SG",
                         border: OutlineInputBorder(),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       onChanged: (val) {
                         final parsed = double.tryParse(val);
                         if (parsed != null) {
@@ -936,7 +917,8 @@ void addAdditive(Map<String, dynamic> additiveMap) {
                         labelText: "Desired ABV (%)",
                         border: OutlineInputBorder(),
                       ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                     ),
                     const SizedBox(height: 12),
                     DropdownButton<SugarType>(

@@ -11,8 +11,13 @@ double estimateMustPH(BatchModel batch) {
 }
 
 void syncBatchFromRecipe(BatchModel batch, RecipeModel recipe) {
-  batch.yeast = List<Map<String, dynamic>>.from(recipe.yeast)
-      .firstWhere((y) => y['name'] == batch.yeast?['name'], orElse: () => {});
+  batch.yeast = [
+    List<Map<String, dynamic>>.from(recipe.yeast)
+        .firstWhere(
+      (y) => y['name'] == batch.yeast.first['name'],
+          orElse: () => {},
+        )
+  ];
   batch.ingredients = List<Map<String, dynamic>>.from(recipe.ingredients);
   batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
   batch.plannedOg = recipe.og;

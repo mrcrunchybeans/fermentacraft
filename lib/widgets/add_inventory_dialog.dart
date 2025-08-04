@@ -44,16 +44,14 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
     }
   }
 
-  void _saveInventoryItem() async {
+// Replace the _saveInventoryItem method in your AddInventoryDialog
+void _saveInventoryItem() async {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
 
       final inventoryBox = Hive.box<InventoryItem>('inventory');
 
-      final existingItem = inventoryBox.values.firstWhereOrNull(
-        (item) => item.name.toLowerCase() == _name.toLowerCase(),
-      );
-
+      // Create the first purchase transaction from the dialog's data
       final transaction = PurchaseTransaction(
         date: DateTime.now(),
         amount: _amount,
@@ -61,24 +59,27 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
         expirationDate: _expirationDate,
       );
 
+      // Check if an item with this name already exists
+      final existingItem = inventoryBox.values.firstWhereOrNull(
+        (item) => item.name.toLowerCase() == _name.toLowerCase(),
+      );
+
       if (existingItem != null) {
-        existingItem.purchaseHistory.add(transaction);
-        existingItem.recalculateAmountInStock();
-        existingItem.save();
+        // If it exists, just add a new purchase to it
+        existingItem.addPurchase(transaction);
       } else {
+        // If it's new, create it with the first purchase
         final newItem = InventoryItem(
           name: _name,
-          amountInStock: _amount,
           unit: _unit,
           unitType: _unitType,
-          costPerUnit: _cost > 0 && _amount > 0 ? _cost / _amount : 0,
           notes: _notes,
           category: _category,
-          expirationDate: _expirationDate,
-          purchaseHistory: [transaction],
+          purchaseHistory: [transaction], // Add the first transaction
         );
         await inventoryBox.add(newItem);
       }
+
       if (mounted) {
         Navigator.of(context).pop();
       }

@@ -31,13 +31,7 @@ class _InventoryPageState extends State<InventoryPage> {
         context: context,
         builder: (_) => InventoryItemDetailDialog(item: item),
       );
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => InventoryItemDetailView(item: item),
-        ),
-      );
+    } else {InventoryItemDetailView.show(context, item.key);
     }
   }
 

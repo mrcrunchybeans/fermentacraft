@@ -15,6 +15,7 @@ class InventoryItemDetailDialog extends StatefulWidget {
   State<InventoryItemDetailDialog> createState() => _InventoryItemDetailDialogState();
 }
 
+
 class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
   late InventoryItem item;
 
@@ -53,7 +54,7 @@ class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
   "Cost per Unit",
   // ignore: unnecessary_null_comparison
   item.costPerUnit != null
-      ? "\$${item.costPerUnit!.toStringAsFixed(2)}"
+      ? "\$${item.costPerUnit.toStringAsFixed(2)}"
       : "N/A",
 ),
 
@@ -115,7 +116,6 @@ final cost = NumberFormat.simpleCurrency().format(tx.totalCost);
                             builder: (_) => EditPurchaseDialog(
   entry: tx,
   item: item,
-  index: i,
 ),
 
                           );
