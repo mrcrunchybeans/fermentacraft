@@ -38,4 +38,13 @@ class PurchaseTransaction extends HiveObject {
       usedAmount: (json['usedAmount'] as num?)?.toDouble() ?? 0.0,
     );
   }
+
+Map<String, dynamic> toJson() => {
+  'date': date.toIso8601String(),
+  'amount': amount,
+  'cost': cost,
+  'expirationDate': expirationDate?.toIso8601String(),
+  'usedAmount': usedAmount,
+};
+
 }

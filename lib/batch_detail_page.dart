@@ -655,23 +655,39 @@ Future<void> _editIngredientDialog(BatchModel batch, int index) async {
     );
   }
 
-  Widget _plannedEventsList(BatchModel batch) {
-    if (batch.safePlannedEvents.isEmpty) {
-      return const Text('No planned events.');
-    }
-    return Column(
-      children: batch.safePlannedEvents.map((event) {
-        return ListTile(
+Widget _plannedEventsList(BatchModel batch) {
+  if (batch.safePlannedEvents.isEmpty) {
+    return const Text('No planned events.');
+  }
+
+  return Column(
+    children: batch.safePlannedEvents.asMap().entries.map((entry) {
+      final index = entry.key;
+      final event = entry.value;
+
+      return InkWell(
+        onLongPress: () => _editPlannedEventDialog(batch, index),
+        child: ListTile(
           leading: const Icon(Icons.event_note),
           title: Text(event.title),
-          subtitle: Text(
-              '${event.date.toLocal().toString().split(' ')[0]}'
-              '${event.notes != null ? '\nNotes: ${event.notes}' : ''}'),
-          isThreeLine: event.notes != null,
-        );
-      }).toList(),
-    );
-  }
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(event.date.toLocal().toString().split(' ')[0]),
+              if (event.notes != null && event.notes!.isNotEmpty)
+                Text('Notes: ${event.notes}'),
+            ],
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red),
+            onPressed: () => _deletePlannedEvent(batch, index),
+          ),
+        ),
+      );
+    }).toList(),
+  );
+}
+
 
   Future<bool> _confirmInventoryDeduction({
     required BuildContext context,
@@ -972,6 +988,112 @@ Future<void> _editIngredientDialog(BatchModel batch, int index) async {
       batch.save();
     }
   }
+
+Future<void> _editPlannedEventDialog(BatchModel batch, int index) async {
+  final event = batch.safePlannedEvents[index];
+
+  final TextEditingController titleController = TextEditingController(text: event.title);
+  final TextEditingController notesController = TextEditingController(text: event.notes ?? '');
+  DateTime selectedDate = event.date;
+
+  final updatedEvent = await showDialog<PlannedEvent>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text("Edit Planned Event"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: "Event Title"),
+            ),
+            TextField(
+              controller: notesController,
+              decoration: const InputDecoration(labelText: "Notes (optional)"),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text("Date:"),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      selectedDate = picked;
+                    }
+                  },
+                  child: Text(
+                    "${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}",
+                  ),
+                ),
+              ],
+            )
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (titleController.text.trim().isEmpty) return;
+              Navigator.pop(
+                context,
+                PlannedEvent(
+                  title: titleController.text.trim(),
+                  date: selectedDate,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim(),
+                ),
+              );
+            },
+            child: const Text("Save"),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (updatedEvent != null) {
+    batch.plannedEvents![index] = updatedEvent;
+    batch.save();
+  }
+}
+
+void _deletePlannedEvent(BatchModel batch, int index) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Delete Planned Event"),
+      content: const Text("Are you sure you want to delete this event?"),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () {
+            batch.plannedEvents?.removeAt(index);
+            batch.save();
+            Navigator.pop(context);
+          },
+          child: const Text("Delete"),
+        ),
+      ],
+    ),
+  );
+}
 
   void _manageStages(BatchModel batch) async {
     final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
