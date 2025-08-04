@@ -7,7 +7,9 @@ import '../models/purchase_transaction.dart';
 import 'package:collection/collection.dart';
 
 class AddInventoryDialog extends StatefulWidget {
-  const AddInventoryDialog({super.key});
+  final Map<String, dynamic>? initialData;
+
+  const AddInventoryDialog({super.key, this.initialData});
 
   @override
   State<AddInventoryDialog> createState() => _AddInventoryDialogState();
@@ -26,8 +28,21 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
 
   final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
   final List<String> _units = [
-    'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gallon', 'package'
-  ];
+    'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gal', 'packets'];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialData != null) {
+      _name = widget.initialData!['name'] ?? '';
+      _unit = widget.initialData!['unit'] ?? 'grams';
+      _unitType = inferUnitType(_unit);
+      final inputCategory = widget.initialData!['category'];
+      if (inputCategory != null && _categories.contains(inputCategory)) {
+        _category = inputCategory;
+      }
+    }
+  }
 
   void _saveInventoryItem() async {
     if (_formKey.currentState?.validate() ?? false) {
@@ -47,17 +62,16 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
       );
 
       if (existingItem != null) {
-        // Update existing item
         existingItem.purchaseHistory.add(transaction);
         existingItem.recalculateAmountInStock();
+        existingItem.save();
       } else {
-        // Create new item
         final newItem = InventoryItem(
           name: _name,
           amountInStock: _amount,
           unit: _unit,
           unitType: _unitType,
-          costPerUnit: _cost,
+          costPerUnit: _cost > 0 && _amount > 0 ? _cost / _amount : 0,
           notes: _notes,
           category: _category,
           expirationDate: _expirationDate,
@@ -65,12 +79,11 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
         );
         await inventoryBox.add(newItem);
       }
-
-if (mounted) {
-  Navigator.of(context).pop();
-}    }
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
   }
-
   void _pickExpirationDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -82,7 +95,6 @@ if (mounted) {
       setState(() => _expirationDate = picked);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -94,6 +106,7 @@ if (mounted) {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
+                initialValue: _name,
                 decoration: const InputDecoration(labelText: 'Name'),
                 onSaved: (val) => _name = val!.trim(),
                 validator: (val) => val == null || val.isEmpty ? 'Required' : null,
@@ -134,7 +147,7 @@ if (mounted) {
                 ],
               ),
               TextFormField(
-                decoration: const InputDecoration(labelText: 'Cost per Unit (\$)'),
+                decoration: const InputDecoration(labelText: 'Total Cost (\$)'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onSaved: (val) {
                   final parsed = double.tryParse(val ?? '');

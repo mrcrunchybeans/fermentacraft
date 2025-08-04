@@ -43,7 +43,7 @@ void main() async {
   await Hive.openBox<InventoryAction>('inventory_actions');
   await Hive.openBox<RecipeModel>('recipes');
   await Hive.openBox('settings');
-  await Hive.openBox<ShoppingListItem>('shopping_list'); // <-- Add this line
+  await Hive.openBox<ShoppingListItem>('shopping_list');
   await Hive.openBox<Tag>('tags');
   await Hive.openBox<BatchModel>('batches');
   await Hive.openBox<MeasurementLog>('measurementLogs');
@@ -54,7 +54,6 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        // The SettingsModel now loads its own state in its constructor.
         ChangeNotifierProvider(create: (_) => SettingsModel()),
         ChangeNotifierProvider(create: (_) => TagManager()),
       ],
@@ -68,13 +67,11 @@ class CiderCraftApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Watch for changes in SettingsModel to rebuild the app theme
     final settings = context.watch<SettingsModel>();
 
     return MaterialApp(
       title: 'CiderCraft',
       themeMode: settings.themeMode,
-      // Using the modern ColorScheme for theming
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.pink),
         brightness: Brightness.light,
@@ -120,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _selectPage(String page) {
-    Navigator.pop(context); // close the drawer
+    Navigator.pop(context);
     setState(() {
       _selectedPage = page;
     });

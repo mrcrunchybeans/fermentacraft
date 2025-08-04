@@ -9,7 +9,7 @@ import '../utils/unit_conversion.dart';
 import 'models/purchase_transaction.dart';
 import 'widgets/edit_purchase_dialog.dart';
 
-class InventoryItemDetailView extends StatefulWidget {
+class InventoryItemDetailView extends StatelessWidget {
   final InventoryItem item;
 
   const InventoryItemDetailView({super.key, required this.item});
@@ -29,7 +29,9 @@ class InventoryItemDetailView extends StatefulWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500, maxHeight: 700),
-            child: InventoryItemDetailView(item: item),
+            child: Material(
+              child: InventoryItemDetailView(item: item),
+            ),
           ),
         ),
       );
@@ -37,78 +39,30 @@ class InventoryItemDetailView extends StatefulWidget {
   }
 
   @override
-  State<InventoryItemDetailView> createState() => _InventoryItemDetailViewState();
-}
-
-class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  // FIX: Removed the local 'item' variable to prevent stale data.
-  String targetUnit = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    // FIX: Use widget.item directly to ensure data is always current.
-    targetUnit = widget.item.unit;
-  }
-
-  // FIX: Added the dispose method to clean up the TabController.
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "$label:",
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // FIX: Use widget.item to ensure data is always up-to-date.
-    final item = widget.item;
     final costFormatted = NumberFormat.simpleCurrency().format(item.costPerUnit);
+    // ✅ Normalize unit here to prevent dropdown crash
+    String targetUnit = UnitConversion.normalizeUnit(item.unit);
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(item.name,
-              style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-        ),
-        TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Details'),
-            Tab(text: 'Purchase History'),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildDetailsTab(item, costFormatted),
-              _buildPurchaseHistoryTab(item),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(item.name),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Details'),
+              Tab(text: 'Purchase History'),
             ],
           ),
         ),
-        const Divider(height: 1),
-        Padding(
+        body: TabBarView(
+          children: [
+            _buildDetailsTab(item, costFormatted, context, targetUnit),
+            _buildPurchaseHistoryTab(item, context),
+          ],
+        ),
+        bottomNavigationBar: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -125,8 +79,8 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
                     context: context,
                     builder: (_) => LogPurchaseDialog(item: item),
                   );
-                  if (updated == true && mounted) {
-                    setState(() {});
+                  if (updated == true && context.mounted) {
+                    (context as Element).markNeedsBuild();
                   }
                 },
               ),
@@ -138,19 +92,24 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
                     context: context,
                     builder: (_) => EditInventoryDialog(item: item),
                   );
-                  if (result == true && mounted) {
-                    setState(() {});
+                  if (result == true && context.mounted) {
+                    (context as Element).markNeedsBuild();
                   }
                 },
               ),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildDetailsTab(InventoryItem item, String costFormatted) {
+  Widget _buildDetailsTab(
+    InventoryItem item,
+    String costFormatted,
+    BuildContext context,
+    String targetUnit,
+  ) {
     final converted = UnitConversion.tryConvertCostPerUnit(
       amount: 1.0,
       fromUnit: item.unit,
@@ -162,9 +121,12 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         _buildDetailRow("Category", item.category),
-        _buildDetailRow("Amount in Stock", "${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
+        _buildDetailRow(
+          "Amount in Stock",
+          "${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}",
+        ),
         if (item.expirationDate != null)
-           _buildDetailRow("Earliest Expiration", DateFormat.yMMMd().format(item.expirationDate!)),
+          _buildDetailRow("Earliest Expiration", DateFormat.yMMMd().format(item.expirationDate!)),
         _buildDetailRow("Avg. Cost per Unit", "$costFormatted / ${item.unit}"),
         if (converted != null && targetUnit != item.unit)
           _buildDetailRow(
@@ -182,7 +144,12 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
                 items: UnitConversion.getUnitListFor(item.unitType)
                     .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                     .toList(),
-                onChanged: (val) => setState(() => targetUnit = val!),
+                onChanged: (val) {
+                  if (val != null) {
+                    targetUnit = val;
+                    (context as Element).markNeedsBuild();
+                  }
+                },
               ),
             ],
           ),
@@ -196,14 +163,11 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
     );
   }
 
-  Widget _buildPurchaseHistoryTab(InventoryItem item) {
-    final entries = item.purchaseHistory;
+  Widget _buildPurchaseHistoryTab(InventoryItem item, BuildContext context) {
+    final entries = [...item.purchaseHistory]..sort((a, b) => b.date.compareTo(a.date));
     if (entries.isEmpty) {
       return const Center(child: Text("No purchases logged."));
     }
-
-    // Sort by date, most recent first
-    entries.sort((a, b) => b.date.compareTo(a.date));
 
     return ListView.builder(
       itemCount: entries.length,
@@ -219,7 +183,8 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
             children: [
               Text("Purchased: $date"),
               if (e.expirationDate != null)
-                Text("Expires: ${DateFormat.yMMMd().format(e.expirationDate!)}", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text("Expires: ${DateFormat.yMMMd().format(e.expirationDate!)}",
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           trailing: IconButton(
@@ -234,13 +199,30 @@ class _InventoryItemDetailViewState extends State<InventoryItemDetailView>
                   index: i,
                 ),
               );
-              if (updated != null && mounted) {
-                setState(() {});
+              if (updated != null && context.mounted) {
+                (context as Element).markNeedsBuild();
               }
             },
           ),
         );
       },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "$label:",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value)),
+        ],
+      ),
     );
   }
 }

@@ -142,7 +142,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => BatchDetailPage(batch: batch),
+                builder: (_) => BatchDetailPage(batchKey: batch.key),
                   ),
                 );
               },

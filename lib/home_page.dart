@@ -2,18 +2,17 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/batch_detail_page.dart';
+import 'package:flutter_application_1/inventory_item_detail_view.dart'; // Import for item detail view
 import 'package:flutter_application_1/settings_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import './models/inventory_item.dart';
-
-// FIX: Added imports for navigation
 import 'recipe_list_page.dart';
-import 'batch_log_page.dart'; 
+import 'batch_log_page.dart';
 import 'inventory_page.dart';
 import 'shopping_list_page.dart';
 import 'models/batch_model.dart';
-import 'tools_page.dart'; // Import for the new tools page
+import 'tools_page.dart';
 
 
 class HomePage extends StatefulWidget {
@@ -38,7 +37,6 @@ class _HomePageState extends State<HomePage> {
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          // FIX: Replaced the simple list with a more functional GridView
           GridView.count(
             crossAxisCount: 2,
             crossAxisSpacing: 16,
@@ -70,14 +68,12 @@ class _HomePageState extends State<HomePage> {
                 title: "Shopping List",
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShoppingListPage())),
               ),
-              // FIX: Added the new "Tools" card
               _buildDashboardCard(
                 context,
                 icon: Icons.construction_outlined,
                 title: "Tools",
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ToolsPage())),
               ),
-              // FIX: Added a "Settings" card to balance the grid and provide a place for future features.
               _buildDashboardCard(
                 context,
                 icon: Icons.settings_outlined,
@@ -87,7 +83,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 24),
-          _buildActiveBatchesSection(), // FIX: Added a new section for active batches
+          _buildActiveBatchesSection(),
           const SizedBox(height: 24),
           _buildExpiringSoonSection(),
         ],
@@ -95,7 +91,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // FIX: New widget to build the dashboard cards for a consistent look.
   Widget _buildDashboardCard(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap}) {
     return Card(
       elevation: 4,
@@ -115,8 +110,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // FIX: New section to display a summary of active batches.
- Widget _buildActiveBatchesSection() {
+  Widget _buildActiveBatchesSection() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -143,13 +137,13 @@ class _HomePageState extends State<HomePage> {
                   itemCount: activeBatches.length,
                   itemBuilder: (context, index) {
                     final batch = activeBatches[index];
-                    // FIX: Wrapped the ListTile in an InkWell to make it tappable.
                     return InkWell(
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => BatchDetailPage(batch: batch),
+                            // FIX: Pass the 'batchKey' instead of the 'batch' object.
+                            builder: (_) => BatchDetailPage(batchKey: batch.key),
                           ),
                         );
                       },
@@ -169,6 +163,7 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
   Widget _buildExpiringSoonSection() {
     return Card(
       child: Padding(
@@ -205,11 +200,14 @@ class _HomePageState extends State<HomePage> {
                   itemBuilder: (context, index) {
                     final item = expiringItems[index];
                     final daysLeft = item.expirationDate!.difference(DateTime.now()).inDays;
-                    return ListTile(
-                      leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
-                      title: Text(item.name),
-                      subtitle: Text("Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}"),
-                      trailing: Text(DateFormat.yMMMd().format(item.expirationDate!)),
+                    return InkWell(
+                      onTap: () => InventoryItemDetailView.show(context, item),
+                      child: ListTile(
+                        leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                        title: Text(item.name),
+                        subtitle: Text("Expires in $daysLeft ${daysLeft == 1 ? 'day' : 'days'}"),
+                        trailing: Text(DateFormat.yMMMd().format(item.expirationDate!)),
+                      ),
                     );
                   },
                 );

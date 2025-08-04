@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/inventory_item.dart';
 import '../models/unit_type.dart';
+import '../utils/unit_conversion.dart';
 
 class EditInventoryDialog extends StatefulWidget {
   final InventoryItem item;
@@ -24,10 +25,6 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
 
   final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
 
-  final List<String> _units = [
-    'grams', 'ml', 'oz', 'tsp', 'tbsp', 'gallon', 'package'
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -36,7 +33,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
     _category = item.category;
     _unitType = item.unitType;
     _amount = item.amountInStock;
-    _unit = item.unit;
+    _unit = UnitConversion.normalizeUnit(item.unit);
     _cost = item.costPerUnit ?? 0;
     _notes = item.notes;
     _expirationDate = item.expirationDate;
@@ -70,12 +67,14 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
 
       widget.item.save();
 
-      Navigator.of(context).pop(true); // Return true for updated
+      Navigator.of(context).pop(true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final unitOptions = UnitConversion.getUnitListFor(_unitType);
+
     return AlertDialog(
       title: const Text('Edit Inventory Item'),
       content: SingleChildScrollView(
@@ -106,7 +105,17 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                           child: Text(type.name),
                         ))
                     .toList(),
-                onChanged: (val) => setState(() => _unitType = val!),
+                  onChanged: (val) => setState(() {
+                    _unitType = val!;
+                    final newList = UnitConversion.getUnitListFor(_unitType);
+
+                    if (!newList.contains(_unit)) {
+                      _unit = newList.isNotEmpty ? newList.first : 'unit'; // ✅ Prevents crash
+                      if (newList.isEmpty) {
+                        debugPrint('⚠️ No units defined for $_unitType');
+                      }
+                    }
+                  }),
                 decoration: const InputDecoration(labelText: 'Unit Type'),
               ),
               Row(
@@ -123,8 +132,8 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _unit,
-                      items: _units
+                      value: unitOptions.contains(_unit) ? _unit : null,
+                      items: unitOptions
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),
                       onChanged: (val) => setState(() => _unit = val!),

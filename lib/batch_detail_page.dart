@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/models/recipe_model.dart';
 import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
-import 'package:hive/hive.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; // FIX: Import the wakelock package.
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/batch_model.dart';
 import '../models/planned_event.dart';
 import 'models/inventory_item.dart';
@@ -16,16 +16,14 @@ import '../widgets/fermentation_chart.dart';
 import '../widgets/manage_stages_dialog.dart';
 import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
-
-import 'widgets/add_inventory_dialog.dart'; 
+import 'widgets/add_inventory_dialog.dart';
 import '../models/unit_type.dart';
 import 'models/shopping_list_item.dart';
 
-
 class BatchDetailPage extends StatefulWidget {
-  final BatchModel batch;
+  final dynamic batchKey;
 
-  const BatchDetailPage({super.key, required this.batch});
+  const BatchDetailPage({super.key, required this.batchKey});
 
   @override
   State<BatchDetailPage> createState() => _BatchDetailPageState();
@@ -40,18 +38,33 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   late TextEditingController _tastingFlavorController;
   late TextEditingController _finalYieldController;
   late TextEditingController _finalNotesController;
+  late TextEditingController _prepNotesController;
+
   String _finalYieldUnit = 'gal';
   int _tastingRating = 0;
-  late TextEditingController _prepNotesController;
-  
-  // FIX: Added a state variable to track Brew Mode.
   bool _isBrewModeEnabled = false;
 
   @override
   void initState() {
     super.initState();
+
+    final box = Hive.box<BatchModel>('batches');
+    final initialBatch = box.get(widget.batchKey);
+
+    if (initialBatch == null) {
+      _tabController = TabController(length: 4, vsync: this);
+      _prepNotesController = TextEditingController();
+      _fgController = TextEditingController();
+      _tastingAromaController = TextEditingController();
+      _tastingAppearanceController = TextEditingController();
+      _tastingFlavorController = TextEditingController();
+      _finalYieldController = TextEditingController();
+      _finalNotesController = TextEditingController();
+      return;
+    }
+
     int initialTabIndex = 0;
-    switch (widget.batch.status) {
+    switch (initialBatch.status) {
       case 'Preparation':
         initialTabIndex = 1;
         break;
@@ -62,28 +75,29 @@ class _BatchDetailPageState extends State<BatchDetailPage>
         initialTabIndex = 3;
         break;
     }
-    _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
+    _tabController =
+        TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
 
     _prepNotesController =
-        TextEditingController(text: widget.batch.prepNotes ?? '');
-    _fgController = TextEditingController(text: widget.batch.fg?.toString() ?? '');
-    _tastingRating = widget.batch.tastingRating ?? 0;
+        TextEditingController(text: initialBatch.prepNotes ?? '');
+    _fgController =
+        TextEditingController(text: initialBatch.fg?.toString() ?? '');
+    _tastingRating = initialBatch.tastingRating ?? 0;
     _tastingAromaController =
-        TextEditingController(text: widget.batch.tastingNotes?['aroma'] ?? '');
+        TextEditingController(text: initialBatch.tastingNotes?['aroma'] ?? '');
     _tastingAppearanceController = TextEditingController(
-        text: widget.batch.tastingNotes?['appearance'] ?? '');
+        text: initialBatch.tastingNotes?['appearance'] ?? '');
     _tastingFlavorController =
-        TextEditingController(text: widget.batch.tastingNotes?['flavor'] ?? '');
+        TextEditingController(text: initialBatch.tastingNotes?['flavor'] ?? '');
     _finalYieldController =
-        TextEditingController(text: widget.batch.finalYield?.toString() ?? '');
-    _finalYieldUnit = widget.batch.finalYieldUnit ?? 'gal';
+        TextEditingController(text: initialBatch.finalYield?.toString() ?? '');
+    _finalYieldUnit = initialBatch.finalYieldUnit ?? 'gal';
     _finalNotesController =
-        TextEditingController(text: widget.batch.finalNotes ?? '');
+        TextEditingController(text: initialBatch.finalNotes ?? '');
   }
 
   @override
   void dispose() {
-    // FIX: Ensure wakelock is disabled when the page is closed.
     if (_isBrewModeEnabled) {
       WakelockPlus.disable();
     }
@@ -98,9 +112,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     super.dispose();
   }
 
-  // --- Status Progression & Brew Mode ---
-
-  // FIX: New function to toggle Brew Mode on and off.
+  // FIX 1: All methods, including build(), now live inside the State class.
+  
   void _toggleBrewMode() {
     setState(() {
       _isBrewModeEnabled = !_isBrewModeEnabled;
@@ -124,29 +137,27 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     });
   }
 
-  void _updateBatchStatus(String newStatus) {
-    setState(() {
-      widget.batch.status = newStatus;
-      widget.batch.save();
+  void _updateBatchStatus(BatchModel batch, String newStatus) {
+    batch.status = newStatus;
+    batch.save();
 
-      int tabIndex = 0;
-      switch (newStatus) {
-        case 'Preparation':
-          tabIndex = 1;
-          break;
-        case 'Fermenting':
-          tabIndex = 2;
-          break;
-        case 'Completed':
-          tabIndex = 3;
-          break;
-      }
-      _tabController.animateTo(tabIndex);
-    });
+    int tabIndex = 0;
+    switch (newStatus) {
+      case 'Preparation':
+        tabIndex = 1;
+        break;
+      case 'Fermenting':
+        tabIndex = 2;
+        break;
+      case 'Completed':
+        tabIndex = 3;
+        break;
+    }
+    _tabController.animateTo(tabIndex);
   }
-  
-  Future<void> _showChangeStatusDialog() async {
-    String currentStatus = widget.batch.status;
+
+  Future<void> _showChangeStatusDialog(BatchModel batch) async {
+    String currentStatus = batch.status;
     final newStatus = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
@@ -156,7 +167,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             builder: (BuildContext context, StateSetter setState) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
-                children: ['Planning', 'Preparation', 'Fermenting', 'Completed'].map((status) {
+                children: ['Planning', 'Preparation', 'Fermenting', 'Completed']
+                    .map((status) {
                   return RadioListTile<String>(
                     title: Text(status),
                     value: status,
@@ -187,19 +199,20 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       },
     );
 
-    if (newStatus != null && newStatus != widget.batch.status) {
-      _updateBatchStatus(newStatus);
+    if (newStatus != null && newStatus != batch.status) {
+      _updateBatchStatus(batch, newStatus);
     }
   }
 
   Widget _buildStatusProgressionButton({
+    required BatchModel batch,
     required String currentStatus,
     required String nextStatus,
     required String buttonText,
     IconData? icon,
   }) {
-    if (widget.batch.status != currentStatus) {
-      return const SizedBox.shrink(); 
+    if (batch.status != currentStatus) {
+      return const SizedBox.shrink();
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0),
@@ -207,7 +220,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
         child: ElevatedButton.icon(
           icon: Icon(icon ?? Icons.arrow_forward_ios),
           label: Text(buttonText),
-          onPressed: () => _updateBatchStatus(nextStatus),
+          onPressed: () => _updateBatchStatus(batch, nextStatus),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             textStyle: Theme.of(context).textTheme.titleMedium,
@@ -218,9 +231,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       ),
     );
   }
-
-
-  // --- UI Building Helper Methods ---
 
   Widget _sectionTitle(String title) {
     return Padding(
@@ -261,10 +271,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 builder: (_) => AddYeastDialog(
                   existing: batch.yeast,
                   onAdd: (newYeast) {
-                    setState(() {
-                      batch.yeast = newYeast;
-                      batch.save();
-                    });
+                    batch.yeast = newYeast;
+                    batch.save();
                   },
                 ),
               );
@@ -351,7 +359,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Recipe Summary', style: Theme.of(context).textTheme.titleLarge),
+                Text('Recipe Summary',
+                    style: Theme.of(context).textTheme.titleLarge),
                 IconButton(
                   icon: const Icon(Icons.edit),
                   tooltip: 'Edit Targets',
@@ -363,10 +372,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             Row(
               children: [
                 Text('Status: ', style: Theme.of(context).textTheme.titleMedium),
-                Text(batch.status, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                Text(batch.status,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold)),
                 const Spacer(),
                 OutlinedButton(
-                  onPressed: _showChangeStatusDialog,
+                  onPressed: () => _showChangeStatusDialog(batch),
                   child: const Text('Change'),
                 ),
               ],
@@ -375,8 +388,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             Text(
                 'Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
             Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
-            Text(
-                'Target ABV: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%'),
+            Text('Target ABV: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%'),
           ],
         ),
       ),
@@ -418,8 +430,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       }).toList(),
     );
   }
-
-  // --- Dialog and Logic Methods ---
 
   Future<bool> _confirmInventoryDeduction({
     required BuildContext context,
@@ -494,12 +504,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                batch.batchVolume = double.tryParse(volumeController.text);
-                batch.plannedOg = double.tryParse(ogController.text);
-                batch.plannedAbv = double.tryParse(abvController.text);
-                batch.save();
-              });
+              batch.batchVolume = double.tryParse(volumeController.text);
+              batch.plannedOg = double.tryParse(ogController.text);
+              batch.plannedAbv = double.tryParse(abvController.text);
+              batch.save();
               Navigator.of(context).pop();
             },
             child: const Text('Save'),
@@ -509,7 +517,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
-  void _handleDeleteMeasurement(Measurement measurement) {
+  void _handleDeleteMeasurement(BatchModel batch, Measurement measurement) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -526,10 +534,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               child: const Text('Delete'),
               onPressed: () {
                 Navigator.of(context).pop();
-                setState(() {
-                  widget.batch.measurements.remove(measurement);
-                  widget.batch.save();
-                });
+                batch.measurements.remove(measurement);
+                batch.save();
               },
             ),
           ],
@@ -654,10 +660,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
                 if (!mounted) return;
 
-                this.setState(() {
-                  batch.recipeId = newRecipe.id;
-                  batch.save();
-                });
+                batch.recipeId = newRecipe.id;
+                batch.save();
 
                 navigator.pop();
                 scaffoldMessenger.showSnackBar(
@@ -680,42 +684,39 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     if (confirmed != true || !mounted) return;
     final recipe = selectedRecipe;
     if (recipe == null) return;
-    widget.batch.save();
 
-    setState(() {
-      if (syncYeast) {
-        batch.yeast = recipe.yeast.isNotEmpty
-            ? Map<String, dynamic>.from(recipe.yeast.first)
-            : null;
-      }
-      if (syncIngredients) {
-        batch.ingredients =
-            List<Map<String, dynamic>>.from(recipe.ingredients);
-      }
-      if (syncAdditives) {
-        batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
-      }
-      if (syncStages) {
-        batch.fermentationStages = recipe.fermentationStages
-            .map((stageMap) =>
-                FermentationStage.fromJson(Map<String, dynamic>.from(stageMap)))
-            .toList();
-        if (batch.fermentationStages.isNotEmpty) {
-          DateTime nextStageStartDate = batch.startDate;
-          for (var stage in batch.fermentationStages) {
-            stage.startDate = nextStageStartDate;
-            nextStageStartDate =
-                nextStageStartDate.add(Duration(days: stage.durationDays));
-          }
+    if (syncYeast) {
+      batch.yeast = recipe.yeast.isNotEmpty
+          ? Map<String, dynamic>.from(recipe.yeast.first)
+          : null;
+    }
+    if (syncIngredients) {
+      batch.ingredients =
+          List<Map<String, dynamic>>.from(recipe.ingredients);
+    }
+    if (syncAdditives) {
+      batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
+    }
+    if (syncStages) {
+      batch.fermentationStages = recipe.fermentationStages
+          .map((stageMap) =>
+              FermentationStage.fromJson(Map<String, dynamic>.from(stageMap)))
+          .toList();
+      if (batch.fermentationStages.isNotEmpty) {
+        DateTime nextStageStartDate = batch.startDate;
+        for (var stage in batch.fermentationStages) {
+          stage.startDate = nextStageStartDate;
+          nextStageStartDate =
+              nextStageStartDate.add(Duration(days: stage.durationDays));
         }
       }
-      if (syncTargets) {
-        batch.batchVolume = recipe.batchVolume;
-        batch.plannedOg = recipe.plannedOg;
-        batch.plannedAbv = recipe.plannedAbv;
-      }
-      batch.save();
-    });
+    }
+    if (syncTargets) {
+      batch.batchVolume = recipe.batchVolume;
+      batch.plannedOg = recipe.plannedOg;
+      batch.plannedAbv = recipe.plannedAbv;
+    }
+    batch.save();
 
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -723,8 +724,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     }
   }
 
-  Future<PlannedEvent?> _addPlannedEventDialog() async {
-    return null;
+  Future<void> _addPlannedEventDialog(BatchModel batch) async {
+    final newEvent = await showDialog<PlannedEvent>(
+        context: context, builder: (_) => const AlertDialog(title: Text("Add Event (Not Implemented)")));
+    if (newEvent != null) {
+      batch.plannedEvents ??= [];
+      batch.plannedEvents!.add(newEvent);
+      batch.save();
+    }
   }
 
   void _manageStages(BatchModel batch) async {
@@ -736,49 +743,61 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       ),
     );
     if (updatedStages != null) {
-      setState(() {
-        batch.fermentationStages = updatedStages;
-        batch.save();
-      });
+      batch.fermentationStages = updatedStages;
+      batch.save();
     }
   }
-
+  
   @override
   Widget build(BuildContext context) {
-    final batch = widget.batch;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(batch.name),
-        // FIX: Added the actions list to the AppBar for the Brew Mode button.
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
-              color: _isBrewModeEnabled ? Colors.amber : null,
+    return ValueListenableBuilder<Box<BatchModel>>(
+      valueListenable: Hive.box<BatchModel>('batches').listenable(),
+      builder: (context, box, _) {
+        final batch = box.get(widget.batchKey);
+
+        if (batch == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Batch Not Found")),
+            body: const Center(
+              child: Text("This batch may have been deleted."),
             ),
-            tooltip: 'Toggle Brew Mode',
-            onPressed: _toggleBrewMode,
+          );
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(batch.name),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
+                  color: _isBrewModeEnabled ? Colors.amber : null,
+                ),
+                tooltip: 'Toggle Brew Mode',
+                onPressed: _toggleBrewMode,
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Planning'),
+                Tab(text: 'Preparation'),
+                Tab(text: 'Fermenting'),
+                Tab(text: 'Completed'),
+              ],
+            ),
           ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Planning'),
-            Tab(text: 'Preparation'),
-            Tab(text: 'Fermenting'),
-            Tab(text: 'Completed'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildPlanningTab(batch),
-          _buildPreparationTab(batch),
-          _buildFermentingTab(batch),
-          _buildCompletedTab(batch),
-        ],
-      ),
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildPlanningTab(batch),
+              _buildPreparationTab(batch),
+              _buildFermentingTab(batch),
+              _buildCompletedTab(batch),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -793,7 +812,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           ElevatedButton.icon(
             icon: const Icon(Icons.sync),
             label: const Text('Sync From Recipe'),
-            onPressed: () => _showSyncFromRecipeDialog(widget.batch),
+            onPressed: () => _showSyncFromRecipeDialog(batch),
           ),
           _sectionTitle('Ingredients'),
           _ingredientsList(batch),
@@ -805,14 +824,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               await showDialog<void>(
                 context: context,
                 builder: (_) => AddIngredientDialog(
+                  // FIX 2: Added missing 'unitType' parameter.
                   unitType: UnitType.mass,
                   onAddToRecipe: (ingredient) {
-                    setState(() {
-                      batch.ingredients.add(ingredient);
-                      batch.save();
-                    });
+                    batch.ingredients.add(ingredient);
+                    batch.save();
                   },
-                  onAddToInventory: (_) {},
                 ),
               );
             },
@@ -835,10 +852,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   mustPH: estimatedPH,
                   volume: volume,
                   onAdd: (additive) {
-                    setState(() {
-                      batch.additives.add(additive);
-                      batch.save();
-                    });
+                    batch.additives.add(additive);
+                    batch.save();
                   },
                 ),
               );
@@ -860,18 +875,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           ElevatedButton.icon(
             icon: const Icon(Icons.add),
             label: const Text('Add Planned Event'),
-            onPressed: () async {
-              final newEvent = await _addPlannedEventDialog();
-              if (newEvent != null) {
-                setState(() {
-                  batch.plannedEvents ??= [];
-                  batch.plannedEvents!.add(newEvent);
-                  batch.save();
-                });
-              }
-            },
+            onPressed: () => _addPlannedEventDialog(batch),
           ),
           _buildStatusProgressionButton(
+            batch: batch,
             currentStatus: 'Planning',
             nextStatus: 'Preparation',
             buttonText: 'Start Preparation',
@@ -882,6 +889,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _buildPreparationTab(BatchModel batch) {
+    // Sync controller with the latest model state
+    final currentPrepNotes = batch.prepNotes ?? '';
+    if (_prepNotesController.text != currentPrepNotes) {
+      _prepNotesController.text = currentPrepNotes;
+      _prepNotesController.selection =
+          TextSelection.fromPosition(TextPosition(offset: _prepNotesController.text.length));
+    }
+
     final inventoryBox = Hive.box<InventoryItem>('inventory');
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -894,6 +909,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           _sectionTitle('Preparation Notes'),
           _buildPreparationNotesEditor(batch),
           _buildStatusProgressionButton(
+            batch: batch,
             currentStatus: 'Preparation',
             nextStatus: 'Fermenting',
             buttonText: 'Start Fermenting',
@@ -903,12 +919,9 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
-  // --- PREPARATION TAB WIDGETS ---
-
   List<Widget> _buildInventoryChecklist(
       BatchModel batch, Box<InventoryItem> inventoryBox) {
     return [
-      // --- INGREDIENTS ---
       Card(
         margin: const EdgeInsets.symmetric(vertical: 4.0),
         child: ExpansionTile(
@@ -921,9 +934,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   .asMap()
                   .entries
                   .map((entry) => _buildChecklistItem(
+                        batch: batch,
                         itemData: entry.value,
                         inventoryBox: inventoryBox,
                         onChanged: (newValue) => _handleDeductionChange(
+                          batch: batch,
                           itemType: 'ingredient',
                           item: entry.value,
                           index: entry.key,
@@ -934,19 +949,21 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   .toList(),
         ),
       ),
-      // --- YEAST ---
       Card(
         margin: const EdgeInsets.symmetric(vertical: 4.0),
         child: ExpansionTile(
-          title: const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)),
+          title:
+              const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)),
           initiallyExpanded: true,
           children: batch.yeast == null
               ? [const ListTile(title: Text('No yeast added.'))]
               : [
                   _buildChecklistItem(
+                    batch: batch,
                     itemData: batch.yeast!,
                     inventoryBox: inventoryBox,
                     onChanged: (newValue) => _handleDeductionChange(
+                      batch: batch,
                       itemType: 'yeast',
                       item: batch.yeast!,
                       newValue: newValue,
@@ -956,7 +973,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 ],
         ),
       ),
-      // --- ADDITIVES ---
       Card(
         margin: const EdgeInsets.symmetric(vertical: 4.0),
         child: ExpansionTile(
@@ -969,9 +985,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   .asMap()
                   .entries
                   .map((entry) => _buildChecklistItem(
+                        batch: batch,
                         itemData: entry.value,
                         inventoryBox: inventoryBox,
                         onChanged: (newValue) => _handleDeductionChange(
+                          batch: batch,
                           itemType: 'additive',
                           item: entry.value,
                           index: entry.key,
@@ -985,7 +1003,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     ];
   }
 
-  Widget _buildChecklistItem({
+ Widget _buildChecklistItem({
+    required BatchModel batch,
     required Map<String, dynamic> itemData,
     required Box<InventoryItem> inventoryBox,
     required Future<void> Function(bool) onChanged,
@@ -1033,14 +1052,15 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                       onPressed: () => _showQuickAddDialog(inventoryItem, unit),
                       tooltip: 'Quick-add to inventory',
                     ),
-                    if (!sufficient)
+                    // This is the correct logic for the checklist warning icon
+                    if (!sufficient && !shouldDeduct)
                       const Padding(
                         padding: EdgeInsets.only(left: 6),
                         child: Icon(Icons.warning, color: Colors.red, size: 18),
                       ),
                   ],
                 )
-              else 
+              else
                 Row(
                   children: [
                     Text(
@@ -1053,7 +1073,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                     TextButton.icon(
                       icon: const Icon(Icons.add_box_outlined, size: 20),
                       label: const Text('Create'),
-                      onPressed: () => _showCreateInventoryItemDialog(name, unit),
+                      onPressed: () =>
+                          _showCreateInventoryItemDialog(name, unit),
                     )
                   ],
                 ),
@@ -1062,7 +1083,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           trailing: (!sufficient && !shouldDeduct)
               ? ElevatedButton(
                   onPressed: () {
-                    final shoppingBox = Hive.box<ShoppingListItem>('shopping_list');
+                    final shoppingBox =
+                        Hive.box<ShoppingListItem>('shopping_list');
                     final amountNeeded = amount - inStock;
 
                     if (amountNeeded > 0) {
@@ -1070,12 +1092,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                         name: name,
                         amount: amountNeeded,
                         unit: unit,
-                        recipeName: widget.batch.name,
+                        recipeName: batch.name,
                       );
                       shoppingBox.add(newItem);
-                      
+
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('Added ${amountNeeded.toStringAsFixed(2)} $unit of "$name" to shopping list!'),
+                        content: Text(
+                            'Added ${amountNeeded.toStringAsFixed(2)} $unit of "$name" to shopping list!'),
                         duration: const Duration(seconds: 2),
                       ));
                     }
@@ -1099,7 +1122,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       ],
     );
   }
-  
   void _showQuickAddDialog(InventoryItem item, String unit) async {
     final TextEditingController controller = TextEditingController();
     final amount = await showDialog<double>(
@@ -1113,7 +1135,9 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             suffixText: unit,
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d*'))],
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d*'))
+          ],
         ),
         actions: [
           TextButton(
@@ -1134,14 +1158,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
 
     if (amount != null) {
-      setState(() {
-        item.addPurchase(PurchaseTransaction(
-          date: DateTime.now(),
-          amount: amount,
-          cost: item.costPerUnit ?? 0,
-        ));
-        item.save();
-      });
+      item.addPurchase(PurchaseTransaction(
+        date: DateTime.now(),
+        amount: amount,
+        cost: item.costPerUnit ?? 0,
+      ));
+      item.save();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Added $amount $unit to ${item.name}')),
@@ -1154,22 +1176,21 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return const AddInventoryDialog();
+        return AddInventoryDialog(initialData: {'name': name, 'unit': unit});
       },
-    ).then((_) {
-      setState(() {});
-    });
+    );
   }
 
   Future<void> _handleDeductionChange({
-    required String itemType, // 'ingredient', 'yeast', or 'additive'
+    required BatchModel batch,
+    required String itemType,
     required Map<String, dynamic> item,
-    int index = -1, // Use -1 for single items like yeast
+    int index = -1,
     required bool newValue,
     required Box<InventoryItem> inventoryBox,
   }) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
+
     final name = item['name'] ?? 'Unnamed';
     final amount = (item['amount'] as num?)?.toDouble() ?? 0;
     final unit = item['unit'] ?? '';
@@ -1198,38 +1219,34 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
     if (!mounted) return;
 
-    setState(() {
-      switch (itemType) {
-        case 'ingredient':
-          widget.batch.ingredients[index]['deductFromInventory'] = newValue;
-          break;
-        case 'yeast':
-          widget.batch.yeast!['deductFromInventory'] = newValue;
-          break;
-        case 'additive':
-          widget.batch.additives[index]['deductFromInventory'] = newValue;
-          break;
-      }
+    switch (itemType) {
+      case 'ingredient':
+        batch.ingredients[index]['deductFromInventory'] = newValue;
+        break;
+      case 'yeast':
+        batch.yeast!['deductFromInventory'] = newValue;
+        break;
+      case 'additive':
+        batch.additives[index]['deductFromInventory'] = newValue;
+        break;
+    }
 
-      if (newValue) {
-        inventoryItem.deduct(amount);
-        scaffoldMessenger
-            .showSnackBar(SnackBar(content: Text('Deducted $amount $unit from $name')));
-      } else {
-        inventoryItem.addPurchase(PurchaseTransaction(
-          date: DateTime.now(),
-          amount: amount,
-          cost: inventoryItem.costPerUnit ?? 0,
-        ));
-        scaffoldMessenger
-            .showSnackBar(SnackBar(content: Text('Restored $amount $unit to $name')));
-      }
-      widget.batch.save();
-      inventoryItem.save();
-    });
+    if (newValue) {
+      inventoryItem.deduct(amount);
+      scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('Deducted $amount $unit from $name')));
+    } else {
+      inventoryItem.addPurchase(PurchaseTransaction(
+        date: DateTime.now(),
+        amount: amount,
+        cost: inventoryItem.costPerUnit ?? 0,
+      ));
+      scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('Restored $amount $unit to $name')));
+    }
+    batch.save();
+    inventoryItem.save();
   }
-
-  // --- FERMENTING TAB WIDGETS ---
 
   Widget _buildFermentingTab(BatchModel batch) {
     return ListView(
@@ -1261,10 +1278,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                               : null,
                         ));
                 if (newMeasurement != null) {
-                  setState(() {
-                    batch.measurements.add(newMeasurement);
-                    batch.save();
-                  });
+                  batch.measurements.add(newMeasurement);
+                  batch.save();
                 }
               },
             ),
@@ -1291,20 +1306,19 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               ),
             );
             if (updatedMeasurement != null) {
-              setState(() {
-                final originalIndex = batch.measurements.indexWhere(
-                    (m) => m.timestamp == measurementToEdit.timestamp);
-                if (originalIndex != -1) {
-                  batch.measurements[originalIndex] = updatedMeasurement;
-                  batch.save();
-                }
-              });
+              final originalIndex = batch.measurements
+                  .indexWhere((m) => m.timestamp == measurementToEdit.timestamp);
+              if (originalIndex != -1) {
+                batch.measurements[originalIndex] = updatedMeasurement;
+                batch.save();
+              }
             }
           },
-          onDeleteMeasurement: _handleDeleteMeasurement,
+          onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
           onManageStages: () => _manageStages(batch),
         ),
         _buildStatusProgressionButton(
+          batch: batch,
           currentStatus: 'Fermenting',
           nextStatus: 'Completed',
           buttonText: 'Mark as Completed',
@@ -1314,9 +1328,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
-  // --- COMPLETED TAB WIDGETS ---
-
   Widget _buildCompletedTab(BatchModel batch) {
+    // Sync local state with the model from the builder
+    _tastingRating = batch.tastingRating ?? 0;
+    _finalYieldUnit = batch.finalYieldUnit ?? 'gal';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -1337,8 +1353,17 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _buildFinalStatsCard(BatchModel batch) {
-    final actualAbv =
-        (batch.og != null && batch.fg != null) ? calculateABV(batch.og!, batch.fg!) : null;
+    // Sync controller with the latest model state
+    final currentFgText = batch.fg?.toString() ?? '';
+    if (_fgController.text != currentFgText) {
+      _fgController.text = currentFgText;
+      _fgController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _fgController.text.length));
+    }
+
+    final actualAbv = (batch.og != null && batch.fg != null)
+        ? calculateABV(batch.og!, batch.fg!)
+        : null;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1359,10 +1384,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                         const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(hintText: 'e.g., 1.010'),
                     onChanged: (value) {
-                      setState(() {
-                        batch.fg = double.tryParse(value);
-                        batch.save();
-                      });
+                      batch.fg = double.tryParse(value);
+                      batch.save();
                     },
                   ),
                 ),
@@ -1397,6 +1420,26 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _buildTastingNotesSection(BatchModel batch) {
+    // Sync controllers with the latest model state
+    final currentAroma = batch.tastingNotes?['aroma'] ?? '';
+    if (_tastingAromaController.text != currentAroma) {
+      _tastingAromaController.text = currentAroma;
+      _tastingAromaController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _tastingAromaController.text.length));
+    }
+    final currentAppearance = batch.tastingNotes?['appearance'] ?? '';
+    if (_tastingAppearanceController.text != currentAppearance) {
+      _tastingAppearanceController.text = currentAppearance;
+      _tastingAppearanceController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _tastingAppearanceController.text.length));
+    }
+    final currentFlavor = batch.tastingNotes?['flavor'] ?? '';
+    if (_tastingFlavorController.text != currentFlavor) {
+      _tastingFlavorController.text = currentFlavor;
+      _tastingFlavorController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _tastingFlavorController.text.length));
+    }
+
     return Column(
       children: [
         Row(
@@ -1451,6 +1494,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _buildPackagingLogSection(BatchModel batch) {
+    // Sync controller with the latest model state
+    final currentYield = batch.finalYield?.toString() ?? '';
+    if (_finalYieldController.text != currentYield) {
+      _finalYieldController.text = currentYield;
+      _finalYieldController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _finalYieldController.text.length));
+    }
+
     return Column(
       children: [
         ListTile(
@@ -1466,10 +1517,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 firstDate: DateTime(2020),
                 lastDate: DateTime(2100));
             if (date != null) {
-              setState(() {
-                batch.packagingDate = date;
-                batch.save();
-              });
+              batch.packagingDate = date;
+              batch.save();
             }
           },
         ),
@@ -1482,10 +1531,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               .toList(),
           onChanged: (value) {
             if (value != null) {
-              setState(() {
-                batch.packagingMethod = value;
-                batch.save();
-              });
+              batch.packagingMethod = value;
+              batch.save();
             }
           },
         ),
@@ -1515,13 +1562,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   });
                 }
               },
-              items: [
+              items: {
                 'gal',
                 'L',
                 '12oz bottle',
                 '16oz bottle',
-                '32oz growler'
-              ].map((unit) {
+                '32oz growler',
+                '5gal keg'
+              }.map((unit) {
                 return DropdownMenuItem<String>(
                   value: unit,
                   child: Text(unit),
@@ -1535,6 +1583,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _buildLessonsLearnedSection(BatchModel batch) {
+    // Sync controller with the latest model state
+    final currentNotes = batch.finalNotes ?? '';
+    if (_finalNotesController.text != currentNotes) {
+      _finalNotesController.text = currentNotes;
+      _finalNotesController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _finalNotesController.text.length));
+    }
+
     return TextField(
       controller: _finalNotesController,
       maxLines: 5,
@@ -1569,8 +1625,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             icon: const Icon(Icons.copy),
             label: const Text('Clone to New Batch'),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Batch cloned!')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('Batch cloned!')));
             },
           ),
         ],
@@ -1579,6 +1635,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   Widget _buildPreparationNotesEditor(BatchModel batch) {
+    // Sync controller with the latest model state
+    final currentPrepNotes = batch.prepNotes ?? '';
+    if (_prepNotesController.text != currentPrepNotes) {
+      _prepNotesController.text = currentPrepNotes;
+      _prepNotesController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _prepNotesController.text.length));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1591,7 +1655,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           ),
           onChanged: (value) {
             batch.prepNotes = value;
-            widget.batch.save();
+            batch.save();
           },
         ),
         const SizedBox(height: 8),

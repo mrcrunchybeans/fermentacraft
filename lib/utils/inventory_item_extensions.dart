@@ -20,7 +20,7 @@ extension InventoryItemDisplay on InventoryItem {
       'g', 'gram', 'grams',
       'kg', 'oz', 'lb', 'mg',
       'ml', 'mL', 'L',
-      'tsp', 'tbsp', 'fl oz', 'cup', 'gallon',
+      'tsp', 'tbsp', 'fl oz', 'cup', 'gal',
     };
 
     if (amount == 1) return unit;

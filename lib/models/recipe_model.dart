@@ -77,21 +77,17 @@ class RecipeModel extends HiveObject {
         fermentationStages = fermentationStages ?? [],
         yeast = yeast ?? [];
 
-Map<String, dynamic> _safelyConvertMap(dynamic raw) {
-  if (raw is Map<String, dynamic>) {
-    return raw;
-  } else if (raw is Map) {
-    return Map<String, dynamic>.from(raw);
-  } else {
-    return {};
+  Map<String, dynamic> _safelyConvertMap(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    } else if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    } else {
+      return {};
+    }
   }
-}
 
-  // THIS IS THE CORRECTED METHOD
   Map<String, dynamic> toJson() {
-    // This helper ensures any map is safely converted by handling
-    // non-string keys and DateTime values.
-
     return {
       'id': id,
       'name': name,
@@ -102,7 +98,8 @@ Map<String, dynamic> _safelyConvertMap(dynamic raw) {
       'abv': abv,
       'additives': additives.map((e) => _safelyConvertMap(e)).toList(),
       'ingredients': ingredients.map((e) => _safelyConvertMap(e)).toList(),
-      'fermentationStages': fermentationStages.map((e) => _safelyConvertMap(e)).toList(),
+      'fermentationStages':
+          fermentationStages.map((e) => _safelyConvertMap(e)).toList(),
       'yeast': yeast.map((e) => _safelyConvertMap(e)).toList(),
       'notes': notes,
       'lastOpened': lastOpened?.toIso8601String(),
@@ -111,23 +108,37 @@ Map<String, dynamic> _safelyConvertMap(dynamic raw) {
       'plannedAbv': plannedAbv,
     };
   }
-  
-  factory RecipeModel.fromJson(Map<String, dynamic> json) => RecipeModel(
-    id: json['id'],
-    name: json['name'],
-    createdAt: DateTime.parse(json['createdAt']),
-    tags: (json['tags'] as List).map((tag) => Tag.fromJson(tag)).toList(),
-    og: json['og'],
-    fg: json['fg'],
-    abv: json['abv'],
-    additives: List<Map<String, dynamic>>.from(json['additives']),
-    ingredients: List<Map<String, dynamic>>.from(json['ingredients']),
-    fermentationStages: List<Map<String, dynamic>>.from(json['fermentationStages']),
-    yeast: List<Map<String, dynamic>>.from(json['yeast']),
-    notes: json['notes'] ?? '',
-    lastOpened: json['lastOpened'] != null ? DateTime.parse(json['lastOpened']) : null,
-    batchVolume: json['batchVolume'],
-    plannedOg: json['plannedOg'],
-    plannedAbv: json['plannedAbv'],
-  );
+
+  // THIS IS THE CORRECTED FACTORY
+  factory RecipeModel.fromJson(Map<String, dynamic> json) {
+    // Helper function to safely parse lists of maps
+    List<Map<String, dynamic>> parseListOfMaps(dynamic jsonList) {
+      if (jsonList == null || jsonList is! List) return [];
+      return jsonList
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+    }
+
+    return RecipeModel(
+      id: json['id'],
+      name: json['name'],
+      createdAt: DateTime.parse(json['createdAt']),
+      tags: (json['tags'] as List).map((tag) => Tag.fromJson(tag)).toList(),
+      og: json['og'],
+      fg: json['fg'],
+      abv: json['abv'],
+      // Use the helper to correctly parse each list
+      additives: parseListOfMaps(json['additives']),
+      ingredients: parseListOfMaps(json['ingredients']),
+      fermentationStages: parseListOfMaps(json['fermentationStages']),
+      yeast: parseListOfMaps(json['yeast']),
+      notes: json['notes'] ?? '',
+      lastOpened: json['lastOpened'] != null
+          ? DateTime.parse(json['lastOpened'])
+          : null,
+      batchVolume: json['batchVolume'],
+      plannedOg: json['plannedOg'],
+      plannedAbv: json['plannedAbv'],
+    );
+  }
 }
