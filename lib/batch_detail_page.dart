@@ -19,7 +19,9 @@ import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
 import 'widgets/add_inventory_dialog.dart';
 import '../models/unit_type.dart';
+import 'package:intl/intl.dart';
 import 'models/shopping_list_item.dart';
+import 'widgets/planned_event_dialog.dart';
 
 class BatchDetailPage extends StatefulWidget {
   final dynamic batchKey;
@@ -673,15 +675,27 @@ Widget _plannedEventsList(BatchModel batch) {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(event.date.toLocal().toString().split(' ')[0]),
+            Text(DateFormat.yMMMd().format(event.date)),
               if (event.notes != null && event.notes!.isNotEmpty)
                 Text('Notes: ${event.notes}'),
             ],
           ),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete, color: Colors.red),
-            onPressed: () => _deletePlannedEvent(batch, index),
-          ),
+trailing: Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    IconButton(
+      icon: const Icon(Icons.edit),
+      tooltip: 'Edit',
+      onPressed: () => _editPlannedEventDialog(batch, index),
+    ),
+    IconButton(
+      icon: const Icon(Icons.delete, color: Colors.red),
+      tooltip: 'Delete',
+      onPressed: () => _deletePlannedEvent(batch, index),
+    ),
+  ],
+),
+
         ),
       );
     }).toList(),
@@ -904,9 +918,7 @@ Widget _plannedEventsList(BatchModel batch) {
                   abv: batch.abv,
                   additives: batch.additives,
                   ingredients: batch.ingredients,
-                  fermentationStages: batch.safeFermentationStages
-                      .map((e) => e.toJson())
-                      .toList(),
+                  fermentationStages: batch.safeFermentationStages,
                   yeast: batch.yeast,
                   notes: batch.notes ?? '',
                   batchVolume: batch.batchVolume,
@@ -952,11 +964,17 @@ Widget _plannedEventsList(BatchModel batch) {
     if (syncAdditives) {
       batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
     }
-    if (syncStages) {
-      batch.fermentationStages = recipe.fermentationStages
-          .map((stageMap) =>
-              FermentationStage.fromJson(Map<String, dynamic>.from(stageMap)))
-          .toList();
+if (syncStages) {
+  batch.fermentationStages = recipe.fermentationStages
+      .map((stage) => FermentationStage(
+            name: stage.name,
+            startDate: stage.startDate,
+            durationDays: stage.durationDays,
+            targetTempC: stage.targetTempC,
+          ))
+      .toList();
+}
+
       if (batch.fermentationStages.isNotEmpty) {
         DateTime nextStageStartDate = batch.startDate;
         for (var stage in batch.fermentationStages) {
@@ -965,7 +983,7 @@ Widget _plannedEventsList(BatchModel batch) {
               nextStageStartDate.add(Duration(days: stage.durationDays));
         }
       }
-    }
+    
     if (syncTargets) {
       batch.batchVolume = recipe.batchVolume;
       batch.plannedOg = recipe.plannedOg;
@@ -978,95 +996,37 @@ Widget _plannedEventsList(BatchModel batch) {
           .showSnackBar(const SnackBar(content: Text('Batch synced from recipe')));
     }
   }
+Future<void> _addPlannedEventDialog(BatchModel batch) async {
+  final newEvent = await showDialog<PlannedEvent>(
+    context: context,
+    builder: (context) => const PlannedEventDialog(),
+  );
 
-  Future<void> _addPlannedEventDialog(BatchModel batch) async {
-    final newEvent = await showDialog<PlannedEvent>(
-        context: context, builder: (_) => const AlertDialog(title: Text("Add Event (Not Implemented)")));
-    if (newEvent != null) {
-      batch.plannedEvents ??= [];
-      batch.plannedEvents!.add(newEvent);
-      batch.save();
-    }
+  if (newEvent != null) {
+    batch.plannedEvents ??= [];
+    batch.plannedEvents!.add(newEvent);
+    await batch.save();
+    setState(() {});
   }
+}
 
 Future<void> _editPlannedEventDialog(BatchModel batch, int index) async {
-  final event = batch.safePlannedEvents[index];
-
-  final TextEditingController titleController = TextEditingController(text: event.title);
-  final TextEditingController notesController = TextEditingController(text: event.notes ?? '');
-  DateTime selectedDate = event.date;
-
   final updatedEvent = await showDialog<PlannedEvent>(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text("Edit Planned Event"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(labelText: "Event Title"),
-            ),
-            TextField(
-              controller: notesController,
-              decoration: const InputDecoration(labelText: "Notes (optional)"),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text("Date:"),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      selectedDate = picked;
-                    }
-                  },
-                  child: Text(
-                    "${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}",
-                  ),
-                ),
-              ],
-            )
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (titleController.text.trim().isEmpty) return;
-              Navigator.pop(
-                context,
-                PlannedEvent(
-                  title: titleController.text.trim(),
-                  date: selectedDate,
-                  notes: notesController.text.trim().isEmpty
-                      ? null
-                      : notesController.text.trim(),
-                ),
-              );
-            },
-            child: const Text("Save"),
-          ),
-        ],
-      );
-    },
+    builder: (context) => PlannedEventDialog(
+      existingEvent: batch.safePlannedEvents[index],
+      onDelete: () {
+        batch.plannedEvents?.removeAt(index);
+        batch.save();
+        setState(() {});
+      },
+    ),
   );
 
   if (updatedEvent != null) {
     batch.plannedEvents![index] = updatedEvent;
-    batch.save();
+    await batch.save();
+    setState(() {});
   }
 }
 
@@ -1087,6 +1047,7 @@ void _deletePlannedEvent(BatchModel batch, int index) {
             batch.plannedEvents?.removeAt(index);
             batch.save();
             Navigator.pop(context);
+            setState(() {});
           },
           child: const Text("Delete"),
         ),
@@ -1095,19 +1056,21 @@ void _deletePlannedEvent(BatchModel batch, int index) {
   );
 }
 
-  void _manageStages(BatchModel batch) async {
-    final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => ManageStagesDialog(
-        initialStages: batch.safeFermentationStages,
-      ),
-    );
-    if (updatedStages != null) {
-      batch.fermentationStages = updatedStages;
-      batch.save();
-    }
+void _manageStages(BatchModel batch) async {
+  final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
+    context: context,
+    isScrollControlled: true,
+    builder: (context) => ManageStagesDialog(
+      initialStages: batch.safeFermentationStages,
+    ),
+  );
+  if (updatedStages != null) {
+    batch.fermentationStages = updatedStages;
+    await batch.save();
+    setState(() {});
   }
+}
+
   
 
   Widget _buildPreparationTab(BatchModel batch) {
