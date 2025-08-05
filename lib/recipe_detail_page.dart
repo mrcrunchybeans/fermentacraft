@@ -3,6 +3,7 @@ import 'package:flutter_application_1/utils/temp_display.dart';
 import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'models/fermentation_stage.dart';
 import 'models/recipe_model.dart';
 import 'recipe_builder_page.dart';
 import 'recipe_list_page.dart';
@@ -257,26 +258,36 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     );
   }
 
-  Widget _buildFermentationCard(RecipeModel recipe) {
-    if (recipe.fermentationStages.isEmpty) return const SizedBox.shrink();
-    return Card(
-      child: ExpansionTile(
-        title: Text("Fermentation Profile",
-            style: Theme.of(context).textTheme.titleLarge),
-        initiallyExpanded: true,
-        children: recipe.fermentationStages.map((stage) {
-          final s = safeMap(stage);
-          final temp = (s['temp'] as num?)?.toDouble() ?? 0.0;
-          return ListTile(
-            leading: const Icon(Icons.thermostat, color: Colors.grey),
-            title: Text(s['name'] ?? 'Stage'),
-            subtitle: Text(
-                "${s['days']} ${s['days'] == 1 ? 'day' : 'days'} @ ${TempDisplay.format(temp)}"),
-          );
-        }).toList(),
+Widget _buildFermentationCard(RecipeModel recipe) {
+  if (recipe.fermentationStages.isEmpty) return const SizedBox.shrink();
+
+  return Card(
+    child: ExpansionTile(
+      title: Text(
+        "Fermentation Profile",
+        style: Theme.of(context).textTheme.titleLarge,
       ),
-    );
-  }
+      initiallyExpanded: true,
+      children: recipe.fermentationStages.map<Widget>((dynamic stage) {
+        final FermentationStage s = (stage is FermentationStage)
+            ? stage
+            : FermentationStage.fromJson(Map<String, dynamic>.from(stage as Map));
+
+        return ListTile(
+          leading: const Icon(Icons.thermostat, color: Colors.grey),
+          title: Text(s.name),
+          subtitle: Text(
+            "${s.durationDays} ${s.durationDays == 1 ? 'day' : 'days'} @ ${TempDisplay.format(s.targetTempC ?? 0.0)}",
+          ),
+        );
+      }).toList(),
+    ),
+  );
+}
+
+
+
+
 
   Widget _buildNotesCard(RecipeModel recipe) {
     return Card(

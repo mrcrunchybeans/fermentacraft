@@ -918,7 +918,7 @@ trailing: Row(
                   abv: batch.abv,
                   additives: batch.additives,
                   ingredients: batch.ingredients,
-                  fermentationStages: batch.safeFermentationStages,
+                  fermentationStages: selectedRecipe!.fermentationStages.toList(),
                   yeast: batch.yeast,
                   notes: batch.notes ?? '',
                   batchVolume: batch.batchVolume,
@@ -964,16 +964,11 @@ trailing: Row(
     if (syncAdditives) {
       batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
     }
-if (syncStages) {
-  batch.fermentationStages = recipe.fermentationStages
-      .map((stage) => FermentationStage(
-            name: stage.name,
-            startDate: stage.startDate,
-            durationDays: stage.durationDays,
-            targetTempC: stage.targetTempC,
-          ))
-      .toList();
+    if (syncStages) {
+      batch.fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
 }
+
+
 
       if (batch.fermentationStages.isNotEmpty) {
         DateTime nextStageStartDate = batch.startDate;

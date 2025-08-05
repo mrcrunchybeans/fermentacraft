@@ -31,12 +31,20 @@ class FermentationStage extends HiveObject {
         'startDate': startDate?.toIso8601String(),
       };
 
-  factory FermentationStage.fromJson(Map<String, dynamic> json) =>
-      FermentationStage(
-        name: json['name'],
-        durationDays: json['durationDays'],
-        targetTempC: json['targetTempC'],
-        startDate:
-            json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
-      );
+  factory FermentationStage.fromJson(Map<String, dynamic> json) => FermentationStage(
+    name: json['name'] ?? 'Unnamed Stage',
+    durationDays: json['durationDays'] ?? 0,
+    targetTempC: (json['targetTempC'] != null) ? (json['targetTempC'] as num).toDouble() : null,
+    startDate: json['startDate'] != null ? DateTime.parse(json['startDate']) : null,
+  );
+
+
+  FermentationStage copy() {
+    return FermentationStage(
+      name: name,
+      startDate: startDate,
+      durationDays: durationDays,
+      targetTempC: targetTempC,
+    );
+  }
 }
