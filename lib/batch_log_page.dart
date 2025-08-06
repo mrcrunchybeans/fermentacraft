@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/batch_detail_page.dart';
-import 'package:flutter_application_1/models/batch_model.dart';
-import 'package:flutter_application_1/widgets/add_batch_dialog.dart';
+import 'package:fermentacraft/batch_detail_page.dart';
+import 'package:fermentacraft/models/batch_model.dart';
+import 'package:fermentacraft/widgets/add_batch_dialog.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 
@@ -97,6 +97,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'addBatchFab',
         onPressed: () async {
           await showDialog(
             context: context,

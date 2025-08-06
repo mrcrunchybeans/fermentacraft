@@ -1,5 +1,5 @@
-import 'package:flutter_application_1/models/batch_model.dart';
-import 'package:flutter_application_1/models/recipe_model.dart';
+import 'package:fermentacraft/models/batch_model.dart';
+import 'package:fermentacraft/models/recipe_model.dart';
 
 double estimateMustPH(BatchModel batch) {
   final withPH = batch.safeIngredients.where((f) => f['ph'] != null).toList();

@@ -1,8 +1,8 @@
 // lib/recipe_list_page.dart
 
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/recipe_detail_page.dart';
-import 'package:flutter_application_1/recipe_builder_page.dart';
+import 'package:fermentacraft/recipe_detail_page.dart';
+import 'package:fermentacraft/recipe_builder_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'models/recipe_model.dart';
@@ -126,6 +126,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'addRecipeFab',
         onPressed: () {
           Navigator.push(
             context,

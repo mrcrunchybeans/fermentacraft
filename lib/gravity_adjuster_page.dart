@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter_application_1/utils/sugar_gravity_data.dart';
+import 'package:fermentacraft/utils/sugar_gravity_data.dart';
 import '../widgets/stabilization_guidance_dialog.dart';
 
 
@@ -283,7 +283,7 @@ Row(
 ),
           TextField(controller: _currentSGController, decoration: const InputDecoration(labelText: 'Current SG'), onChanged: (_) => _calculate()),
           TextField(controller: _targetSGController, decoration: const InputDecoration(labelText: 'Target SG'), onChanged: (_) => _calculate()),
-          TextField(controller: _phController, decoration: const InputDecoration(labelText: 'Measured pH (optional)'), keyboardType: TextInputType.numberWithOptions(decimal: true),),
+          TextField(controller: _phController, decoration: const InputDecoration(labelText: 'Measured pH (optional)'), keyboardType: const TextInputType.numberWithOptions(decimal: true),),
 
           DropdownButton<String>(
             value: _selectedSugar,

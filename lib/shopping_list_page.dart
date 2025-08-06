@@ -258,6 +258,7 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'addManualItemFab',
         onPressed: _showAddItemDialog,
         tooltip: 'Add Manual Item',
         child: const Icon(Icons.add),

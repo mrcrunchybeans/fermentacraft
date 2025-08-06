@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/utils/inventory_item_extensions.dart';
+import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory_item.dart';
 import '../models/purchase_transaction.dart';

@@ -253,7 +253,7 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
                         curve: Curves.linear,
                         LineChartData(
                           minY: chartMinY, maxY: chartMaxY, minX: 0, maxX: maxX,
-                          lineTouchData: LineTouchData(enabled: false),
+                          lineTouchData: const LineTouchData(enabled: false),
                           titlesData: _buildTitlesData(chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu, startDate, xInterval),
                           gridData: _buildGridData(),
                           borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade400)),
@@ -399,9 +399,9 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
       runSpacing: 4,
       alignment: WrapAlignment.center,
       children: [
-        _LegendItem(color: Colors.blueAccent, label: "Temperature"),
-        _LegendItem(color: Colors.green, label: "Corrected SG"),
-        _LegendItem(color: Colors.purple, label: "FSU"),
+        const _LegendItem(color: Colors.blueAccent, label: "Temperature"),
+        const _LegendItem(color: Colors.green, label: "Corrected SG"),
+        const _LegendItem(color: Colors.purple, label: "FSU"),
         _LegendItem(color: Colors.orange.shade700, label: "Intervention"),
       ],
     );

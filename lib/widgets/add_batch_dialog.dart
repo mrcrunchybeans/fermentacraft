@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/batch_model.dart';
-import 'package:flutter_application_1/models/recipe_model.dart';
+import 'package:fermentacraft/models/batch_model.dart';
+import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 

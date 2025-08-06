@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/fermentation_stage.dart';
-import 'package:flutter_application_1/models/tag.dart';
-// import 'package:flutter_application_1/utils/temp_display.dart'; // REMOVED: Duplicate import
-import 'package:flutter_application_1/utils/unit_conversion.dart';
+import 'package:fermentacraft/models/fermentation_stage.dart';
+import 'package:fermentacraft/models/tag.dart';
+// import 'package:fermentacraft/utils/temp_display.dart'; // REMOVED: Duplicate import
+import 'package:fermentacraft/utils/unit_conversion.dart';
 import 'package:logger/logger.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart'; // ADDED: For context.watch

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/fsu_calculator_page.dart';
-import 'package:flutter_application_1/so2_calculator_page.dart';
-import 'package:flutter_application_1/acid_tools/acid_tools_page.dart';
+import 'package:fermentacraft/fsu_calculator_page.dart';
+import 'package:fermentacraft/so2_calculator_page.dart';
+import 'package:fermentacraft/acid_tools/acid_tools_page.dart';
 
 import 'abv_calculator_page.dart';
 import 'bubble_counter_page.dart';
@@ -36,13 +36,13 @@ class ToolsPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Cider Tools"),
+        title: const Text("Tools"),
         centerTitle: true,
       ),
       body: ListView.separated(
         padding: const EdgeInsets.all(12),
         itemCount: tools.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final tool = tools[index];
           return Card(

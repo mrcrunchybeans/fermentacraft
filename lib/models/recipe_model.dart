@@ -1,6 +1,6 @@
 // ignore_for_file: invalid_null_aware_operator
 
-import 'package:flutter_application_1/models/fermentation_stage.dart';
+import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'tag.dart';

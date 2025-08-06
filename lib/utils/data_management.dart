@@ -125,7 +125,7 @@ class DataManagementService {
       final jsonString = const JsonEncoder.withIndent('  ').convert(allData);
       bool didSave = false;
       final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
-      final fileName = 'cidercraft_backup_$timestamp.json';
+      final fileName = 'fermentacraft_backup_$timestamp.json';
       
       if (kIsWeb) {
         final bytes = utf8.encode(jsonString);
@@ -140,7 +140,7 @@ class DataManagementService {
         final dir = await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/$fileName');
         await file.writeAsString(jsonString);
-        await Share.shareXFiles([XFile(file.path)], text: 'CiderCraft Backup');
+        await Share.shareXFiles([XFile(file.path)], text: 'FementaCaft Backup');
         didSave = true;
       } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         final fileSaveLocation = await getSaveLocation(suggestedName: fileName);

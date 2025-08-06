@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/utils/inventory_item_extensions.dart';
+import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory_item.dart';
@@ -238,6 +238,7 @@ class _InventoryPageState extends State<InventoryPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'addInventoryFab',
         onPressed: () async {
           await showDialog(
             context: context,

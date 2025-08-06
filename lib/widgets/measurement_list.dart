@@ -31,7 +31,7 @@ class MeasurementList extends StatelessWidget {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: sorted.length,
-      separatorBuilder: (_, _) => const Divider(),
+      separatorBuilder: (_, __) => const Divider(),
       itemBuilder: (context, index) {
         final m = sorted[index];
         final sgText = m.gravity != null ? formatGravity(m.gravity!) : '—';

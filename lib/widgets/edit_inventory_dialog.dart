@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/inventory_item.dart';
-import 'package:flutter_application_1/models/unit_type.dart';
-import 'package:flutter_application_1/utils/unit_conversion.dart';
+import 'package:fermentacraft/models/inventory_item.dart';
+import 'package:fermentacraft/models/unit_type.dart';
+import 'package:fermentacraft/utils/unit_conversion.dart';
 import 'package:intl/intl.dart';
 
 class EditInventoryDialog extends StatefulWidget {

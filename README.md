@@ -1,12 +1,12 @@
-# 🍎 CiderCraft
+# 🍎 FementaCaft
 
-**CiderCraft** is an open-source Flutter app designed specifically for homebrewers who focus on **cider, mead, and fruit wine**. It combines the power of precision tracking with beautiful design and user-friendly tools. Inspired by Brewfather—but crafted for fruit fermenters—CiderCraft helps you master every batch from recipe design to bottling.
+**FementaCaft** is an open-source Flutter app designed specifically for homebrewers who focus on **cider, mead, and fruit wine**. It combines the power of precision tracking with beautiful design and user-friendly tools. Inspired by Brewfather—but crafted for fruit fermenters—FementaCaft helps you master every batch from recipe design to bottling.
 
 ---
 
-## 🎯 Why CiderCraft?
+## 🎯 Why FementaCaft?
 
-Most brewing software focuses on beer. CiderCraft fills the gap for makers of:
+Most brewing software focuses on beer. FementaCaft fills the gap for makers of:
 - 🍏 Hard cider
 - 🍯 Mead
 - 🍓 Fruit wines and blends

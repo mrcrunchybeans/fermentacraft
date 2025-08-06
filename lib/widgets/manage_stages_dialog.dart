@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/fermentation_stage.dart';
-import 'package:flutter_application_1/utils/temp_display.dart';
+import 'package:fermentacraft/models/fermentation_stage.dart';
+import 'package:fermentacraft/utils/temp_display.dart';
 import '../models/settings_model.dart';
 import 'package:provider/provider.dart';
 

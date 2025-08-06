@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_application_1/models/recipe_model.dart';
-import 'package:flutter_application_1/widgets/add_measurement_dialog.dart';
+import 'package:fermentacraft/models/recipe_model.dart';
+import 'package:fermentacraft/widgets/add_measurement_dialog.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../models/batch_model.dart';

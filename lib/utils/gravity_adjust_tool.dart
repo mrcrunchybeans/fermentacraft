@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/utils/sugar_gravity_data.dart';
+import 'package:fermentacraft/utils/sugar_gravity_data.dart';
 
 class GravityAdjustTool extends StatefulWidget {
   const GravityAdjustTool({super.key});

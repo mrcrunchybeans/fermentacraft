@@ -454,7 +454,7 @@ class _StripReaderTabState extends State<StripReaderTab> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: referencePoints.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, index) {
                   final point = referencePoints[index];
                   final bool isNext = point == _nextReferenceToSelect;
