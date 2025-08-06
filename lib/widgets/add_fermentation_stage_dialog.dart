@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../utils/temp_display.dart';
+import '../utils/temp_display.dart'; // Using YOUR extension methods now
 import '../models/settings_model.dart';
 import '../models/fermentation_stage.dart';
 
@@ -20,100 +20,76 @@ class AddFermentationStageDialog extends StatefulWidget {
 }
 
 class _AddFermentationStageDialogState extends State<AddFermentationStageDialog> {
-  final _formKey = GlobalKey<FormState>(); // Use a FormKey for validation
-  final _nameController = TextEditingController();
-  final _tempController = TextEditingController();
-  final _daysController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _nameController;
+  late TextEditingController _durationController;
+  late TextEditingController _tempController;
 
-  // Use a simple, non-display character for the internal state of the unit
-  late String _unit;
+  late String _unit; // Internal state will be 'c' or 'f'
 
   @override
   void initState() {
     super.initState();
+    final settings = context.read<SettingsModel>();
+    // Normalize the unit from settings ('°C'/'°F') to 'c'/'f' for your extension methods
+    _unit = settings.unit.toLowerCase().contains('c') ? 'c' : 'f';
 
-    // Get the initial unit from app settings. No need to listen for changes here.
-    final settings = Provider.of<SettingsModel>(context, listen: false);
-    _unit = settings.unit; // Assumes unit is 'c' or 'f'
+    _nameController = TextEditingController(text: widget.existing?.name ?? 'Primary');
+    _durationController = TextEditingController(text: widget.existing?.durationDays.toString() ?? '14');
 
-    // Populate fields if we are editing an existing stage
-    if (widget.existing != null) {
-      final stage = widget.existing!;
-      _nameController.text = stage.name;
-      _daysController.text = stage.durationDays.toString();
+    final initialTempInC = widget.existing?.targetTempC ?? 18.0;
 
-      // Use our robust `toDisplay` extension to set the temperature text
-      if (stage.targetTempC != null) {
-        _tempController.text = stage.targetTempC!.toDisplay(targetUnit: _unit);
-      }
-    } else {
-      // Provide a sensible default value for a new stage
-      const defaultTempC = 20.0;
-      _tempController.text = defaultTempC.toDisplay(targetUnit: _unit);
-    }
+    // FIX: Using your extension methods to get the initial temperature
+    final tempInPreferredUnit = (_unit == 'f') ? initialTempInC.asFahrenheit : initialTempInC;
+    _tempController = TextEditingController(text: tempInPreferredUnit.toStringAsFixed(1));
+  }
+  
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _durationController.dispose();
+    _tempController.dispose();
+    super.dispose();
   }
 
-  // UX Improvement: When the unit changes, convert the existing value.
   void _onUnitChanged(String? newUnit) {
     if (newUnit == null || newUnit == _unit) return;
 
-    // Safely get the current numeric value from the text field
     final currentTempValue = double.tryParse(_tempController.text);
-    if (currentTempValue == null) return; // Do nothing if the text is not a valid number
+    if (currentTempValue == null) return;
 
-    double tempInCelsius;
-    // First, convert the current value to our standard unit (Celsius)
-    if (_unit == 'f') {
-      tempInCelsius = currentTempValue.asCelsius;
-    } else {
-      tempInCelsius = currentTempValue;
-    }
+    // First, convert the current value back to the standard unit (Celsius)
+    final tempInCelsius = (_unit == 'f') ? currentTempValue.asCelsius : currentTempValue;
 
-    // Now, update the state and display the value in the new unit
+    // Now, convert from Celsius to the new target unit
+    final tempInNewUnit = (newUnit == 'f') ? tempInCelsius.asFahrenheit : tempInCelsius;
+
     setState(() {
       _unit = newUnit;
-      _tempController.text = tempInCelsius.toDisplay(targetUnit: _unit);
+      _tempController.text = tempInNewUnit.toStringAsFixed(1);
     });
   }
 
-  // A safe, robust save method
-  void _saveStage() {
-    // Use the FormKey to validate all fields at once
+  void _handleSave() {
     if (!_formKey.currentState!.validate()) {
-      return; // If validation fails, do not proceed
+      return;
     }
 
-    // Safely parse the temperature and days
     final tempValue = double.tryParse(_tempController.text) ?? 0.0;
-    final daysValue = int.tryParse(_daysController.text) ?? 0;
+    final daysValue = int.tryParse(_durationController.text) ?? 0;
 
-    // Convert the final temperature to Celsius for consistent storage
-    final double tempInCelsius;
-    if (_unit == 'f') {
-      tempInCelsius = tempValue.asCelsius;
-    } else {
-      tempInCelsius = tempValue;
-    }
+    // FIX: Using your 'asCelsius' extension to convert back for storage
+    final tempInCelsius = (_unit == 'f') ? tempValue.asCelsius : tempValue;
 
-    // Create the stage object with the final, standardized data
     final stage = FermentationStage(
       name: _nameController.text.trim(),
       durationDays: daysValue,
       targetTempC: tempInCelsius,
-      startDate: widget.existing?.startDate, // Preserve start date if editing
+      startDate: widget.existing?.startDate,
     );
-
+    
     widget.onSave(stage);
     Navigator.of(context).pop();
-  }
-
-  @override
-  void dispose() {
-    // Clean up the controllers when the widget is disposed
-    _nameController.dispose();
-    _tempController.dispose();
-    _daysController.dispose();
-    super.dispose();
   }
 
   @override
@@ -121,7 +97,7 @@ class _AddFermentationStageDialogState extends State<AddFermentationStageDialog>
     return AlertDialog(
       title: Text(widget.existing == null ? 'Add Stage' : 'Edit Stage'),
       content: SingleChildScrollView(
-        child: Form( // Wrap fields in a Form widget
+        child: Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -129,43 +105,32 @@ class _AddFermentationStageDialogState extends State<AddFermentationStageDialog>
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Stage Name'),
-                validator: (value) => (value == null || value.isEmpty)
-                    ? 'Please enter a name'
-                    : null,
-              ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _tempController,
-                      decoration: const InputDecoration(labelText: 'Temperature'),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      validator: (value) => (double.tryParse(value ?? '') == null)
-                          ? 'Invalid number'
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Use our internal '_unit' for the dropdown value
-                  DropdownButton<String>(
-                    value: _unit,
-                    onChanged: _onUnitChanged, // Call our new handler
-                    items: ['c', 'f']
-                        .map((u) => DropdownMenuItem(
-                            value: u, child: Text('°${u.toUpperCase()}')))
-                        .toList(),
-                  ),
-                ],
+                validator: (value) => (value == null || value.trim().isEmpty) ? 'Please enter a name' : null,
               ),
               TextFormField(
-                controller: _daysController,
-                decoration: const InputDecoration(labelText: 'Days'),
+                controller: _durationController,
+                decoration: const InputDecoration(labelText: 'Duration (days)'),
                 keyboardType: TextInputType.number,
-                validator: (value) => (int.tryParse(value ?? '') == null)
-                    ? 'Invalid number'
-                    : null,
+                validator: (value) => (int.tryParse(value ?? '') == null) ? 'Invalid number' : null,
+              ),
+              TextFormField(
+                controller: _tempController,
+                decoration: InputDecoration(
+                  labelText: 'Target Temperature',
+                  // Display the unit next to the field, not inside it
+                  suffixText: '°${_unit.toUpperCase()}',
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                validator: (value) => (double.tryParse(value ?? '') == null) ? 'Invalid number' : null,
+              ),
+              const SizedBox(height: 16),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'c', label: Text('°C')),
+                  ButtonSegment(value: 'f', label: Text('°F')),
+                ],
+                selected: {_unit}, // The selected value is now 'c' or 'f'
+                onSelectionChanged: (newSelection) => _onUnitChanged(newSelection.first),
               ),
             ],
           ),
@@ -176,8 +141,8 @@ class _AddFermentationStageDialogState extends State<AddFermentationStageDialog>
           onPressed: () => Navigator.of(context).pop(),
           child: const Text("Cancel"),
         ),
-        FilledButton( // Use a more prominent button for the primary action
-          onPressed: _saveStage,
+        FilledButton(
+          onPressed: _handleSave,
           child: const Text("Save"),
         ),
       ],

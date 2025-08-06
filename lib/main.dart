@@ -1,3 +1,5 @@
+import 'package:fermentacraft/models/purchase_transaction.dart';
+import 'package:fermentacraft/models/unit_type.dart';
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/models/tag_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -37,6 +39,9 @@ Future<void> setupHive() async {
   Hive.registerAdapter(RecipeModelAdapter());
   Hive.registerAdapter(ShoppingListItemAdapter());
   Hive.registerAdapter(TagAdapter());
+  Hive.registerAdapter(PurchaseTransactionAdapter());
+  Hive.registerAdapter(UnitTypeAdapter());
+
 
   // IMPORTANT: Make sure all your openBox() calls are here
   await Hive.openBox<BatchModel>('batches');

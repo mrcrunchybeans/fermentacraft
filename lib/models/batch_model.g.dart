@@ -14,9 +14,8 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
   BatchModel read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return BatchModel(
       id: fields[0] as String,
       name: fields[1] as String,
@@ -27,23 +26,31 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
       finalYieldUnit: fields[32] as String?,
-      fermentationStages: (fields[6] as List).cast<FermentationStage>(),
-      measurementLogs: (fields[7] as List).cast<Map<String, dynamic>>(),
+      fermentationStages: (fields[6] as List?)?.cast<FermentationStage>(),
+      measurementLogs: (fields[7] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          ?.toList(),
       status: fields[8] as String,
       notes: fields[9] as String?,
-      deductedIngredients: (fields[10] as Map).cast<String, bool>(),
+      deductedIngredients: (fields[10] as Map?)?.cast<String, bool>(),
       type: fields[11] as String?,
       prepNotes: fields[25] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
-      ingredients: (fields[14] as List).cast<Map<String, dynamic>>(),
+      ingredients: (fields[14] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          ?.toList(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
-      additives: (fields[16] as List).cast<Map<String, dynamic>>(),
-      yeast: (fields[17] as List).cast<Map<dynamic, dynamic>>(),
+      additives: (fields[16] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          ?.toList(),
+      yeast: (fields[17] as List?)
+          ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
+          ?.toList(),
       og: fields[20] as double?,
       fg: fields[21] as double?,
       abv: fields[22] as double?,
-      measurements: (fields[23] as List).cast<Measurement>(),
+      measurements: (fields[23] as List?)?.cast<Measurement>(),
       fsuDate: fields[24] as DateTime?,
       packagingDate: fields[30] as DateTime?,
       finalNotes: fields[31] as String?,
