@@ -16,7 +16,6 @@ class FermentationStageAdapter extends TypeAdapter<FermentationStage> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return FermentationStage(
       name: fields[0] as String,
       durationDays: fields[1] as int,

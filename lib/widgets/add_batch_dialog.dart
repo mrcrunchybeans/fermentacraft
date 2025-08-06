@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/batch_model.dart';
 import 'package:flutter_application_1/models/recipe_model.dart';
-import 'package:flutter_application_1/models/fermentation_stage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -82,9 +81,7 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
         yeast: selectedRecipe?.yeast != null
             ? List<Map<dynamic, dynamic>>.from(selectedRecipe!.yeast)
             : [],
-        fermentationStages: selectedRecipe?.fermentationStages
-            .map((e) => FermentationStage.fromJson(Map<String, dynamic>.from(e)))
-            .toList(),
+        fermentationStages: selectedRecipe?.fermentationStages ?? [],
         measurementLogs: [],
         plannedEvents: [],
         deductedIngredients: {},

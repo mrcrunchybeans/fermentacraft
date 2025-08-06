@@ -14,7 +14,7 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
   InventoryItem read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return InventoryItem(
       name: fields[0] as String,
@@ -22,7 +22,7 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
       unitType: fields[2] as UnitType,
       category: fields[5] as String,
       notes: fields[3] as String?,
-      purchaseHistory: (fields[4] as List).cast<PurchaseTransaction>(),
+      purchaseHistory: (fields[4] as List?)?.cast<PurchaseTransaction>(),
     );
   }
 

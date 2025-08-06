@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/utils/temp_display.dart';
+import 'utils/temp_display.dart';
 import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-
+import 'models/settings_model.dart';
 import 'models/fermentation_stage.dart';
 import 'models/recipe_model.dart';
 import 'recipe_builder_page.dart';
 import 'recipe_list_page.dart';
+import 'package:provider/provider.dart';
+
 
 // NOTE: In the page that navigates here (e.g., RecipeListPage),
 // you must now pass the recipe's key instead of its index.
@@ -259,6 +261,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   }
 
 Widget _buildFermentationCard(RecipeModel recipe) {
+  final settings = context.watch<SettingsModel>();
+
   if (recipe.fermentationStages.isEmpty) return const SizedBox.shrink();
 
   return Card(
@@ -277,7 +281,7 @@ Widget _buildFermentationCard(RecipeModel recipe) {
           leading: const Icon(Icons.thermostat, color: Colors.grey),
           title: Text(s.name),
           subtitle: Text(
-            "${s.durationDays} ${s.durationDays == 1 ? 'day' : 'days'} @ ${TempDisplay.format(s.targetTempC ?? 0.0)}",
+          "${s.durationDays} ${s.durationDays == 1 ? 'day' : 'days'} @ ${s.targetTempC?.toDisplay(targetUnit: settings.unit) ?? 'N/A'}",
           ),
         );
       }).toList(),

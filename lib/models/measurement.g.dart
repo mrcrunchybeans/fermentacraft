@@ -16,7 +16,6 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return Measurement(
       timestamp: fields[0] as DateTime,
       gravity: fields[1] as double?,

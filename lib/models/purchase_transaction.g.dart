@@ -14,7 +14,7 @@ class PurchaseTransactionAdapter extends TypeAdapter<PurchaseTransaction> {
   PurchaseTransaction read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return PurchaseTransaction(
       date: fields[0] as DateTime,

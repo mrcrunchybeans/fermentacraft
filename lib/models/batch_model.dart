@@ -1,3 +1,4 @@
+// ignore_for_file: invalid_null_aware_operator
 import 'package:hive/hive.dart';
 import 'fermentation_stage.dart';
 import 'measurement.dart';

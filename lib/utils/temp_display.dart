@@ -1,32 +1,37 @@
-class TempDisplay {
-  static bool _useFahrenheit = false;
+// lib/utils/temp_display.dart
 
-  static void setUseFahrenheit(bool useF) {
-    _useFahrenheit = useF;
-  }
+// ignore_for_file: unnecessary_this
 
-  static String format(double tempC) {
-    if (_useFahrenheit) {
-      final f = (tempC * 9 / 5) + 32;
-      return "${f.toStringAsFixed(1)}°F";
+/// A collection of robust, stateless utility functions for handling temperature
+/// conversion and formatting. Using an extension on `double` provides a clean,
+/// fluent API (e.g., `myTempInCelsius.toDisplay(unit: 'f')`).
+library;
+
+
+extension TemperatureUtils on double {
+  /// Assumes the current double value is a temperature in Celsius and converts it to Fahrenheit.
+  double get asFahrenheit => (this * 9 / 5) + 32;
+
+  /// Assumes the current double value is a temperature in Fahrenheit and converts it to Celsius.
+  double get asCelsius => (this - 32) * 5 / 9;
+
+  /// The primary function to use in your UI.
+  ///
+  /// Assumes the current double value is in Celsius and formats it into a
+  /// display-ready string (e.g., "72.5°F") based on the provided target unit.
+  /// It is case-insensitive and safely handles unknown units.
+  String toDisplay({required String targetUnit}) {
+    // Normalize the unit to lowercase for robust comparison
+    final unit = targetUnit.toLowerCase();
+
+    if (unit == 'f' || unit == '°f') {
+      return '${this.asFahrenheit.toStringAsFixed(1)}°F';
     }
-    return "${tempC.toStringAsFixed(1)}°C";
+
+    // Default to Celsius if the unit is 'c' or anything else.
+    // This provides a safe fallback.
+    return '${this.toStringAsFixed(1)}°C';
   }
-
-  static double convertToCelsius(double input, String unit) {
-    return unit == "°F" ? (input - 32) * 5 / 9 : input;
-  }
-
-  static bool get isF => _useFahrenheit;
-}
-// -- For direct use in widgets that use SettingsModel -- //
-
-double convertTemp(double value, {required String fromUnit, required String toUnit}) {
-  if (fromUnit == toUnit) return value;
-  return toUnit == 'f' ? (value * 9 / 5) + 32 : (value - 32) * 5 / 9;
 }
 
-String displayTemp(double tempC, {required String unit}) {
-  final v = convertTemp(tempC, fromUnit: 'c', toUnit: unit);
-  return '${v.toStringAsFixed(1)}°${unit.toUpperCase()}';
-}
+// You can delete the old class and functions. This extension replaces them all.

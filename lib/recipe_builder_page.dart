@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/fermentation_stage.dart';
 import 'package:flutter_application_1/models/tag.dart';
-import 'package:flutter_application_1/utils/temp_display.dart';
+// import 'package:flutter_application_1/utils/temp_display.dart'; // REMOVED: Duplicate import
 import 'package:flutter_application_1/utils/unit_conversion.dart';
 import 'package:logger/logger.dart';
 import 'package:hive/hive.dart';
+import 'package:provider/provider.dart'; // ADDED: For context.watch
 import 'models/ingredient.dart';
 import 'models/inventory_item.dart';
+import 'models/settings_model.dart'; // ADDED: For SettingsModel
 import 'utils/sugar_gravity_data.dart';
 import 'widgets/add_additive_dialog.dart';
 import 'widgets/add_fermentation_stage_dialog.dart';
@@ -19,6 +21,7 @@ import 'widgets/add_yeast_dialog.dart';
 import 'dart:async';
 import 'models/purchase_transaction.dart';
 import 'models/unit_type.dart';
+import 'utils/temp_display.dart';
 
 final logger = Logger();
 
@@ -74,6 +77,9 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   double? waterToAddLiters;
   double? weightedAverageOG;
   List<Map<dynamic, dynamic>> yeast = [];
+  // REMOVED: Cannot initialize here using 'context'
+  // final settings = context.watch<SettingsModel>();
+
 
   @override
   void initState() {
@@ -113,9 +119,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       notesController.text = recipe.notes;
       additives = List<Map<dynamic, dynamic>>.from(recipe.additives);
       ingredients = List<Map<dynamic, dynamic>>.from(recipe.ingredients);
-      fermentationStages = recipe.fermentationStages
-          .map((e) => FermentationStage.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
       og = recipe.og;
       fg = recipe.fg!;
       abv = recipe.abv!;
@@ -342,8 +346,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                 og: originalGravity,
                 ingredients: ingredients,
                 yeast: yeast,
-                fermentationStages:
-                    fermentationStages.map((e) => e.toJson()).toList(),
+                fermentationStages: fermentationStages,
                 notes: notesController.text.trim(),
               );
               final box = Hive.box<RecipeModel>('recipes');
@@ -454,6 +457,9 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
 
   @override
   Widget build(BuildContext context) {
+    // MOVED: settings initialization to here, where context is available.
+    final settings = context.watch<SettingsModel>();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -727,10 +733,13 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                 ...fermentationStages.asMap().entries.map((entry) {
                   final i = entry.key;
                   final stage = entry.value;
+                  final tempString = stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? '—';
+
                   return ListTile(
                     title: Text(stage.name),
+                    // FIXED: Used the tempString variable which respects user settings.
                     subtitle: Text(
-                        "${stage.durationDays} days @ ${TempDisplay.format(stage.targetTempC!)}"),
+                        "${stage.durationDays} days @ $tempString"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

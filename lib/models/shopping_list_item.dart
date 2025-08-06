@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 
 part 'shopping_list_item.g.dart';
 
-@HiveType(typeId: 5)
+@HiveType(typeId: 51)
 class ShoppingListItem extends HiveObject {
   @HiveField(0)
   late String id;

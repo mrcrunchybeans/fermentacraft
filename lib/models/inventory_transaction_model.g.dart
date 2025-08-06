@@ -16,7 +16,6 @@ class InventoryTransactionAdapter extends TypeAdapter<InventoryTransaction> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return InventoryTransaction(
       date: fields[0] as DateTime,
       amount: fields[1] as double,

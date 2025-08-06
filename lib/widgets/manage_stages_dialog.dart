@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/fermentation_stage.dart';
 import 'package:flutter_application_1/utils/temp_display.dart';
+import '../models/settings_model.dart';
+import 'package:provider/provider.dart';
+
 
 class ManageStagesDialog extends StatefulWidget {
   final List<FermentationStage> initialStages;
@@ -39,19 +42,25 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
     }
   }
 
-  void _editStage(int index) async {
-    final edited = await showDialog<FermentationStage>(
-      context: context,
-      builder: (_) => _StageEditorDialog(stage: stages[index]),
-    );
+void _editStage(int index) async {
+  // Move the variable declaration here, before it's needed.
+  // Note: 'settings' is not used in the rest of this snippet.
+  // You may need to pass it to your dialog or remove this line if it's not used.
 
-    if (edited != null) {
-      setState(() => stages[index] = edited);
-    }
+  // Now the showDialog call has the correct syntax.
+  final edited = await showDialog<FermentationStage>(
+    context: context,
+    builder: (_) => _StageEditorDialog(stage: stages[index]),
+  );
+
+  if (edited != null) {
+    setState(() => stages[index] = edited);
   }
+}
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsModel>();
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
       expand: false,
@@ -74,13 +83,16 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
             },
             itemBuilder: (context, index) {
               final stage = stages[index];
+              final startDateString = stage.startDate?.toLocal().toString().split(' ')[0] ?? 'Not set';
+
               return ListTile(
-              key: ValueKey(stage.name + (stage.startDate?.toIso8601String() ?? '')),               
-               title: Text(stage.name),
+                key: ValueKey(stage.name + (stage.startDate?.toIso8601String() ?? '')),
+                title: Text(stage.name),
                 subtitle: Text(
-                  'Start: ${stage.startDate?.toLocal().toString().split(' ')[0]}, '
+                  'Start: $startDateString, '
                   'Duration: ${stage.durationDays}d, '
-                  'Temp: ${TempDisplay.format(stage.targetTempC ?? 0)}',
+                  // The fix is on this line:
+                  'Temp: ${stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? 'N/A'}',
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,

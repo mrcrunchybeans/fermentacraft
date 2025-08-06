@@ -96,6 +96,18 @@ class InventoryItem extends HiveObject {
     save();
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'unit': unit,
+      'unitType': unitType.name, // Convert enum to string
+      'notes': notes,
+      // Map the list of objects to a list of JSON maps
+      'purchaseHistory': purchaseHistory.map((p) => p.toJson()).toList(), 
+      'category': category,
+    };
+  }
+
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
     return InventoryItem(
       name: json['name'],

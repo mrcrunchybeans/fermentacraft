@@ -27,7 +27,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Cider Hub Dashboard"),
+        // title: const Text("Cider Hub Dashboard"),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),

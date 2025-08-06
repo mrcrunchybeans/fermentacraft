@@ -16,7 +16,6 @@ class MeasurementLogAdapter extends TypeAdapter<MeasurementLog> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return MeasurementLog(
       timestamp: fields[0] as DateTime,
       sg: fields[1] as double,

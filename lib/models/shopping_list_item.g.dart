@@ -8,7 +8,7 @@ part of 'shopping_list_item.dart';
 
 class ShoppingListItemAdapter extends TypeAdapter<ShoppingListItem> {
   @override
-  final int typeId = 32;
+  final int typeId = 51;
 
   @override
   ShoppingListItem read(BinaryReader reader) {

@@ -16,7 +16,6 @@ class PlannedEventAdapter extends TypeAdapter<PlannedEvent> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return PlannedEvent(
       title: fields[0] as String,
       date: fields[1] as DateTime,

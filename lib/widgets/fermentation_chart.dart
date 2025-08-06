@@ -50,6 +50,18 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
     }
   }
 
+  // Add this helper method inside your _FermentationChartWidgetState class
+String _formatTemperature(double tempCelsius, String unitSetting) {
+  final isFahrenheit = unitSetting.contains('F');
+  final displayUnit = isFahrenheit ? 'F' : 'C';
+
+  final tempValue = isFahrenheit
+      ? (tempCelsius * 9 / 5) + 32  // Convert to F
+      : tempCelsius;                // Already C
+
+  return "${tempValue.toStringAsFixed(1)}°$displayUnit";
+}
+
   void _handleTap(
       TapUpDetails details, List<Measurement> sortedMeasurements, double maxX) {
     if (widget.onEditMeasurement == null ||
@@ -302,9 +314,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
 
     return Column(
       children: measurements.reversed.map((m) {
-        final temp = m.temperature != null
-            ? "${(settings.unit == 'F' ? (m.temperature! * 9 / 5) + 32 : m.temperature!).toStringAsFixed(1)}°${settings.unit.toUpperCase()}" // FIXED
-            : "—";
+        final temp = m.temperature != null ? _formatTemperature(m.temperature!, settings.unit) : "—";
         final ta = m.ta?.toStringAsFixed(1) ?? "—";
         final sgRaw = m.gravity?.toStringAsFixed(3) ?? "—";
         final sgCorr = m.sgCorrected?.toStringAsFixed(3) ?? "—";
@@ -424,7 +434,7 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
             const SizedBox(height: 4),
             if (tempY != null)
               Text(
-                  "Temp: ${tempY.toStringAsFixed(1)}°${settings.unit.toUpperCase()}",
+                  "Temp: ${tempY.toStringAsFixed(1)}°${settings.unit.toUpperCase().replaceAll('°', '')}", // Safely remove any extra °
                   style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
             if (sgYNormalized != null)
               Text(

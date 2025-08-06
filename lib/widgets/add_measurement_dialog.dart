@@ -97,37 +97,40 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
     super.dispose();
   }
 
-  void _recalculateAllValues() {
-    final gravityVal = double.tryParse(_gravityController.text);
-    final tempVal = double.tryParse(_tempController.text);
+void _recalculateAllValues() {
+  final gravityVal = double.tryParse(_gravityController.text.trim());
 
-    if (widget.firstMeasurementDate != null) {
-      final days = _timestamp.difference(widget.firstMeasurementDate!).inDays;
-      _daysText = 'Day ${days + 1}';
-    }
+  final rawTemp = _tempController.text.trim();
+  final sanitizedTemp = rawTemp.replaceAll(RegExp(r'[^\d.]'), '');
+  final tempVal = double.tryParse(sanitizedTemp);
 
-    double? sgForCalcs;
-    if (gravityVal != null) {
-      sgForCalcs = _gravityUnit == 'sg' ? gravityVal : brixToSg(gravityVal);
-    }
-
-    if (sgForCalcs != null && tempVal != null) {
-      final tempF = _isFahrenheitOverride ? tempVal : (tempVal * 9 / 5) + 32;
-      _sgCorrectedPreview = getCorrectedSG(sgForCalcs, tempF);
-    } else {
-      _sgCorrectedPreview = null;
-    }
-
-    if (widget.previousMeasurement?.gravity != null && sgForCalcs != null) {
-      final prev = widget.previousMeasurement!;
-      final difference = _timestamp.difference(prev.timestamp);
-      _fsuPreview = calculateFSU(prev.gravity!, sgForCalcs, difference);
-    } else {
-      _fsuPreview = null;
-    }
-
-    setState(() {});
+  if (widget.firstMeasurementDate != null) {
+    final days = _timestamp.difference(widget.firstMeasurementDate!).inDays;
+    _daysText = 'Day ${days + 1}';
   }
+
+  double? sgForCalcs;
+  if (gravityVal != null) {
+    sgForCalcs = _gravityUnit == 'sg' ? gravityVal : brixToSg(gravityVal);
+  }
+
+  if (sgForCalcs != null && tempVal != null) {
+    final tempF = _isFahrenheitOverride ? tempVal : (tempVal * 9 / 5) + 32;
+    _sgCorrectedPreview = getCorrectedSG(sgForCalcs, tempF);
+  } else {
+    _sgCorrectedPreview = null;
+  }
+
+  if (widget.previousMeasurement?.gravity != null && sgForCalcs != null) {
+    final prev = widget.previousMeasurement!;
+    final difference = _timestamp.difference(prev.timestamp);
+    _fsuPreview = calculateFSU(prev.gravity!, sgForCalcs, difference);
+  } else {
+    _fsuPreview = null;
+  }
+
+  setState(() {});
+}
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;

@@ -14,10 +14,11 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
   RecipeModel read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
-      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+      for (var i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
     return RecipeModel(
-      id: fields[0] as String?,
+      id: fields[0] as String,
       name: fields[1] as String,
       tags: (fields[3] as List).cast<Tag>(),
       createdAt: fields[2] as DateTime,
@@ -26,7 +27,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       abv: fields[6] as double?,
       additives: (fields[7] as List).cast<Map<dynamic, dynamic>>(),
       ingredients: (fields[8] as List).cast<Map<dynamic, dynamic>>(),
-      fermentationStages: (fields[9] as List).cast<Map<dynamic, dynamic>>(),
+      fermentationStages: (fields[9] as List).cast<FermentationStage>(),
       yeast: (fields[10] as List).cast<Map<dynamic, dynamic>>(),
       notes: fields[11] as String,
       lastOpened: fields[12] as DateTime?,

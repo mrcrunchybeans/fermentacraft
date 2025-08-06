@@ -1,3 +1,6 @@
+// ignore_for_file: invalid_null_aware_operator
+
+import 'package:flutter_application_1/models/fermentation_stage.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'tag.dart';
@@ -34,7 +37,7 @@ class RecipeModel extends HiveObject {
   List<Map<dynamic, dynamic>> ingredients;
 
   @HiveField(9)
-  List<Map<dynamic, dynamic>> fermentationStages;
+  List<FermentationStage> fermentationStages;
 
   @HiveField(10)
   List<Map<dynamic, dynamic>> yeast;
@@ -64,7 +67,7 @@ class RecipeModel extends HiveObject {
     this.abv,
     List<Map<dynamic, dynamic>>? additives,
     List<Map<dynamic, dynamic>>? ingredients,
-    List<Map<dynamic, dynamic>>? fermentationStages,
+    List<FermentationStage>? fermentationStages,
     List<Map<dynamic, dynamic>>? yeast,
     this.notes = '',
     this.lastOpened,
@@ -98,8 +101,7 @@ class RecipeModel extends HiveObject {
       'abv': abv,
       'additives': additives.map((e) => _safelyConvertMap(e)).toList(),
       'ingredients': ingredients.map((e) => _safelyConvertMap(e)).toList(),
-      'fermentationStages':
-          fermentationStages.map((e) => _safelyConvertMap(e)).toList(),
+      'fermentationStages': fermentationStages.map((e) => e.toJson()).toList(),
       'yeast': yeast.map((e) => _safelyConvertMap(e)).toList(),
       'notes': notes,
       'lastOpened': lastOpened?.toIso8601String(),
@@ -109,9 +111,7 @@ class RecipeModel extends HiveObject {
     };
   }
 
-  // THIS IS THE CORRECTED FACTORY
   factory RecipeModel.fromJson(Map<String, dynamic> json) {
-    // Helper function to safely parse lists of maps
     List<Map<String, dynamic>> parseListOfMaps(dynamic jsonList) {
       if (jsonList == null || jsonList is! List) return [];
       return jsonList
@@ -127,10 +127,13 @@ class RecipeModel extends HiveObject {
       og: json['og'],
       fg: json['fg'],
       abv: json['abv'],
-      // Use the helper to correctly parse each list
       additives: parseListOfMaps(json['additives']),
       ingredients: parseListOfMaps(json['ingredients']),
-      fermentationStages: parseListOfMaps(json['fermentationStages']),
+      fermentationStages: (json['fermentationStages'] as List<dynamic>?)
+              ?.map((e) => FermentationStage.fromJson(
+                  Map<String, dynamic>.from(e)))
+              .toList() ??
+          [],
       yeast: parseListOfMaps(json['yeast']),
       notes: json['notes'] ?? '',
       lastOpened: json['lastOpened'] != null
