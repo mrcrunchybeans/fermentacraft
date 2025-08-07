@@ -1,3 +1,4 @@
+// All your existing imports are correct...
 import 'package:fermentacraft/models/purchase_transaction.dart';
 import 'package:fermentacraft/models/unit_type.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,10 @@ import 'package:fermentacraft/models/measurement_log.dart';
 import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:fermentacraft/models/shopping_list_item.dart';
 import 'package:fermentacraft/models/tag.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
 // Page Imports
 import 'batch_log_page.dart';
 import 'inventory_page.dart';
@@ -21,16 +26,14 @@ import 'settings_page.dart';
 import 'tools_page.dart';
 import 'shopping_list_page.dart';
 import 'home_page.dart';
-
-// Model Imports (only those directly used in this file)
+// Model Imports
 import 'models/settings_model.dart';
-
 // Theme Import
 import 'theme/app_theme.dart';
 
+// Your setupHive() and main() functions are perfect, no changes needed there.
 Future<void> setupHive() async {
   await Hive.initFlutter();
-  // IMPORTANT: Make sure all your registerAdapter() calls are here
   Hive.registerAdapter(BatchModelAdapter());
   Hive.registerAdapter(FermentationStageAdapter());
   Hive.registerAdapter(InventoryItemAdapter());
@@ -41,9 +44,6 @@ Future<void> setupHive() async {
   Hive.registerAdapter(TagAdapter());
   Hive.registerAdapter(PurchaseTransactionAdapter());
   Hive.registerAdapter(UnitTypeAdapter());
-
-
-  // IMPORTANT: Make sure all your openBox() calls are here
   await Hive.openBox<BatchModel>('batches');
   await Hive.openBox<FermentationStage>('fermentationStages');
   await Hive.openBox<InventoryItem>('inventory');
@@ -58,7 +58,6 @@ Future<void> setupHive() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await setupHive();
-
   runApp(
     MultiProvider(
       providers: [
@@ -70,13 +69,13 @@ void main() async {
   );
 }
 
+
 class FermentaCraftApp extends StatelessWidget {
   const FermentaCraftApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsModel>();
-
     return MaterialApp(
       title: 'FermentaCraft',
       themeMode: settings.themeMode,
@@ -98,129 +97,228 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
+  // UPDATED: RecipeListPage is now a primary page
   static const List<Widget> _pages = <Widget>[
     HomePage(),
-    RecipeListPage(),
     BatchLogPage(),
     InventoryPage(),
-    ShoppingListPage(),
-    ToolsPage(),
-    SettingsPage(),
+    RecipeListPage(), // MOVED from MorePage
+    MorePage(),
   ];
 
+  // UPDATED: Corresponding titles list
 
-  void _selectPage(int index) {
-    if (mounted) {
-      Navigator.pop(context);
-      setState(() {
-        _selectedIndex = index;
-      });
-    }
-  }
-
-  void _showAboutAppDialog() async {
-    Navigator.pop(context); // Close drawer first
-    final packageInfo = await PackageInfo.fromPlatform();
-
-    if (!mounted) return;
-
-    showAboutDialog(
-      context: context,
-      applicationName: 'FermentaCraft',
-      applicationVersion: packageInfo.version,
-      applicationLegalese: '© 2025 Brian Petry',
-      applicationIcon: Padding(
-        padding: const EdgeInsets.only(top: 24, bottom: 12),
-        // FIX: Using the carboy logo, which is more suitable for an icon.
-        child: Image.asset(
-          'assets/images/logo.png',
-          width: 80,
-        ),
-      ),
-      children: [
-        const SizedBox(height: 24),
-        const Text("Your Craft, Perfected.\n\nFermentaCraft helps you design, track, and manage your homebrewing projects with precision and ease.")
-      ]
-    );
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: Image.asset(
-        'assets/images/fermentacraft_logo_txt.png',
-        height: 22,
-        // color: Theme.of(context).colorScheme.onPrimary,
-      ),
-      centerTitle: true, 
+    return Scaffold(
+appBar: AppBar(
+    title: SvgPicture.asset(
+      Theme.of(context).brightness == Brightness.dark
+          ? 'assets/images/fermentacraft_logo_txt_darkmode.svg'
+          : 'assets/images/fermentacraft_logo_txt_lightmode.svg',
+      height: 36,
+      semanticsLabel: 'FermentaCraft Logo',
+      placeholderBuilder: (context) => const Text('FermentaCraft'),
     ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Image.asset(
-                    'assets/images/logo.png',
-                    height: 60,
-                    // color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'FermentaCraft',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-            _buildDrawerItem(icon: Icons.home_outlined, title: 'Home', index: 0),
-            _buildDrawerItem(icon: Icons.book_outlined, title: 'Recipes', index: 1),
-            _buildDrawerItem(icon: Icons.science_outlined, title: 'Batches', index: 2),
-            _buildDrawerItem(icon: Icons.inventory_2_outlined, title: 'Inventory', index: 3),
-            _buildDrawerItem(icon: Icons.shopping_cart_outlined, title: 'Shopping List', index: 4),
-            _buildDrawerItem(icon: Icons.construction_outlined, title: 'Tools', index: 5),
-            const Divider(),
-            _buildDrawerItem(icon: Icons.settings_outlined, title: 'Settings', index: 6),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('About'),
-              onTap: _showAboutAppDialog,
-            ),
-          ],
-        ),
+  centerTitle: true,
+  automaticallyImplyLeading: false, // Optional: hides back button on top-level
       ),
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,
       ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.science_outlined),
+            activeIcon: Icon(Icons.science),
+            label: 'Batches',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory_2_outlined),
+            activeIcon: Icon(Icons.inventory_2),
+            label: 'Inventory',
+          ),
+          // UPDATED: This is now the Recipes tab
+          BottomNavigationBarItem(
+            icon: Icon(Icons.book_outlined),
+            activeIcon: Icon(Icons.book),
+            label: 'Recipes',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.more_horiz),
+            activeIcon: Icon(Icons.more_horiz),
+            label: 'More',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+      ),
     );
   }
+}
 
-  // This simplified widget uses the ListTileTheme from your theme file.
-  Widget _buildDrawerItem({required IconData icon, required String title, required int index}) {
-    final isSelected = _selectedIndex == index;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: ListTile(
-        selected: isSelected,
-        leading: Icon(icon),
-        title: Text(
-          title,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+class MorePage extends StatelessWidget {
+  const MorePage({super.key});
+
+  void _showAboutAppDialog(BuildContext context) async {
+  final packageInfo = await PackageInfo.fromPlatform();
+  final Uri bookUrl = Uri.parse('https://www.amazon.com/New-Cider-Makers-Handbook-Comprehensive/dp/1603584730');
+
+  if (!context.mounted) return;
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      final theme = Theme.of(context);
+      return Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24), // Custom padding
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SvgPicture.asset(
+                'assets/images/carboy.svg',
+                height: 100,
+                semanticsLabel: 'FermentaCraft Carboy Logo',
+                placeholderBuilder: (context) => const CircularProgressIndicator(),
               ),
+              const SizedBox(height: 16),
+              Text(
+                'FermentaCraft',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Your Craft, Perfected.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontStyle: FontStyle.italic),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "FermentaCraft helps you design, track, and manage your homebrewing projects with precision and ease.",
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Version ${packageInfo.version}',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                '© 2025 Brian Petry',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+              RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  style: theme.textTheme.bodyMedium,
+                  children: [
+                    const TextSpan(text: "Much of the inspiration and technical information in this app comes from "),
+                    TextSpan(
+                      text: "The New Cider Maker's Handbook",
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () {
+                          launchUrl(bookUrl, mode: LaunchMode.externalApplication);
+                        },
+                    ),
+                    const TextSpan(text: " by Claude Jolicoeur. It is an indispensable resource for any aspiring cider maker."),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    child: const Text('View licenses'),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      showDialog(
+                        context: context,
+                        builder: (context) => Theme(
+                          data: theme.copyWith(
+                            listTileTheme: ListTileThemeData(
+                              selectedColor: theme.colorScheme.onSurface,
+                              selectedTileColor: theme.colorScheme.surfaceVariant.withOpacity(0.2),
+                            ),
+                          ),
+                          child: const LicensePage(
+                            applicationName: 'FermentaCraft',
+                            applicationVersion: '1.0.0',
+                            applicationLegalese: '© 2025 Brian Petry',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  TextButton(
+                    child: const Text('Close'),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              )
+            ],
+          ),
         ),
-        onTap: () => _selectPage(index),
-      ),
+      );
+    },
+  );
+}
+
+
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        const SizedBox(height: 8),
+        ListTile(
+          leading: const Icon(Icons.shopping_cart_outlined),
+          title: const Text('Shopping List'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShoppingListPage())),
+        ),
+        ListTile(
+          leading: const Icon(Icons.construction_outlined),
+          title: const Text('Tools'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ToolsPage())),
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: const Text('Settings'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+        ),
+        ListTile(
+          leading: const Icon(Icons.info_outline),
+          title: const Text('About'),
+          onTap: () => _showAboutAppDialog(context),
+        ),
+      ],
     );
   }
 }

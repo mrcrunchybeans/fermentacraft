@@ -17,16 +17,16 @@ class ToolsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tools = [
-      ToolData("ABV Calculator", Icons.local_drink, const ABVCalculatorPage()),
-      ToolData("SG Correction", Icons.thermostat, const SgCorrectionPage()),
-      ToolData("SO₂ Estimator", Icons.science, const So2CalculatorPage()),
-      ToolData("FSU Calculator", Icons.bubble_chart, const FSUCalculatorTab()),
+      ToolData("ABV Calculator", Icons.percent, const ABVCalculatorPage()),
+      ToolData("SG Correction", Icons.device_thermostat, const SgCorrectionPage()),
+      ToolData("SO₂ Estimator", Icons.bubble_chart, const So2CalculatorPage()),
+      ToolData("FSU Calculator", Icons.speed, const FSUCalculatorTab()),
       ToolData("Gravity Adjuster", Icons.scale, const GravityAdjustTool()),
-      ToolData("Bubble Counter", Icons.av_timer, const BubbleCounterTab()),
-      ToolData("Acid Tools", Icons.ac_unit, const AcidToolsPage()),
+      ToolData("Bubble Counter", Icons.timelapse, const BubbleCounterTab()),
+      ToolData("Acid Tools", Icons.opacity, const AcidToolsPage()),
       ToolData(
         "Unit Converter",
-        Icons.swap_horiz,
+        Icons.compare_arrows,
         const DefaultTabController(
           length: 4,
           child: UnitConverterTab(),

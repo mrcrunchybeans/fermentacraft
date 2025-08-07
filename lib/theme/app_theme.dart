@@ -2,20 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // --- LIGHT THEME COLORS ---
-  static const Color _lightPrimaryColor = Color(0xFF415A77);
-  static const Color _lightSecondaryColor = Color(0xFFE9911C);
-  static const Color _lightSurfaceColor = Color(0xFFFDFCF9); // For background and cards
-  static const Color _lightTextPrimaryColor = Color(0xFF34191C);
-  static const Color _lightTextSecondaryColor = Color(0xFF965220);
-
-  // --- DARK THEME COLORS ---
-  static const Color _darkPrimaryColor = Color(0xFF778DA9);
-  static const Color _darkSecondaryColor = Color(0xFFE9911C);
-  static const Color _darkSurfaceColor = Color(0xFF1B263B);
-  static const Color _darkTextPrimaryColor = Color(0xFFE0E1DD);
-
-  // --- Base Text Themes (to apply colors separately) ---
+  // --- Text Theme ---
   static final TextTheme _baseTextTheme = TextTheme(
     displayLarge: GoogleFonts.libreBaskerville(fontSize: 57, fontWeight: FontWeight.bold),
     displayMedium: GoogleFonts.libreBaskerville(fontSize: 45, fontWeight: FontWeight.bold),
@@ -30,112 +17,163 @@ class AppTheme {
     labelLarge: GoogleFonts.roboto(fontSize: 14, fontWeight: FontWeight.bold),
   );
 
-  // ### LIGHT THEME ###
-  static ThemeData get lightTheme {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.light,
-      colorScheme: const ColorScheme.light().copyWith(
-        primary: _lightPrimaryColor,
-        onPrimary: Colors.white,
-        secondary: _lightSecondaryColor,
-        onSecondary: Colors.white,
-        surface: _lightSurfaceColor,
-        onSurface: _lightTextPrimaryColor,
-      ),
-      textTheme: _baseTextTheme.apply(
-        bodyColor: _lightTextPrimaryColor,
-        displayColor: _lightTextPrimaryColor,
-      ).copyWith(
-        bodySmall: _baseTextTheme.bodySmall?.copyWith(color: _lightTextSecondaryColor),
-        labelLarge: _baseTextTheme.labelLarge?.copyWith(color: Colors.white),
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: _lightPrimaryColor,
-        foregroundColor: Colors.white,
-        elevation: 2,
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: _lightSecondaryColor,
-        foregroundColor: Colors.white,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _lightPrimaryColor,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      ),
-      tabBarTheme: const TabBarThemeData(
-        indicatorColor: Colors.white,
-        labelColor: Colors.white,
-        unselectedLabelColor: Color(0xB3FFFFFF), // White with 70% opacity
-      ),
-      cardTheme: const CardThemeData(
-        elevation: 1,
-        color: _lightSurfaceColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-      ),
-      listTileTheme: ListTileThemeData(
-        selectedColor: _lightSecondaryColor,
-        selectedTileColor: _lightSecondaryColor.withAlpha(25), // ~10% opacity
-        iconColor: _lightTextSecondaryColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
+  static const ColorScheme _lightColorScheme = ColorScheme(
+    brightness: Brightness.light,
+    primary: Color(0xFF8E5B26),
+    onPrimary: Colors.white,
+    secondary: Color(0xFFA3C567),
+    onSecondary: Colors.black,
+    tertiary: Color(0xFFB24F47),
+    onTertiary: Colors.white,
+    error: Color(0xFFD14343),
+    onError: Colors.white,
+    background: Color(0xFFFFF8F0),
+    onBackground: Color(0xFF2F2F2F),
+    surface: Color(0xFFFAF4E7),
+    onSurface: Color(0xFF2F2F2F),
+    surfaceVariant: Color(0xFFDCD6C4),
+    onSurfaceVariant: Color(0xFF4F4F4F),
+    outline: Color(0xFFB7B4A5),
+    shadow: Colors.black12,
+    inverseSurface: Color(0xFF2F2F2F),
+    onInverseSurface: Colors.white,
+    inversePrimary: Color(0xFFBF8244),
+    surfaceTint: Color(0xFF8E5B26),
+  );
 
-  // ### DARK THEME ###
-  static ThemeData get darkTheme {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: const ColorScheme.dark().copyWith(
-        primary: _darkPrimaryColor,
-        onPrimary: _darkTextPrimaryColor,
-        secondary: _darkSecondaryColor,
-        onSecondary: Colors.black,
-        surface: _darkSurfaceColor,
-        onSurface: _darkTextPrimaryColor,
-      ),
-      textTheme: _baseTextTheme.apply(
-        bodyColor: _darkTextPrimaryColor,
-        displayColor: _darkTextPrimaryColor,
-      ).copyWith(
-        labelLarge: _baseTextTheme.labelLarge?.copyWith(color: Colors.black),
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: _darkSurfaceColor,
-        elevation: 2,
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: _darkSecondaryColor,
-        foregroundColor: Colors.black,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _darkPrimaryColor,
-          foregroundColor: _darkTextPrimaryColor,
+  static const ColorScheme _darkColorScheme = ColorScheme(
+    brightness: Brightness.dark,
+    primary: Color(0xFF8E5B26),
+    onPrimary: Colors.white,
+    secondary: Color(0xFFA3C567),
+    onSecondary: Colors.black,
+    tertiary: Color(0xFFB24F47),
+    onTertiary: Colors.white,
+    error: Color(0xFFD14343),
+    onError: Colors.white,
+    background: Color(0xFF1C1C1A),
+    onBackground: Color(0xFFEDEAE5),
+    surface: Color(0xFF2A2A28),
+    onSurface: Color(0xFFEDEAE5),
+    surfaceVariant: Color(0xFF6C6C63),
+    onSurfaceVariant: Color(0xFFCFCFCF),
+    outline: Color(0xFF8D8D84),
+    shadow: Colors.black54,
+    inverseSurface: Color(0xFFFDF9F0),
+    onInverseSurface: Color(0xFF1A1A1A),
+    inversePrimary: Color(0xFFFFD9B0),
+    surfaceTint: Color(0xFF8E5B26),
+  );
+
+  // --- LIGHT THEME ---
+  static ThemeData get lightTheme => ThemeData(
+        useMaterial3: true,
+        colorScheme: _lightColorScheme,
+        textTheme: _baseTextTheme,
+        appBarTheme: AppBarTheme(
+          backgroundColor: _lightColorScheme.surface,
+          foregroundColor: _lightColorScheme.onSurface,
+          elevation: 1,
+          scrolledUnderElevation: 4,
+          shadowColor: _lightColorScheme.shadow,
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: _lightColorScheme.tertiary,
+          foregroundColor: _lightColorScheme.onTertiary,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _lightColorScheme.primary,
+            foregroundColor: _lightColorScheme.onPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+        tabBarTheme: TabBarThemeData(
+          indicatorColor: _lightColorScheme.primary,
+          labelColor: _lightColorScheme.primary,
+          unselectedLabelColor: _lightColorScheme.onSurfaceVariant,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 1,
+          color: _lightColorScheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        listTileTheme: ListTileThemeData(
+          selectedColor: _lightColorScheme.primary,
+          selectedTileColor: _lightColorScheme.primary.withOpacity(0.1),
+          iconColor: _lightColorScheme.onSurfaceVariant,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
-      ),
-      tabBarTheme: const TabBarThemeData(
-        indicatorColor: _darkSecondaryColor,
-        labelColor: _darkSecondaryColor,
-        unselectedLabelColor: Color(0xB3E0E1DD), // Off-white with 70% opacity
-      ),
-      cardTheme: const CardThemeData(
-        elevation: 1,
-        color: _darkSurfaceColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-      ),
-      listTileTheme: ListTileThemeData(
-        selectedColor: _darkSecondaryColor,
-        selectedTileColor: _darkSecondaryColor.withAlpha(40), // ~15% opacity
-        iconColor: _darkTextPrimaryColor.withOpacity(0.7),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: _lightColorScheme.surfaceVariant.withOpacity(0.5),
+          border: OutlineInputBorder(
+            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          labelStyle: _baseTextTheme.bodyMedium?.copyWith(color: _lightColorScheme.onSurfaceVariant),
+        ),
+        bottomNavigationBarTheme: BottomNavigationBarThemeData(
+          backgroundColor: _lightColorScheme.surface,
+          selectedItemColor: _lightColorScheme.primary,
+          unselectedItemColor: _lightColorScheme.onSurfaceVariant,
+        ),
+      );
+
+  // --- DARK THEME ---
+  static ThemeData get darkTheme => ThemeData(
+        useMaterial3: true,
+        colorScheme: _darkColorScheme,
+        textTheme: _baseTextTheme,
+        appBarTheme: AppBarTheme(
+          backgroundColor: _darkColorScheme.surface,
+          foregroundColor: _darkColorScheme.onSurface,
+          elevation: 1,
+          scrolledUnderElevation: 4,
+          shadowColor: _darkColorScheme.shadow,
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: _darkColorScheme.tertiary,
+          foregroundColor: _darkColorScheme.onTertiary,
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _darkColorScheme.primary,
+            foregroundColor: _darkColorScheme.onPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+        tabBarTheme: TabBarThemeData(
+          indicatorColor: _darkColorScheme.primary,
+          labelColor: _darkColorScheme.primary,
+          unselectedLabelColor: _darkColorScheme.onSurfaceVariant,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 1,
+          color: _darkColorScheme.surfaceVariant.withOpacity(0.3),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        listTileTheme: ListTileThemeData(
+          selectedColor: _darkColorScheme.primary,
+          selectedTileColor: _darkColorScheme.primary.withOpacity(0.2),
+          iconColor: _darkColorScheme.onSurfaceVariant,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: _darkColorScheme.surfaceVariant.withOpacity(0.3),
+          border: OutlineInputBorder(
+            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          labelStyle: _baseTextTheme.bodyMedium?.copyWith(color: _darkColorScheme.onSurfaceVariant),
+        ),
+        bottomNavigationBarTheme: BottomNavigationBarThemeData(
+          backgroundColor: _darkColorScheme.surface,
+          selectedItemColor: _darkColorScheme.primary,
+          unselectedItemColor: _darkColorScheme.onSurfaceVariant,
+        ),
+      );
 }

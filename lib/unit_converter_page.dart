@@ -147,39 +147,40 @@ class _UnitConverterCategoryTabState extends State<UnitConverterCategoryTab> {
 double convertGravity(double val, String from, String to) {
   if (from == to) return val;
 
-  // Plato ↔ Brix: direct 1:1 mapping
+  // Plato ↔ Brix: direct 1:1 mapping is a reasonable approximation
   if ((from == '°Plato' && to == '°Brix') || (from == '°Brix' && to == '°Plato')) {
     return val;
   }
 
-  // Convert input to Specific Gravity (SG)
+  // First, convert the input value from its original unit TO Specific Gravity (SG)
   double sg;
   switch (from) {
     case 'SG':
       sg = val;
       break;
     case 'SGP':
-      sg = 1.000 + (val / 1000);
+      sg = 1.0 + (val / 1000.0);
       break;
     case '°Brix':
     case '°Plato':
       sg = (val / (258.6 - ((val / 258.2) * 227.1))) + 1.0;
       break;
     default:
-      sg = val;
+      sg = val; // Should not happen with the defined units
   }
 
-  // Convert from SG to target unit
+  // Second, convert FROM Specific Gravity (SG) to the target unit
   switch (to) {
     case 'SG':
       return sg;
     case 'SGP':
-      return (sg - 1.0) * 1000;
+      return (sg - 1.0) * 1000.0;
     case '°Brix':
     case '°Plato':
-      return (182.4601 * sg - 775.6821) * sg + 1262.7794;
+      // THIS IS THE CORRECTED FORMULA
+      return (((182.4601 * sg - 775.6821) * sg + 1262.7794) * sg - 669.5622);
     default:
-      return val;
+      return val; // Should not happen
   }
 }
 
@@ -329,10 +330,8 @@ double convertGravity(double val, String from, String to) {
     }
     if (widget.category == 'Gravity') {
       return "Gravity conversions are calculated by converting all units to Specific Gravity (SG) as an intermediate:\n"
-          "- °Brix → SG: val / (258.6 - ((val / 258.2) * 227.1)) + 1.0\n"
-          "- °Plato → SG: val / (258.6 - ((val / 258.2) * 227.1)) + 1.0\n"
-          "- SG → °Brix or Plato: (182.4601 * sg - 775.6821) * sg + 1262.7794\n";
-
+        "- °Brix/°Plato → SG: (Brix / (258.6 - ((Brix / 258.2) * 227.1))) + 1\n"
+        "- SG → °Brix/°Plato: (((182.46 * SG - 775.68) * SG + 1262.78) * SG - 669.56)";
     }
     return "No formula found.";
   }

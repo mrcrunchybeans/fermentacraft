@@ -37,7 +37,7 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
     final target = double.tryParse(targetTA.text);
     final volume = double.tryParse(batchVolume.text);
 
-    if (current == null || target == null || volume == null) {
+    if (current == null || target == null || volume == null || volume <= 0) {
       setState(() => neededGrams = null);
       return;
     }
@@ -48,14 +48,11 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
       return;
     }
 
-    // Convert volume to liters
     double volumeLiters = volume;
     if (selectedVolumeUnit == 'mL') volumeLiters /= 1000;
     if (selectedVolumeUnit == 'gal') volumeLiters *= 3.78541;
 
-    // TA is in g/L as malic acid. So g = deltaTA * L
     final gramsNeeded = deltaTA * volumeLiters;
-
     setState(() => neededGrams = gramsNeeded);
   }
 
@@ -67,10 +64,10 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   "TA Adjustment Tool",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               IconButton(
@@ -79,11 +76,17 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
                 onPressed: () => showDialog(
                   context: context,
                   builder: (_) => AlertDialog(
-                    title: const Text("How this works"),
-                    content: const Text(
-                      "This calculator estimates how much acid blend (in grams) to add in order to increase titratable acidity (TA).\n\n"
-                      "Enter your current TA, your target TA, and the volume of your batch. TA is measured in g/L as malic acid.\n\n"
-                      "This is a linear approximation commonly used for acid blend additions.",
+                    title: const Text("How This Works"),
+                    // UPDATED: Using RichText for better formatting
+                    content: RichText(
+                      text: TextSpan(
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        children: const [
+                          TextSpan(text: "This calculator estimates how much acid blend to add to increase "),
+                          TextSpan(text: "titratable acidity (TA)", style: TextStyle(fontWeight: FontWeight.bold)),
+                          TextSpan(text: ".\n\nTA is measured in grams per liter (g/L) as if it were all malic acid. Enter your current TA, your target, and the batch volume to get an estimate in grams."),
+                        ],
+                      ),
                     ),
                     actions: [
                       TextButton(
@@ -96,74 +99,47 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           _buildField(currentTA, "Current TA (g/L)"),
           _buildField(targetTA, "Target TA (g/L)"),
-
           const SizedBox(height: 20),
-          const Text("Batch Volume:",
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _buildField(batchVolume, "Batch volume")),
+              Expanded(child: _buildField(batchVolume, "Batch Volume")),
               const SizedBox(width: 12),
-              DropdownButton<String>(
-                value: selectedVolumeUnit,
-                borderRadius: BorderRadius.circular(10),
-                onChanged: (val) {
-                  setState(() {
-                    selectedVolumeUnit = val!;
-                    _recalculate();
-                  });
-                },
-                items: volumeUnits
-                    .map((unit) =>
-                        DropdownMenuItem(value: unit, child: Text(unit)))
-                    .toList(),
+              // Using a Padding to align the dropdown better with the text field
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: DropdownButton<String>(
+                  value: selectedVolumeUnit,
+                  underline: const SizedBox(), // Removes the default underline
+                  borderRadius: BorderRadius.circular(10),
+                  onChanged: (val) {
+                    setState(() {
+                      selectedVolumeUnit = val!;
+                      _recalculate();
+                    });
+                  },
+                  items: volumeUnits
+                      .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
+                      .toList(),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 24),
-
-         if (neededGrams != null)
-  Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Expanded(
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            neededGrams == 0
-                ? "Your current TA is already at or above the target."
-                : "Add ${neededGrams!.toStringAsFixed(2)} grams of acid blend.",
-            style: const TextStyle(fontSize: 16),
-          ),
-        ),
-      ),
-      const SizedBox(width: 8),
-      const Tooltip(
-        message: "Formula:\n"
-            "grams = (Target TA - Current TA) × Volume\n\n"
-            "• TA in g/L (as malic acid)\n"
-            "• Volume is converted to liters\n"
-            "• Assumes 1 g acid blend raises TA by 1 g/L per L",
-        child: Icon(Icons.info_outline),
-      ),
-    ],
-  ),
-
-
+          // UPDATED: Using the new InfoCard widget for the result
+          if (neededGrams != null)
+            InfoCard(
+              icon: neededGrams! > 0 ? Icons.science_outlined : Icons.check_circle_outline,
+              text: neededGrams == 0
+                  ? "Your current TA is already at or above the target."
+                  : "Add ${neededGrams!.toStringAsFixed(2)} grams of acid blend.",
+            ),
         ],
-      ),  
-      
+      ),
     );
-    
   }
 
   Widget _buildField(TextEditingController controller, String label) {
@@ -180,6 +156,53 @@ class _TaAcidCalculatorTabState extends State<TaAcidCalculatorTab> {
           baseOffset: 0,
           extentOffset: controller.text.length,
         ),
+      ),
+    );
+  }
+}
+
+// NEW: A reusable, theme-aware card for displaying information.
+class InfoCard extends StatelessWidget {
+  final String text;
+  final IconData icon;
+
+  const InfoCard({
+    required this.text,
+    this.icon = Icons.info_outline, // Default icon
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        // Using theme colors instead of hardcoded grey
+        color: colorScheme.primaryContainer.withOpacity(0.4),
+        border: Border.all(color: colorScheme.primaryContainer),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color: colorScheme.primary,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
