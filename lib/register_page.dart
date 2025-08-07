@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -14,10 +16,40 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
 
+  // Tap recognizers for inline links
+  late final TapGestureRecognizer _termsRecognizer;
+  late final TapGestureRecognizer _privacyRecognizer;
+
   bool _isLoading = false;
   String? _error;
   String _passwordStrength = '';
   bool _agreedToTerms = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _termsRecognizer = TapGestureRecognizer()..onTap = () => _openUrl('https://fermentacraft.com/terms');
+    _privacyRecognizer = TapGestureRecognizer()..onTap = () => _openUrl('https://fermentacraft.com/privacy');
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
+    _termsRecognizer.dispose();
+    _privacyRecognizer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   Future<void> _register() async {
     final password = _passwordController.text.trim();
@@ -44,12 +76,12 @@ class _RegisterPageState extends State<RegisterPage> {
         email: _emailController.text.trim(),
         password: password,
       );
-      if (context.mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    setState(() => _isLoading = false);
   }
 
   void _checkPasswordStrength(String value) {
@@ -108,7 +140,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
                       _error!,
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                      style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
                     ),
                   ),
 
@@ -125,11 +157,15 @@ class _RegisterPageState extends State<RegisterPage> {
 
                 TextField(
                   controller: _passwordController,
-                  obscureText: true,
+                  obscureText: _obscurePassword,
                   onChanged: _checkPasswordStrength,
                   decoration: InputDecoration(
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -152,10 +188,14 @@ class _RegisterPageState extends State<RegisterPage> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _confirmController,
-                  obscureText: true,
+                  obscureText: _obscureConfirm,
                   decoration: InputDecoration(
                     labelText: 'Confirm Password',
                     prefixIcon: const Icon(Icons.check_circle_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscureConfirm ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                    ),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -165,37 +205,32 @@ class _RegisterPageState extends State<RegisterPage> {
                   children: [
                     Checkbox(
                       value: _agreedToTerms,
-                      onChanged: (val) {
-                        setState(() => _agreedToTerms = val ?? false);
-                      },
+                      onChanged: (val) => setState(() => _agreedToTerms = val ?? false),
                     ),
                     Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          // TODO: Open actual terms link
-                        },
-                        child: Text.rich(
-                          TextSpan(
-                            text: 'I agree to the ',
-                            children: [
-                              TextSpan(
-                                text: 'Terms of Service',
-                                style: TextStyle(
-                                  color: theme.colorScheme.primary,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                              const TextSpan(text: ' and '),
-                              TextSpan(
-                                text: 'Privacy Policy',
-                                style: TextStyle(
-                                  color: theme.colorScheme.primary,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                            ],
-                          ),
+                      child: RichText(
+                        text: TextSpan(
                           style: theme.textTheme.bodySmall,
+                          children: [
+                            const TextSpan(text: 'I agree to the '),
+                            TextSpan(
+                              text: 'Terms of Service',
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: _termsRecognizer,
+                            ),
+                            const TextSpan(text: ' and '),
+                            TextSpan(
+                              text: 'Privacy Policy',
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: _privacyRecognizer,
+                            ),
+                          ],
                         ),
                       ),
                     ),
