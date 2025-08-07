@@ -24,7 +24,7 @@ class DashboardSection<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(16.0),

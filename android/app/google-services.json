@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "747130944683",
+    "project_id": "fermentacraft",
+    "storage_bucket": "fermentacraft.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:747130944683:android:c8e4ec77afd61d483b0bee",
+        "android_client_info": {
+          "package_name": "com.fermentacraft"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "747130944683-70375t4voqs45f5t3tcb5n0ovtc7l25h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fermentacraft",
+            "certificate_hash": "edb4276c4410e9a798309d2d0d8ad18a44e8afa3"
+          }
+        },
+        {
+          "client_id": "747130944683-3hjb8rbv0rm9ts7kha4ghk83m8pl22pf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQrI2K1PSW1wBeo3SXoXuCp7BmIIW_0ok"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "747130944683-3hjb8rbv0rm9ts7kha4ghk83m8pl22pf.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "747130944683-add6ufd63i82lh8ispnosi2ii3vu6hbn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.fermentacraft"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -181,7 +181,7 @@ class InfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         // Using theme colors instead of hardcoded grey
-        color: colorScheme.primaryContainer.withOpacity(0.4),
+        color: colorScheme.primaryContainer.withValues(alpha: 0.4),
         border: Border.all(color: colorScheme.primaryContainer),
         borderRadius: BorderRadius.circular(8),
       ),
