@@ -19,6 +19,7 @@ import 'package:fermentacraft/models/purchase_transaction.dart';
 import 'package:fermentacraft/models/unit_type.dart';
 import 'package:fermentacraft/models/tag_manager.dart';
 import 'models/settings_model.dart';
+import 'services/firestore_sync_service.dart';
 import 'utils/inventory_item_extensions.dart';
 
 // Theme
@@ -52,7 +53,12 @@ Future<void> setupHive() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await setupHive();
+
+  // Start sync engine
+  await FirestoreSyncService.instance.init();
+
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

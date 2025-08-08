@@ -27,13 +27,21 @@ class DataManagementService {
     'shopping_list',
   ];
 
-  static final Map<String, Function> _fromJsonConstructors = {
-    'recipes': (json) => RecipeModel.fromJson(json),
-    'batches': (json) => BatchModel.fromJson(json),
-    'inventory': (json) => InventoryItem.fromJson(json),
-    'tags': (json) => Tag.fromJson(json),
-    'shopping_list': (json) => ShoppingListItem.fromJson(json),
-  };
+    static final Map<String, Function> _fromJsonConstructors = {
+      'recipes': (json) => RecipeModel.fromJson(json),
+      'batches': (json) => BatchModel.fromJson(json),
+      'inventory': (json) => InventoryItem.fromJson(json),
+      'tags': (json) => Tag.fromJson(json),
+      'shopping_list': (json) => ShoppingListItem.fromJson(json),
+    };
+
+    static Function fromJsonFor(String boxName) {
+      final ctor = _fromJsonConstructors[boxName];
+      if (ctor == null) {
+        throw ArgumentError('No fromJson constructor for box: $boxName');
+      }
+      return ctor;
+    }
 
   // Helper to get a typed Hive box
   static Box getTypedBox(String name) {

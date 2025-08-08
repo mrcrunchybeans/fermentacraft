@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../utils/data_management.dart';
 import '../models/settings_model.dart';
+import '../services/firestore_sync_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -20,12 +23,95 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsModel>();
+    final sync = FirestoreSyncService.instance;
+    final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Settings")),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          // --- CLOUD SYNC (Firebase + Firestore) ---
+          _sectionTitle("Cloud Sync", context),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_sync),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Firebase Sync",
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(user == null ? "Not signed in" : (user.email ?? "Signed in")),
+                    subtitle: Text(
+                      user == null
+                          ? "Sign in to enable online sync across devices."
+                          : "UID: ${user.uid}",
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Enable Sync"),
+                    subtitle: const Text("Sync recipes, batches, inventory, shopping list, tags, and settings"),
+                    value: sync.isEnabled,
+                    onChanged: (v) async {
+                      sync.isEnabled = v;
+                      if (v && user != null) {
+                        // Kick a merge to ensure convergence right away
+                        await sync.forceSync();
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Sync enabled. Merging changes…")),
+                        );
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                    ElevatedButton.icon(
+  onPressed: (user != null && sync.isEnabled)
+      ? () {
+          // instant feedback
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sync queued…')),
+          );
+          // fire and forget
+          sync.forceSync();
+        }
+      : null,
+  icon: const Icon(Icons.sync),
+  label: const Text("Sync now"),
+),
+                      const SizedBox(width: 12),
+                      if (user == null)
+                        const Expanded(
+                          child: Text(
+                            "Tip: Sign in to enable syncing.",
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           // --- UNITS SECTION ---
           _sectionTitle("Units", context),
           Card(
@@ -42,7 +128,6 @@ class SettingsPage extends StatelessWidget {
                     ],
                     selected: {settings.useCelsius},
                     onSelectionChanged: (Set<bool> newSelection) {
-                      // Let the SettingsModel handle the state change
                       settings.setUnit(isCelsius: newSelection.first);
                     },
                   ),
@@ -123,13 +208,9 @@ class SettingsPage extends StatelessWidget {
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                         onPressed: () async {
-                          // Call the service to clear the data
                           await DataManagementService.clearAllData();
-
-                          // Check if the widget is still in the tree before using context
                           if (!context.mounted) return;
-
-                          Navigator.pop(context); // Close the dialog
+                          Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text("All data has been cleared.")),
                           );

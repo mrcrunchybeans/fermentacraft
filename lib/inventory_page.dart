@@ -25,7 +25,10 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final TextEditingController _searchController = TextEditingController();
   SortOption _sortOption = SortOption.name;
-  final Set<int> _selectedItemKeys = {};
+
+  // Store selection as strings so it doesn't matter whether Hive keys are int or String.
+  final Set<String> _selectedItemKeys = <String>{};
+
   bool _showArchived = false;
 
   @override
@@ -51,11 +54,23 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
+  // ---------- Helpers ----------
+
+  /// Resolve a box key (which could be int or String) from our stringified selection key.
+  dynamic _resolveBoxKey(Box box, String stringKey) {
+    for (final k in box.keys) {
+      if (k.toString() == stringKey) return k;
+    }
+    // Fallback: attempt with the string itself
+    return stringKey;
+  }
+
   // ---------- Bulk Delete ----------
 
   void _deleteSelectedItems(Box<InventoryItem> box) {
-    for (var key in _selectedItemKeys) {
-      box.delete(key);
+    for (final stringKey in _selectedItemKeys) {
+      final dynKey = _resolveBoxKey(box, stringKey);
+      box.delete(dynKey);
     }
     setState(() => _selectedItemKeys.clear());
   }
@@ -180,7 +195,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final color = danger ? cs.error : cs.primary;
     final onColor = danger ? cs.onError : cs.onPrimary;
     return Container(
-      color: color.withValues(alpha: 0.90), // fix deprecation
+      color: color.withValues(alpha: 0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -303,8 +318,8 @@ class _InventoryPageState extends State<InventoryPage> {
                       initiallyExpanded: true,
                       title: Text(cat, style: Theme.of(context).textTheme.titleLarge),
                       children: items.map((item) {
-                        final key = item.key as int;
-                        final isSelected = _selectedItemKeys.contains(key);
+                        final itemKey = item.key.toString(); // normalize key
+                        final isSelected = _selectedItemKeys.contains(itemKey);
 
                         // Expiration color/text
                         final now = DateTime.now();
@@ -322,85 +337,84 @@ class _InventoryPageState extends State<InventoryPage> {
                           }
                         }
 
-return Dismissible(
-  key: ValueKey(item.key),
-  background: _swipeBg(
-    context,
-    icon: item.isArchived ? Icons.unarchive : Icons.archive_outlined,
-    label: item.isArchived ? 'Unarchive' : 'Archive',
-    alignment: Alignment.centerLeft,
-  ),
-  secondaryBackground: _swipeBg(
-    context,
-    icon: Icons.delete_outline,
-    label: 'Delete',
-    alignment: Alignment.centerRight,
-    danger: true,
-  ),
-  direction: DismissDirection.horizontal,
-  confirmDismiss: (direction) async {
-    if (direction == DismissDirection.startToEnd) {
-      await _toggleArchiveStatus(item);
-      return false; // handled via rebuild
-    } else {
-      await _deleteItemWithUndo(item);
-      return false; // handled via snackbar/undo
-    }
-  },
-  child: Card(
-    child: ListTile(
-      leading: Checkbox(
-        value: isSelected,
-        onChanged: (selected) {
-          setState(() {
-            if (selected == true) {
-              _selectedItemKeys.add(key);
-            } else {
-              _selectedItemKeys.remove(key);
-            }
-          });
-        },
-      ),
-      onTap: () => _showInventoryItemDetail(context, item),
-      title: Text(item.name),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
-          if (expirationText != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(
-                expirationText,
-                style: TextStyle(color: expirationColor, fontWeight: FontWeight.bold),
-              ),
-            ),
-        ],
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.attach_money),
-            tooltip: 'Log Purchase',
-            onPressed: () async {
-              await showDialog(context: context, builder: (_) => LogPurchaseDialog(item: item));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: 'Edit Item',
-            onPressed: () async {
-              await showDialog(context: context, builder: (_) => EditInventoryDialog(item: item));
-            },
-          ),
-          _moreMenu(item),
-        ],
-      ),
-    ),
-  ),
-);
-
+                        return Dismissible(
+                          key: ValueKey<String>(itemKey),
+                          background: _swipeBg(
+                            context,
+                            icon: item.isArchived ? Icons.unarchive : Icons.archive_outlined,
+                            label: item.isArchived ? 'Unarchive' : 'Archive',
+                            alignment: Alignment.centerLeft,
+                          ),
+                          secondaryBackground: _swipeBg(
+                            context,
+                            icon: Icons.delete_outline,
+                            label: 'Delete',
+                            alignment: Alignment.centerRight,
+                            danger: true,
+                          ),
+                          direction: DismissDirection.horizontal,
+                          confirmDismiss: (direction) async {
+                            if (direction == DismissDirection.startToEnd) {
+                              await _toggleArchiveStatus(item);
+                              return false; // handled via rebuild
+                            } else {
+                              await _deleteItemWithUndo(item);
+                              return false; // handled via snackbar/undo
+                            } 
+                          },
+                          child: Card(
+                            child: ListTile(
+                              leading: Checkbox(
+                                value: isSelected,
+                                onChanged: (selected) {
+                                  setState(() {
+                                    if (selected == true) {
+                                      _selectedItemKeys.add(itemKey);
+                                    } else {
+                                      _selectedItemKeys.remove(itemKey);
+                                    }
+                                  });
+                                },
+                              ),
+                              onTap: () => _showInventoryItemDetail(context, item),
+                              title: Text(item.name),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
+                                  if (expirationText != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4.0),
+                                      child: Text(
+                                        expirationText,
+                                        style: TextStyle(color: expirationColor, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.attach_money),
+                                    tooltip: 'Log Purchase',
+                                    onPressed: () async {
+                                      await showDialog(context: context, builder: (_) => LogPurchaseDialog(item: item));
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit),
+                                    tooltip: 'Edit Item',
+                                    onPressed: () async {
+                                      await showDialog(context: context, builder: (_) => EditInventoryDialog(item: item));
+                                    },
+                                  ),
+                                  _moreMenu(item),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
                       }).toList(),
                     );
                   }).toList(),
