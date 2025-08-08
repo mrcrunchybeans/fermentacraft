@@ -227,7 +227,7 @@ class AppTheme {
       isDense: true,
       filled: true,
       fillColor: fill,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       hintStyle: TextStyle(color: c.onSurfaceVariant.withValues(alpha: 0.7)),
       labelStyle: TextStyle(color: c.onSurfaceVariant),
       floatingLabelStyle: TextStyle(color: c.primary, fontWeight: FontWeight.w600),

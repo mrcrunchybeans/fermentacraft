@@ -29,26 +29,33 @@ class AddMeasurementDialog extends StatefulWidget {
 class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
   final _formKey = GlobalKey<FormState>();
 
-  // --- Controllers ---
+  // Controllers
   final _gravityController = TextEditingController();
   final _tempController = TextEditingController();
   final _taController = TextEditingController();
   final _noteController = TextEditingController();
 
-  // --- State Variables ---
+  // State
   late DateTime _timestamp;
-  late String _gravityUnit;
-  late bool _isFahrenheitOverride;
+  late String _gravityUnit; // 'sg' or 'brix'
+  late bool _isFahrenheitOverride; // true = F, false = C
   late List<String> _selectedInterventions;
 
-  // --- Auto-calculated Preview Variables ---
+  // Auto-calculated previews
   double? _fsuPreview;
   double? _sgCorrectedPreview;
   String _daysText = 'Day 1';
 
-  final List<String> _allInterventions = [
-    'Pressing', 'Yeast Inoculation', 'Temperature Control', 'First Racking',
-    'Secondary Racking', 'Stabilization Racking', 'Back Sweetening', 'Carbonation', 'Bottling'
+  final List<String> _allInterventions = const [
+    'Pressing',
+    'Yeast Inoculation',
+    'Temperature Control',
+    'First Racking',
+    'Secondary Racking',
+    'Stabilization Racking',
+    'Back Sweetening',
+    'Carbonation',
+    'Bottling'
   ];
 
   @override
@@ -67,24 +74,19 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
 
     if (m != null) {
       if (m.temperature != null) {
-        // FIXED: Replaced the non-existent method with correct conversion logic.
-        double tempDisplayValue = m.temperature!; // Stored as Celsius
-        if (settings.unit == 'F') {
-          tempDisplayValue = (m.temperature! * 9 / 5) + 32;
-        }
+        double tempDisplayValue = m.temperature!; // stored as °C
+        if (_isFahrenheitOverride) tempDisplayValue = (tempDisplayValue * 9 / 5) + 32;
         _tempController.text = tempDisplayValue.toStringAsFixed(1);
       }
       final value = _gravityUnit == 'sg' ? m.gravity : m.brix;
       if (value != null) {
-        _gravityController.text = _gravityUnit == 'sg'
-            ? value.toStringAsFixed(3)
-            : value.toStringAsFixed(1);
+        _gravityController.text =
+            _gravityUnit == 'sg' ? value.toStringAsFixed(3) : value.toStringAsFixed(1);
       }
     }
 
     _gravityController.addListener(_recalculateAllValues);
     _tempController.addListener(_recalculateAllValues);
-
     _recalculateAllValues();
   }
 
@@ -97,41 +99,112 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
     super.dispose();
   }
 
-void _recalculateAllValues() {
-  final gravityVal = double.tryParse(_gravityController.text.trim());
-
-  final rawTemp = _tempController.text.trim();
-  final sanitizedTemp = rawTemp.replaceAll(RegExp(r'[^\d.]'), '');
-  final tempVal = double.tryParse(sanitizedTemp);
-
-  if (widget.firstMeasurementDate != null) {
-    final days = _timestamp.difference(widget.firstMeasurementDate!).inDays;
-    _daysText = 'Day ${days + 1}';
+  // ---------- UI helpers ----------
+  InputDecoration _dec(String label, {String? hint, String? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      suffixText: suffix,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    );
   }
 
-  double? sgForCalcs;
-  if (gravityVal != null) {
-    sgForCalcs = _gravityUnit == 'sg' ? gravityVal : brixToSg(gravityVal);
+  // compact segmented style (height ~36)
+  ButtonStyle get _segStyle {
+    return const ButtonStyle(
+      visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+      minimumSize: WidgetStatePropertyAll(Size(0, 36)),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 4)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
   }
 
-  if (sgForCalcs != null && tempVal != null) {
-    final tempF = _isFahrenheitOverride ? tempVal : (tempVal * 9 / 5) + 32;
-    _sgCorrectedPreview = getCorrectedSG(sgForCalcs, tempF);
-  } else {
-    _sgCorrectedPreview = null;
+  // Prevent label wrapping + force fixed height to avoid weird growth
+  Widget _segLabel(String text, {double width = 56}) {
+    return SizedBox(
+      width: width,
+      height: 36, // match segmented min height
+      child: Center(
+        child: Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.visible,
+        ),
+      ),
+    );
   }
 
-  if (widget.previousMeasurement?.gravity != null && sgForCalcs != null) {
-    final prev = widget.previousMeasurement!;
-    final difference = _timestamp.difference(prev.timestamp);
-    _fsuPreview = calculateFSU(prev.gravity!, sgForCalcs, difference);
-  } else {
-    _fsuPreview = null;
+  // Local Theme wrapper to suppress any error text spacing that can stretch controls
+  Widget _noErrorTheme({required Widget child}) {
+    final base = Theme.of(context);
+    return Theme(
+      data: base.copyWith(
+        inputDecorationTheme: const InputDecorationTheme(
+          errorStyle: TextStyle(height: 0, fontSize: 0),
+        ),
+      ),
+      child: child,
+    );
   }
 
-  setState(() {});
-}
+  Widget _pill(String label, String value, {IconData? icon}) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceVariant,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[Icon(icon, size: 16), const SizedBox(width: 6)],
+        Text('$label: ', style: Theme.of(context).textTheme.labelMedium),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ]),
+    );
+  }
 
+  // ---------- Calc ----------
+  void _recalculateAllValues() {
+    final gravityVal = double.tryParse(_gravityController.text.trim());
+
+    final rawTemp = _tempController.text.trim();
+    final sanitizedTemp = rawTemp.replaceAll(RegExp(r'[^\d.]'), '');
+    final tempVal = double.tryParse(sanitizedTemp);
+
+    if (widget.firstMeasurementDate != null) {
+      final days = _timestamp.difference(widget.firstMeasurementDate!).inDays;
+      _daysText = 'Day ${days + 1}';
+    }
+
+    double? sgForCalcs;
+    if (gravityVal != null) {
+      sgForCalcs = _gravityUnit == 'sg' ? gravityVal : brixToSg(gravityVal);
+    }
+
+    if (sgForCalcs != null && tempVal != null) {
+      final tempF = _isFahrenheitOverride ? tempVal : (tempVal * 9 / 5) + 32;
+      _sgCorrectedPreview = getCorrectedSG(sgForCalcs, tempF);
+    } else {
+      _sgCorrectedPreview = null;
+    }
+
+    if (widget.previousMeasurement?.gravity != null && sgForCalcs != null) {
+      final prev = widget.previousMeasurement!;
+      final difference = _timestamp.difference(prev.timestamp);
+      _fsuPreview = calculateFSU(prev.gravity!, sgForCalcs, difference);
+    } else {
+      _fsuPreview = null;
+    }
+
+    setState(() {});
+  }
+
+  // ---------- Actions ----------
   void _save() {
     if (!_formKey.currentState!.validate()) return;
 
@@ -140,9 +213,8 @@ void _recalculateAllValues() {
     final taVal = double.tryParse(_taController.text);
     final note = _noteController.text.trim();
 
-    final double? tempC = tempVal != null
-        ? (_isFahrenheitOverride ? (tempVal - 32) * 5 / 9 : tempVal)
-        : null;
+    final double? tempC =
+        tempVal != null ? (_isFahrenheitOverride ? (tempVal - 32) * 5 / 9 : tempVal) : null;
 
     double? currentSg;
     double? currentBrix;
@@ -161,14 +233,14 @@ void _recalculateAllValues() {
       final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
       fsuspeed = calculateFSU(widget.previousMeasurement!.gravity!, currentSg, difference);
     }
-    
+
     final measurement = Measurement(
       timestamp: _timestamp,
       gravityUnit: _gravityUnit,
       gravity: currentSg,
       brix: currentBrix,
       temperature: tempC,
-      notes: note.isEmpty ? null : note,
+      notes: note.isNotEmpty ? note : null,
       fsuspeed: fsuspeed,
       ta: taVal,
       sgCorrected: _sgCorrectedPreview,
@@ -195,170 +267,260 @@ void _recalculateAllValues() {
     }
   }
 
-  void _showInterventionsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        final tempSelected = List<String>.from(_selectedInterventions);
-        return StatefulBuilder(builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Select Interventions'),
-            content: SingleChildScrollView(
-              child: ListBody(
-                children: _allInterventions.map((item) {
-                  return CheckboxListTile(
-                    value: tempSelected.contains(item),
-                    title: Text(item),
-                    onChanged: (bool? value) {
-                      setDialogState(() {
-                        if (value == true) {
-                          tempSelected.add(item);
-                        } else {
-                          tempSelected.remove(item);
-                        }
+  @override
+  Widget build(BuildContext context) {
+    final isValid = _formKey.currentState?.validate() ?? true;
+
+    // “Narrow” = most phones in portrait. We’ll stack rows there.
+    final width = MediaQuery.of(context).size.width;
+    final isNarrow = width < 420;
+
+    return AlertDialog(
+      title: Text(widget.existingMeasurement == null ? 'Add Measurement' : 'Edit Measurement'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 8, // ignore: invalid_use (fallback below if needed)
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header: Date + Day chip
+              Row(
+                children: [
+                  Expanded(child: Text('Date: ${DateFormat.yMMMd().format(_timestamp)}')),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(_daysText, style: Theme.of(context).textTheme.labelMedium),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.calendar_today),
+                    tooltip: 'Change Date',
+                    onPressed: _pickDate,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Gravity + unit segment (stack on narrow)
+              if (!isNarrow)
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _gravityController,
+                        autofocus: widget.existingMeasurement == null,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        textInputAction: TextInputAction.next,
+                        decoration: _dec(
+                          _gravityUnit == 'sg' ? 'Specific Gravity' : 'Brix',
+                          hint: _gravityUnit == 'sg' ? 'e.g. 1.010' : 'e.g. 12.5',
+                          suffix: _gravityUnit == 'sg' ? null : '°Bx',
+                        ),
+                        validator: (v) =>
+                            (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                                ? 'Enter a number'
+                                : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _noErrorTheme(
+                        child: SegmentedButton<String>(
+                          style: _segStyle,
+                          segments: [
+                            ButtonSegment(value: 'sg', label: _segLabel('SG')),
+                            ButtonSegment(value: 'brix', label: _segLabel('°Bx')),
+                          ],
+                          selected: {_gravityUnit},
+                          onSelectionChanged: (s) {
+                            setState(() => _gravityUnit = s.first);
+                            _recalculateAllValues();
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else ...[
+                TextFormField(
+                  controller: _gravityController,
+                  autofocus: widget.existingMeasurement == null,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  decoration: _dec(
+                    _gravityUnit == 'sg' ? 'Specific Gravity' : 'Brix',
+                    hint: _gravityUnit == 'sg' ? 'e.g. 1.010' : 'e.g. 12.5',
+                    suffix: _gravityUnit == 'sg' ? null : '°Bx',
+                  ),
+                  validator: (v) =>
+                      (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                          ? 'Enter a number'
+                          : null,
+                ),
+                const SizedBox(height: 8),
+                _noErrorTheme(
+                  child: SegmentedButton<String>(
+                    style: _segStyle,
+                    segments: [
+                      ButtonSegment(value: 'sg', label: _segLabel('SG')),
+                      ButtonSegment(value: 'brix', label: _segLabel('°Bx')),
+                    ],
+                    selected: {_gravityUnit},
+                    onSelectionChanged: (s) {
+                      setState(() => _gravityUnit = s.first);
+                      _recalculateAllValues();
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 10),
+
+              // Temperature + unit segment (stack on narrow)
+              if (!isNarrow)
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _tempController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        textInputAction: TextInputAction.next,
+                        decoration: _dec(
+                          'Temperature',
+                          hint: _isFahrenheitOverride ? 'e.g. 68.0' : 'e.g. 20.0',
+                          suffix: _isFahrenheitOverride ? '°F' : '°C',
+                        ),
+                        validator: (v) =>
+                            (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                                ? 'Enter a number'
+                                : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _noErrorTheme(
+                        child: SegmentedButton<bool>(
+                          style: _segStyle,
+                          segments: [
+                            ButtonSegment(value: true, label: _segLabel('°F')),
+                            ButtonSegment(value: false, label: _segLabel('°C')),
+                          ],
+                          selected: {_isFahrenheitOverride},
+                          onSelectionChanged: (s) {
+                            setState(() => _isFahrenheitOverride = s.first);
+                            _recalculateAllValues();
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else ...[
+                TextFormField(
+                  controller: _tempController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  decoration: _dec(
+                    'Temperature',
+                    hint: _isFahrenheitOverride ? 'e.g. 68.0' : 'e.g. 20.0',
+                    suffix: _isFahrenheitOverride ? '°F' : '°C',
+                  ),
+                  validator: (v) =>
+                      (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                          ? 'Enter a number'
+                          : null,
+                ),
+                const SizedBox(height: 8),
+                _noErrorTheme(
+                  child: SegmentedButton<bool>(
+                    style: _segStyle,
+                    segments: [
+                      ButtonSegment(value: true, label: _segLabel('°F')),
+                      ButtonSegment(value: false, label: _segLabel('°C')),
+                    ],
+                    selected: {_isFahrenheitOverride},
+                    onSelectionChanged: (s) {
+                      setState(() => _isFahrenheitOverride = s.first);
+                      _recalculateAllValues();
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 10),
+
+              // TA
+              TextFormField(
+                controller: _taController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                decoration: _dec('TA', hint: 'Titratable acidity', suffix: 'g/L'),
+                validator: (v) =>
+                    (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                        ? 'Enter a number'
+                        : null,
+              ),
+
+              const SizedBox(height: 12),
+
+              // Live preview pills
+              if (_sgCorrectedPreview != null || _fsuPreview != null)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (_sgCorrectedPreview != null)
+                        _pill('Corrected SG', _sgCorrectedPreview!.toStringAsFixed(3),
+                            icon: Icons.tune),
+                      if (_fsuPreview != null) ...[
+                        const SizedBox(width: 8),
+                        _pill('Est. FSU', _fsuPreview!.toStringAsFixed(1),
+                            icon: Icons.trending_down),
+                      ],
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 14),
+
+              // Interventions as FilterChips
+              Text('Interventions', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _allInterventions.map((i) {
+                  final selected = _selectedInterventions.contains(i);
+                  return FilterChip(
+                    label: Text(i),
+                    selected: selected,
+                    onSelected: (v) {
+                      setState(() {
+                        v ? _selectedInterventions.add(i) : _selectedInterventions.remove(i);
                       });
                     },
                   );
                 }).toList(),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  setState(() => _selectedInterventions = tempSelected);
-                  Navigator.pop(context);
-                },
-                child: const Text('DONE'),
-              ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existingMeasurement == null ? 'Add Measurement' : 'Edit Measurement'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(child: Text('Date: ${DateFormat.yMMMd().format(_timestamp)}')),
-                  Text(_daysText, style: Theme.of(context).textTheme.bodySmall),
-                  IconButton(icon: const Icon(Icons.calendar_today), onPressed: _pickDate, tooltip: 'Change Date'),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _gravityController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(labelText: _gravityUnit == 'sg' ? 'Specific Gravity' : 'Brix'),
-                      validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid number' : null,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  DropdownButton<String>(
-                    value: _gravityUnit,
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _gravityUnit = val);
-                        _recalculateAllValues();
-                      }
-                    },
-                    items: const [
-                      DropdownMenuItem(value: 'sg', child: Text('SG')),
-                      DropdownMenuItem(value: 'brix', child: Text('°Bx')),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _tempController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Temperature'),
-                      validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid number' : null,
-                    ),
-                  ),
-                   const SizedBox(width: 12),
-                  ToggleButtons(
-                    isSelected: [_isFahrenheitOverride, !_isFahrenheitOverride],
-                    onPressed: (index) => setState(() {
-                      _isFahrenheitOverride = index == 0;
-                      _recalculateAllValues();
-                    }),
-                    borderRadius: BorderRadius.circular(8),
-                    constraints: const BoxConstraints(minHeight: 40, minWidth: 48),
-                    children: const [Text('°F'), Text('°C')],
-                  ),
-                ],
-              ),
-               TextFormField(
-                  controller: _taController,
-                  decoration: const InputDecoration(labelText: 'TA (g/L)'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid number' : null,
-              ),
-              const SizedBox(height: 16),
-              
-              if (_sgCorrectedPreview != null || _fsuPreview != null)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      children: [
-                         if (_sgCorrectedPreview != null)
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [const Text('Corrected SG'), Text(_sgCorrectedPreview!.toStringAsFixed(3), style: const TextStyle(fontWeight: FontWeight.bold))],
-                          ),
-                         if (_fsuPreview != null)
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                           children: [const Text('Est. FSU'), Text(_fsuPreview!.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold))],
-                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              
-              OutlinedButton.icon(
-                icon: const Icon(Icons.flag_outlined),
-                label: const Text('Log Interventions'),
-                onPressed: _showInterventionsDialog,
-              ),
-              if (_selectedInterventions.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Wrap(
-                    spacing: 6.0,
-                    runSpacing: 6.0,
-                    children: _selectedInterventions.map((i) => Chip(label: Text(i))).toList(),
-                  ),
-                ),
             ],
           ),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('CANCEL')),
-        ElevatedButton(onPressed: _save, child: const Text('SAVE')),
+        ElevatedButton(onPressed: isValid ? _save : null, child: const Text('SAVE')),
       ],
     );
   }

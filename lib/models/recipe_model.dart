@@ -57,6 +57,9 @@ class RecipeModel extends HiveObject {
   @HiveField(15)
   double? plannedAbv;
 
+  @HiveField(16)
+  bool isArchived;
+
   RecipeModel({
     String? id,
     required this.name,
@@ -73,6 +76,8 @@ class RecipeModel extends HiveObject {
     this.lastOpened,
     this.batchVolume,
     this.plannedOg,
+    this.isArchived = false,
+
     this.plannedAbv,
   })  : id = id ?? const Uuid().v4(),
         additives = additives ?? [],
@@ -108,6 +113,7 @@ class RecipeModel extends HiveObject {
       'batchVolume': batchVolume,
       'plannedOg': plannedOg,
       'plannedAbv': plannedAbv,
+      'isArchived': isArchived,
     };
   }
 
@@ -142,6 +148,8 @@ class RecipeModel extends HiveObject {
       batchVolume: json['batchVolume'],
       plannedOg: json['plannedOg'],
       plannedAbv: json['plannedAbv'],
+      isArchived: json['isArchived'] ?? false,
+
     );
   }
 }

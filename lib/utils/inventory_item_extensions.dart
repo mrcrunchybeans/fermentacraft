@@ -1,5 +1,38 @@
+import 'package:hive/hive.dart';
 import '../models/inventory_item.dart';
 
+/// Sidecar store to track archived flags without changing the InventoryItem schema.
+class InventoryArchiveStore {
+  static const boxName = 'inventory_archive_flags';
+
+  static Future<Box<bool>> ensureOpen() async {
+    if (!Hive.isBoxOpen(boxName)) {
+      await Hive.openBox<bool>(boxName);
+    }
+    return Hive.box<bool>(boxName);
+  }
+
+  static Box<bool> get box => Hive.box<bool>(boxName);
+}
+
+/// Adds a soft-archive flag to InventoryItem, stored in a sidecar Hive box.
+extension InventoryItemArchiveX on InventoryItem {
+  bool get isArchived {
+    if (!Hive.isBoxOpen(InventoryArchiveStore.boxName)) return false;
+    return InventoryArchiveStore.box.get(key, defaultValue: false) ?? false;
+  }
+
+  set isArchived(bool v) {
+    if (!Hive.isBoxOpen(InventoryArchiveStore.boxName)) {
+      throw StateError(
+        'Archive flags box not open. Call InventoryArchiveStore.ensureOpen() first.',
+      );
+    }
+    InventoryArchiveStore.box.put(key, v);
+  }
+}
+
+/// Your existing display/cost helpers.
 extension InventoryItemDisplay on InventoryItem {
   String getDisplayUnit(double amount) {
     final singular = unit.toLowerCase();
@@ -19,7 +52,7 @@ extension InventoryItemDisplay on InventoryItem {
     const invariantUnits = {
       'g', 'gram', 'grams',
       'kg', 'oz', 'lb', 'mg',
-      'ml', 'mL', 'L',
+      'ml', 'l', // normalize if you want
       'tsp', 'tbsp', 'fl oz', 'cup', 'gal',
     };
 
@@ -39,10 +72,8 @@ extension InventoryItemDisplay on InventoryItem {
     for (final entry in purchaseHistory) {
       totalAmount += entry.amount;
       totalCost += entry.totalCost;
-
-      
     }
 
-return totalAmount > 0 ? totalCost / totalAmount : (costPerUnit);
+    return totalAmount > 0 ? totalCost / totalAmount : costPerUnit;
   }
 }

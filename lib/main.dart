@@ -19,6 +19,7 @@ import 'package:fermentacraft/models/purchase_transaction.dart';
 import 'package:fermentacraft/models/unit_type.dart';
 import 'package:fermentacraft/models/tag_manager.dart';
 import 'models/settings_model.dart';
+import 'utils/inventory_item_extensions.dart';
 
 // Theme
 import 'theme/app_theme.dart';
@@ -43,6 +44,7 @@ Future<void> setupHive() async {
   await Hive.openBox<InventoryTransaction>('inventoryTransactions');
   await Hive.openBox<MeasurementLog>('measurementLogs');
   await Hive.openBox<RecipeModel>('recipes');
+  await InventoryArchiveStore.ensureOpen();
   await Hive.openBox('settings');
   await Hive.openBox<ShoppingListItem>('shopping_list');
   await Hive.openBox<Tag>('tags');

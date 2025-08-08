@@ -28,7 +28,8 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
 
   final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
   final List<String> _units = [
-    'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gal', 'packets'];
+    'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gal', 'packets'
+  ];
 
   @override
   void initState() {
@@ -44,14 +45,12 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
     }
   }
 
-// Replace the _saveInventoryItem method in your AddInventoryDialog
-void _saveInventoryItem() async {
+  void _saveInventoryItem() async {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
 
       final inventoryBox = Hive.box<InventoryItem>('inventory');
 
-      // Create the first purchase transaction from the dialog's data
       final transaction = PurchaseTransaction(
         date: DateTime.now(),
         amount: _amount,
@@ -59,23 +58,20 @@ void _saveInventoryItem() async {
         expirationDate: _expirationDate,
       );
 
-      // Check if an item with this name already exists
       final existingItem = inventoryBox.values.firstWhereOrNull(
         (item) => item.name.toLowerCase() == _name.toLowerCase(),
       );
 
       if (existingItem != null) {
-        // If it exists, just add a new purchase to it
         existingItem.addPurchase(transaction);
       } else {
-        // If it's new, create it with the first purchase
         final newItem = InventoryItem(
           name: _name,
           unit: _unit,
           unitType: _unitType,
           notes: _notes,
           category: _category,
-          purchaseHistory: [transaction], // Add the first transaction
+          purchaseHistory: [transaction],
         );
         await inventoryBox.add(newItem);
       }
@@ -85,6 +81,7 @@ void _saveInventoryItem() async {
       }
     }
   }
+
   void _pickExpirationDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -96,6 +93,7 @@ void _saveInventoryItem() async {
       setState(() => _expirationDate = picked);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -105,24 +103,43 @@ void _saveInventoryItem() async {
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Name
               TextFormField(
                 initialValue: _name,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
                 onSaved: (val) => _name = val!.trim(),
                 validator: (val) => val == null || val.isEmpty ? 'Required' : null,
               ),
+              const SizedBox(height: 10),
+
+              // Category
               DropdownButtonFormField<String>(
                 value: _category,
-                items: _categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
+                items: _categories
+                    .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
+                    .toList(),
                 onChanged: (val) => setState(() => _category = val!),
-                decoration: const InputDecoration(labelText: 'Category'),
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
               ),
+              const SizedBox(height: 10),
+
+              // Amount + Unit
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
-                      decoration: const InputDecoration(labelText: 'Amount in Stock'),
+                      decoration: const InputDecoration(
+                        labelText: 'Amount in Stock',
+                        contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                      ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       onSaved: (val) => _amount = double.tryParse(val ?? '0') ?? 0,
                       validator: (val) => val == null || val.isEmpty ? 'Required' : null,
@@ -132,7 +149,9 @@ void _saveInventoryItem() async {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       value: _unit,
-                      items: _units.map((unit) => DropdownMenuItem(value: unit, child: Text(unit))).toList(),
+                      items: _units
+                          .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
+                          .toList(),
                       onChanged: (val) {
                         if (val != null) {
                           final inferred = inferUnitType(val);
@@ -142,13 +161,22 @@ void _saveInventoryItem() async {
                           });
                         }
                       },
-                      decoration: const InputDecoration(labelText: 'Unit'),
+                      decoration: const InputDecoration(
+                        labelText: 'Unit',
+                        contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                      ),
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+
+              // Total Cost
               TextFormField(
-                decoration: const InputDecoration(labelText: 'Total Cost (\$)'),
+                decoration: const InputDecoration(
+                  labelText: 'Total Cost (\$)',
+                  contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onSaved: (val) {
                   final parsed = double.tryParse(val ?? '');
@@ -156,11 +184,19 @@ void _saveInventoryItem() async {
                 },
                 validator: (val) => val == null || val.isEmpty ? 'Required' : null,
               ),
+              const SizedBox(height: 10),
+
+              // Notes
               TextFormField(
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
                 onSaved: (val) => _notes = val?.trim(),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+
+              // Expiration
               Row(
                 children: [
                   const Text('Expiration:'),

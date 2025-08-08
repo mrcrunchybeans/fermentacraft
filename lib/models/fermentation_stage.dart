@@ -47,4 +47,18 @@ class FermentationStage extends HiveObject {
       targetTempC: targetTempC,
     );
   }
+  FermentationStage copyWith({
+  String? name,
+  DateTime? startDate,
+  int? durationDays,
+  double? targetTempC,
+  // add other fields if present
+}) {
+  return FermentationStage(
+    name: name ?? this.name,
+    startDate: startDate ?? this.startDate,
+    durationDays: durationDays ?? this.durationDays,
+    targetTempC: targetTempC ?? this.targetTempC,
+  );
+}
 }

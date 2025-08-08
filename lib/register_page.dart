@@ -30,8 +30,8 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void initState() {
     super.initState();
-    _termsRecognizer = TapGestureRecognizer()..onTap = () => _openUrl('https://fermentacraft.com/terms');
-    _privacyRecognizer = TapGestureRecognizer()..onTap = () => _openUrl('https://fermentacraft.com/privacy');
+    _termsRecognizer = TapGestureRecognizer()..onTap = () => _openUrl('https://fermentacraft.com/terms.html');
+    _privacyRecognizer = TapGestureRecognizer()..onTap = () => _openUrl('https://fermentacraft.com/privacy.html');
   }
 
   @override

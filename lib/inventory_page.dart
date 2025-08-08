@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+
 import '../models/inventory_item.dart';
 import '../widgets/add_inventory_dialog.dart';
 import '../widgets/edit_inventory_dialog.dart';
@@ -9,8 +10,10 @@ import '../widgets/log_purchase_dialog.dart';
 import 'inventory_item_detail_view.dart';
 import '../models/inventory_item_detail_model.dart';
 
-// ADDED: New sort option for expiration date
+// Sort options
 enum SortOption { name, stock, expiration }
+// Row menu actions
+enum _InvAction { archiveToggle, delete }
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -23,6 +26,18 @@ class _InventoryPageState extends State<InventoryPage> {
   final TextEditingController _searchController = TextEditingController();
   SortOption _sortOption = SortOption.name;
   final Set<int> _selectedItemKeys = {};
+  bool _showArchived = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Make sure the sidecar archive box is open so isArchived works.
+    InventoryArchiveStore.ensureOpen().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  // ---------- Navigation ----------
 
   void _showInventoryItemDetail(BuildContext context, InventoryItem item) {
     final isWideScreen = MediaQuery.of(context).size.width > 600;
@@ -31,9 +46,12 @@ class _InventoryPageState extends State<InventoryPage> {
         context: context,
         builder: (_) => InventoryItemDetailDialog(item: item),
       );
-    } else {InventoryItemDetailView.show(context, item.key);
+    } else {
+      InventoryItemDetailView.show(context, item.key);
     }
   }
+
+  // ---------- Bulk Delete ----------
 
   void _deleteSelectedItems(Box<InventoryItem> box) {
     for (var key in _selectedItemKeys) {
@@ -42,13 +60,149 @@ class _InventoryPageState extends State<InventoryPage> {
     setState(() => _selectedItemKeys.clear());
   }
 
+  // ---------- Archive / Delete helpers (single item) ----------
+
+  Future<void> _toggleArchiveStatus(InventoryItem item) async {
+    final isArchiving = !item.isArchived;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isArchiving ? 'Archive Item?' : 'Unarchive Item?'),
+        content: Text(
+          'Are you sure you want to ${isArchiving ? 'archive' : 'unarchive'} "${item.name}"?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text(isArchiving ? 'Archive' : 'Unarchive')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      item.isArchived = isArchiving; // sidecar flag
+      await item.save();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isArchiving ? 'Archived "${item.name}"' : 'Unarchived "${item.name}"')),
+      );
+      setState(() {});
+    }
+  }
+
+  Future<void> _deleteItemWithUndo(InventoryItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Item?'),
+        content: Text('This will permanently delete "${item.name}".'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final box = Hive.box<InventoryItem>('inventory');
+    final key = item.key;
+    final backup = item;
+
+    await item.delete();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Deleted "${backup.name}"'),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () async {
+            try {
+              await box.put(key, backup);
+            } catch (_) {
+              await box.add(backup);
+            }
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item restored')));
+          },
+        ),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  PopupMenuButton<_InvAction> _moreMenu(InventoryItem item) {
+    return PopupMenuButton<_InvAction>(
+      onSelected: (a) {
+        switch (a) {
+          case _InvAction.archiveToggle:
+            _toggleArchiveStatus(item);
+            break;
+          case _InvAction.delete:
+            _deleteItemWithUndo(item);
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _InvAction.archiveToggle,
+          child: Text(item.isArchived ? 'Unarchive' : 'Archive'),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: _InvAction.delete,
+          child: Row(
+            children: const [
+              Icon(Icons.delete_outline),
+              SizedBox(width: 8),
+              Text('Delete'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Swipe background UI
+  Widget _swipeBg(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Alignment alignment,
+    bool danger = false,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final color = danger ? cs.error : cs.primary;
+    final onColor = danger ? cs.onError : cs.onPrimary;
+    return Container(
+      color: color.withValues(alpha: 0.90), // fix deprecation
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: onColor),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(color: onColor, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  // ---------- UI ----------
+
   @override
   Widget build(BuildContext context) {
     final inventoryBox = Hive.box<InventoryItem>('inventory');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Inventory"),
+        title: Text(_showArchived ? 'Archived Inventory' : 'Inventory'),
         actions: [
           if (_selectedItemKeys.isNotEmpty)
             IconButton(
@@ -56,6 +210,11 @@ class _InventoryPageState extends State<InventoryPage> {
               tooltip: 'Delete Selected',
               onPressed: () => _deleteSelectedItems(inventoryBox),
             ),
+          IconButton(
+            icon: Icon(_showArchived ? Icons.inventory_2_outlined : Icons.archive_outlined),
+            tooltip: _showArchived ? 'View Active Items' : 'View Archived Items',
+            onPressed: () => setState(() => _showArchived = !_showArchived),
+          ),
         ],
       ),
       body: Column(
@@ -80,19 +239,9 @@ class _InventoryPageState extends State<InventoryPage> {
                   value: _sortOption,
                   onChanged: (value) => setState(() => _sortOption = value!),
                   items: const [
-                    DropdownMenuItem(
-                      value: SortOption.name,
-                      child: Text("Sort: Name"),
-                    ),
-                    DropdownMenuItem(
-                      value: SortOption.stock,
-                      child: Text("Sort: Stock Level"),
-                    ),
-                    // ADDED: Expiration sort option
-                    DropdownMenuItem(
-                      value: SortOption.expiration,
-                      child: Text("Sort: Expiration"),
-                    ),
+                    DropdownMenuItem(value: SortOption.name, child: Text("Sort: Name")),
+                    DropdownMenuItem(value: SortOption.stock, child: Text("Sort: Stock Level")),
+                    DropdownMenuItem(value: SortOption.expiration, child: Text("Sort: Expiration")),
                   ],
                 ),
               ],
@@ -103,20 +252,30 @@ class _InventoryPageState extends State<InventoryPage> {
               valueListenable: inventoryBox.listenable(),
               builder: (context, Box<InventoryItem> box, _) {
                 if (box.values.isEmpty) {
-                  return const Center(child: Text("No inventory items yet."));
+                  return Center(
+                    child: Text(_showArchived ? "No archived items." : "No inventory items yet."),
+                  );
                 }
 
                 final searchTerm = _searchController.text.toLowerCase();
+
                 final List<InventoryItem> filteredItems = box.values
                     .where((item) =>
+                        item.isArchived == _showArchived && // filter by archive state
                         item.name.toLowerCase().contains(searchTerm))
                     .toList();
 
-                // UPDATED: Sorting logic to include expiration date
+                if (filteredItems.isEmpty) {
+                  return Center(
+                    child: Text(_showArchived ? "No archived items." : "No items match your filter."),
+                  );
+                }
+
+                // Sorting (includes expiration)
                 filteredItems.sort((a, b) {
                   switch (_sortOption) {
                     case SortOption.name:
-                      return a.name.compareTo(b.name);
+                      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
                     case SortOption.stock:
                       return b.amountInStock.compareTo(a.amountInStock);
                     case SortOption.expiration:
@@ -129,25 +288,25 @@ class _InventoryPageState extends State<InventoryPage> {
                   }
                 });
 
+                // Group by category
                 final Map<String, List<InventoryItem>> grouped = {};
                 for (var item in filteredItems) {
                   grouped.putIfAbsent(item.category, () => []).add(item);
                 }
+                final sortedCats = grouped.keys.toList()..sort();
 
                 return ListView(
                   padding: const EdgeInsets.all(12),
-                  children: grouped.entries.map((entry) {
+                  children: sortedCats.map((cat) {
+                    final items = grouped[cat]!;
                     return ExpansionTile(
-                      initiallyExpanded: true, // Keep categories open
-                      title: Text(
-                        entry.key,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      children: entry.value.map((item) {
+                      initiallyExpanded: true,
+                      title: Text(cat, style: Theme.of(context).textTheme.titleLarge),
+                      children: items.map((item) {
                         final key = item.key as int;
                         final isSelected = _selectedItemKeys.contains(key);
 
-                        // --- OPTIMIZED: Expiration date logic ---
+                        // Expiration color/text
                         final now = DateTime.now();
                         final twoWeeksFromNow = now.add(const Duration(days: 14));
                         Color? expirationColor;
@@ -159,75 +318,89 @@ class _InventoryPageState extends State<InventoryPage> {
                           if (date.isBefore(now)) {
                             expirationColor = Colors.red; // Expired
                           } else if (date.isBefore(twoWeeksFromNow)) {
-                            expirationColor = Colors.orange; // Expiring soon
+                            expirationColor = Colors.orange; // Soon
                           }
                         }
-                        // --- End of optimization logic ---
 
-                        return Card(
-                          child: ListTile(
-                            leading: Checkbox(
-                              value: isSelected,
-                              onChanged: (selected) {
-                                setState(() {
-                                  selected == true
-                                      ? _selectedItemKeys.add(key)
-                                      : _selectedItemKeys.remove(key);
-                                });
-                              },
-                            ),
-                            onTap: () => _showInventoryItemDetail(context, item),
-                            title: Text(item.name),
-                            // UPDATED: Subtitle is now a Column to show both lines
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  // FIX: Formatted the amount to two decimal places.
-                                  "${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}",
-                                ),
-                                if (expirationText != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4.0),
-                                    child: Text(
-                                      expirationText,
-                                      style: TextStyle(
-                                        color: expirationColor,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.attach_money),
-                                  tooltip: 'Log Purchase',
-                                  onPressed: () async {
-                                    await showDialog(
-                                      context: context,
-                                      builder: (_) =>
-                                          LogPurchaseDialog(item: item),
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit),
-                                  tooltip: 'Edit Item',
-                                  onPressed: () async {
-                                    await showDialog(
-                                      context: context,
-                                      builder: (_) =>
-                                          EditInventoryDialog(item: item),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
+return Dismissible(
+  key: ValueKey(item.key),
+  background: _swipeBg(
+    context,
+    icon: item.isArchived ? Icons.unarchive : Icons.archive_outlined,
+    label: item.isArchived ? 'Unarchive' : 'Archive',
+    alignment: Alignment.centerLeft,
+  ),
+  secondaryBackground: _swipeBg(
+    context,
+    icon: Icons.delete_outline,
+    label: 'Delete',
+    alignment: Alignment.centerRight,
+    danger: true,
+  ),
+  direction: DismissDirection.horizontal,
+  confirmDismiss: (direction) async {
+    if (direction == DismissDirection.startToEnd) {
+      await _toggleArchiveStatus(item);
+      return false; // handled via rebuild
+    } else {
+      await _deleteItemWithUndo(item);
+      return false; // handled via snackbar/undo
+    }
+  },
+  child: Card(
+    child: ListTile(
+      leading: Checkbox(
+        value: isSelected,
+        onChanged: (selected) {
+          setState(() {
+            if (selected == true) {
+              _selectedItemKeys.add(key);
+            } else {
+              _selectedItemKeys.remove(key);
+            }
+          });
+        },
+      ),
+      onTap: () => _showInventoryItemDetail(context, item),
+      title: Text(item.name),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
+          if (expirationText != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                expirationText,
+                style: TextStyle(color: expirationColor, fontWeight: FontWeight.bold),
+              ),
+            ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.attach_money),
+            tooltip: 'Log Purchase',
+            onPressed: () async {
+              await showDialog(context: context, builder: (_) => LogPurchaseDialog(item: item));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit Item',
+            onPressed: () async {
+              await showDialog(context: context, builder: (_) => EditInventoryDialog(item: item));
+            },
+          ),
+          _moreMenu(item),
+        ],
+      ),
+    ),
+  ),
+);
+
                       }).toList(),
                     );
                   }).toList(),

@@ -1055,14 +1055,16 @@ void _manageStages(BatchModel batch) async {
   final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => ManageStagesDialog(
+    builder: (_) => ManageStagesDialog(
       initialStages: batch.safeFermentationStages,
+      anchorStartDate: batch.startDate, // <-- anchor first stage here
     ),
   );
+
   if (updatedStages != null) {
     batch.fermentationStages = updatedStages;
     await batch.save();
-    setState(() {});
+    if (mounted) setState(() {});
   }
 }
 
@@ -1501,310 +1503,472 @@ List<Widget> _buildInventoryChecklist(
   }
 
   Widget _buildCompletedTab(BatchModel batch) {
-    // Sync local state with the model from the builder
-    _tastingRating = batch.tastingRating ?? 0;
-    _finalYieldUnit = batch.finalYieldUnit ?? 'gal';
+  // sync local
+  _tastingRating = batch.tastingRating ?? 0;
+  _finalYieldUnit = batch.finalYieldUnit ?? 'gal';
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildFinalStatsCard(batch),
-          _sectionTitle('Tasting Notes'),
-          _buildTastingNotesSection(batch),
-          _sectionTitle('Packaging & Yield'),
-          _buildPackagingLogSection(batch),
-          _sectionTitle('Lessons Learned'),
-          _buildLessonsLearnedSection(batch),
-          _sectionTitle('Actions'),
-          _buildCompletedActions(batch),
+  final actualAbv = (batch.og != null && batch.fg != null)
+      ? calculateABV(batch.og!, batch.fg!)
+      : null;
+
+  // Tiny inline FG editor
+  Future<void> editFg() async {
+    final c = TextEditingController(text: batch.fg?.toStringAsFixed(3) ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Final Gravity'),
+        content: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: 'e.g., 1.010'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
         ],
       ),
     );
+    if (saved == true) {
+      batch.fg = double.tryParse(c.text);
+      await batch.save();
+      setState(() {});
+    }
   }
 
-  Widget _buildFinalStatsCard(BatchModel batch) {
-    // Sync controller with the latest model state
-    final currentFgText = batch.fg?.toString() ?? '';
-    if (_fgController.text != currentFgText) {
-      _fgController.text = currentFgText;
-      _fgController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _fgController.text.length));
-    }
+  // Packaging presets
+  final presetChips = [
+    {'label': '12 oz bottles', 'unit': '12oz bottle', 'method': 'Bottled'},
+    {'label': '16 oz bottles', 'unit': '16oz bottle', 'method': 'Bottled'},
+    {'label': '32 oz growlers', 'unit': '32oz growler', 'method': 'Bottled'},
+    {'label': '5 gal keg', 'unit': '5gal keg', 'method': 'Kegged'},
+    {'label': 'Bulk (gal)', 'unit': 'gal', 'method': 'Aged in Secondary'},
+    {'label': 'Bulk (L)', 'unit': 'L', 'method': 'Aged in Secondary'},
+  ];
 
-    final actualAbv = (batch.og != null && batch.fg != null)
-        ? calculateABV(batch.og!, batch.fg!)
-        : null;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Final Stats',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Expanded(child: Text('Final Gravity (FG)')),
-                SizedBox(
-                  width: 100,
-                  child: TextField(
-                    controller: _fgController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(hintText: 'e.g., 1.010'),
-                    onChanged: (value) {
-                      batch.fg = double.tryParse(value);
-                      batch.save();
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            Text.rich(TextSpan(children: [
-              const TextSpan(text: 'OG: '),
-              TextSpan(
-                  text: batch.og?.toStringAsFixed(3) ?? '—',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              TextSpan(
-                  text:
-                      ' (Target: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'})',
-                  style: const TextStyle(color: Colors.grey)),
-            ])),
-            const SizedBox(height: 4),
-            Text.rich(TextSpan(children: [
-              const TextSpan(text: 'ABV: '),
-              TextSpan(
-                  text: '${actualAbv?.toStringAsFixed(2) ?? '—'}%',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              TextSpan(
-                  text:
-                      ' (Target: ${batch.plannedAbv?.toStringAsFixed(1) ?? '—'}%)',
-                  style: const TextStyle(color: Colors.grey)),
-            ])),
-          ],
+  return ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      // ===== Summary / Metrics
+      _sectionCard(
+        title: 'Final Summary',
+        trailing: OutlinedButton.icon(
+          icon: const Icon(Icons.check_circle_outline),
+          label: const Text('Mark Completed'),
+          onPressed: batch.status == 'Completed'
+              ? null
+              : () => _updateBatchStatus(batch, 'Completed'),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTastingNotesSection(BatchModel batch) {
-    // Sync controllers with the latest model state
-    final currentAroma = batch.tastingNotes?['aroma'] ?? '';
-    if (_tastingAromaController.text != currentAroma) {
-      _tastingAromaController.text = currentAroma;
-      _tastingAromaController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _tastingAromaController.text.length));
-    }
-    final currentAppearance = batch.tastingNotes?['appearance'] ?? '';
-    if (_tastingAppearanceController.text != currentAppearance) {
-      _tastingAppearanceController.text = currentAppearance;
-      _tastingAppearanceController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _tastingAppearanceController.text.length));
-    }
-    final currentFlavor = batch.tastingNotes?['flavor'] ?? '';
-    if (_tastingFlavorController.text != currentFlavor) {
-      _tastingFlavorController.text = currentFlavor;
-      _tastingFlavorController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _tastingFlavorController.text.length));
-    }
-
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            const Text('Overall Rating'),
+            _metricChip(
+              icon: Icons.bubble_chart,
+              label: 'OG',
+              value: batch.og?.toStringAsFixed(3) ?? '—',
+            ),
+            _metricChip(
+              icon: Icons.water_drop,
+              label: 'FG',
+              value: batch.fg?.toStringAsFixed(3) ?? '—',
+              onTap: editFg,
+            ),
+            _metricChip(
+              icon: Icons.percent,
+              label: 'ABV',
+              value: actualAbv != null ? '${actualAbv.toStringAsFixed(2)}%' : '—',
+            ),
+            _metricChip(
+              icon: Icons.inventory_2_outlined,
+              label: 'Yield',
+              value: (batch.finalYield == null)
+                  ? '—'
+                  : '${batch.finalYield!.toStringAsFixed(2)} ${batch.finalYieldUnit ?? ''}',
+            ),
             Row(
-              children: List.generate(5, (index) {
-                return IconButton(
-                  icon: Icon(
-                    index < _tastingRating ? Icons.star : Icons.star_border,
-                    color: Colors.amber,
-                  ),
-                  onPressed: () {
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Rating:'),
+                const SizedBox(width: 8),
+                _starRow(
+                  value: _tastingRating,
+                  onChanged: (v) {
                     setState(() {
-                      _tastingRating = index + 1;
-                      batch.tastingRating = _tastingRating;
+                      _tastingRating = v;
+                      batch.tastingRating = v;
                       batch.save();
                     });
                   },
-                );
-              }),
+                ),
+              ],
             ),
           ],
         ),
-        TextField(
-            controller: _tastingAromaController,
-            decoration: const InputDecoration(labelText: 'Aroma'),
-            onChanged: (v) {
-              batch.tastingNotes ??= {};
-              batch.tastingNotes!['aroma'] = v;
-              batch.save();
-            }),
-        TextField(
-            controller: _tastingAppearanceController,
-            decoration: const InputDecoration(labelText: 'Appearance'),
-            onChanged: (v) {
-              batch.tastingNotes ??= {};
-              batch.tastingNotes!['appearance'] = v;
-              batch.save();
-            }),
-        TextField(
-            controller: _tastingFlavorController,
-            decoration: const InputDecoration(labelText: 'Flavor & Mouthfeel'),
-            onChanged: (v) {
-              batch.tastingNotes ??= {};
-              batch.tastingNotes!['flavor'] = v;
-              batch.save();
-            }),
-      ],
-    );
-  }
+      ),
 
-  Widget _buildPackagingLogSection(BatchModel batch) {
-    // Sync controller with the latest model state
-    final currentYield = batch.finalYield?.toString() ?? '';
-    if (_finalYieldController.text != currentYield) {
-      _finalYieldController.text = currentYield;
-      _finalYieldController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _finalYieldController.text.length));
-    }
-
-    return Column(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.calendar_today),
-          title: const Text('Packaging Date'),
-          subtitle: Text(
-              batch.packagingDate?.toLocal().toString().split(' ')[0] ??
-                  'Not set'),
-          onTap: () async {
-            final date = await showDatePicker(
-                context: context,
-                initialDate: batch.packagingDate ?? DateTime.now(),
-                firstDate: DateTime(2020),
-                lastDate: DateTime(2100));
-            if (date != null) {
-              batch.packagingDate = date;
-              batch.save();
-            }
-          },
-        ),
-        DropdownButtonFormField<String>(
-          value: batch.packagingMethod,
-          decoration: const InputDecoration(labelText: 'Packaging Method'),
-          items: ['Bottled', 'Kegged', 'Aged in Secondary']
-              .map((method) =>
-                  DropdownMenuItem(value: method, child: Text(method)))
-              .toList(),
-          onChanged: (value) {
-            if (value != null) {
-              batch.packagingMethod = value;
-              batch.save();
-            }
-          },
-        ),
-        Row(
+      // ===== Packaging / Yield
+      _sectionCard(
+        title: 'Packaging & Yield',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _finalYieldController,
-                decoration: const InputDecoration(labelText: 'Final Yield'),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (value) {
-                  batch.finalYield = double.tryParse(value);
-                  batch.save();
-                },
+            // date
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Packaging Date'),
+              subtitle: Text(
+                batch.packagingDate == null
+                    ? 'Not set'
+                    : DateFormat.yMMMd().format(batch.packagingDate!),
               ),
-            ),
-            const SizedBox(width: 12),
-            DropdownButton<String>(
-              value: _finalYieldUnit,
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _finalYieldUnit = value;
-                    batch.finalYieldUnit = value;
-                    batch.save();
-                  });
+              onTap: () async {
+                final date = await showDatePicker(
+                  context: context,
+                  initialDate: batch.packagingDate ?? DateTime.now(),
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2100),
+                );
+                if (date != null) {
+                  batch.packagingDate = date;
+                  await batch.save();
+                  setState(() {});
                 }
               },
-              items: {
-                'gal',
-                'L',
-                '12oz bottle',
-                '16oz bottle',
-                '32oz growler',
-                '5gal keg'
-              }.map((unit) {
-                return DropdownMenuItem<String>(
-                  value: unit,
-                  child: Text(unit),
+            ),
+            const SizedBox(height: 8),
+
+            // method
+            DropdownButtonFormField<String>(
+              value: batch.packagingMethod,
+              decoration: const InputDecoration(labelText: 'Method'),
+              items: const [
+                DropdownMenuItem(value: 'Bottled', child: Text('Bottled')),
+                DropdownMenuItem(value: 'Kegged', child: Text('Kegged')),
+                DropdownMenuItem(value: 'Aged in Secondary', child: Text('Aged in Secondary')),
+              ],
+              onChanged: (v) {
+                if (v != null) {
+                  batch.packagingMethod = v;
+                  batch.save();
+                  setState(() {});
+                }
+              },
+            ),
+
+            const SizedBox(height: 12),
+            // yield + unit
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _finalYieldController..text = batch.finalYield?.toString() ?? '',
+                    decoration: const InputDecoration(labelText: 'Final Yield'),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) {
+                      batch.finalYield = double.tryParse(v);
+                      batch.save();
+                      setState(() {});
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                DropdownButton<String>(
+                  value: _finalYieldUnit,
+                  onChanged: (u) {
+                    if (u != null) {
+                      setState(() {
+                        _finalYieldUnit = u;
+                        batch.finalYieldUnit = u;
+                        batch.save();
+                      });
+                    }
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 'gal', child: Text('gal')),
+                    DropdownMenuItem(value: 'L', child: Text('L')),
+                    DropdownMenuItem(value: '12oz bottle', child: Text('12oz bottle')),
+                    DropdownMenuItem(value: '16oz bottle', child: Text('16oz bottle')),
+                    DropdownMenuItem(value: '32oz growler', child: Text('32oz growler')),
+                    DropdownMenuItem(value: '5gal keg', child: Text('5gal keg')),
+                  ],
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+            // Presets
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: presetChips.map((p) {
+                return ActionChip(
+                  avatar: const Icon(Icons.local_drink),
+                  label: Text(p['label'] as String),
+                  onPressed: () {
+                    batch.packagingMethod = p['method'] as String;
+                    batch.finalYieldUnit = p['unit'] as String;
+                    batch.save();
+                    setState(() {});
+                  },
+                );
+              }).toList(),
+            ),
+
+            const SizedBox(height: 12),
+            // Computed counts
+            Builder(builder: (_) {
+              final fy = batch.finalYield;
+              final u = batch.finalYieldUnit ?? 'gal';
+              if (fy == null) return const SizedBox.shrink();
+
+              final n12 = _bottlesFromYield(finalYield: fy, finalYieldUnit: u, bottleOz: 12);
+              final n16 = _bottlesFromYield(finalYield: fy, finalYieldUnit: u, bottleOz: 16);
+              final n25 = _bottlesFromYield(finalYield: fy, finalYieldUnit: u, bottleOz: 25.4); // 750mL
+              final kegs = (_toGallons(fy, u) / 5.0).toStringAsFixed(2);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Estimated Packages', style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      Chip(label: Text('$n12 × 12oz')),
+                      Chip(label: Text('$n16 × 16oz')),
+                      Chip(label: Text('$n25 × 750mL')),
+                      Chip(label: Text('$kegs × 5gal kegs')),
+                    ],
+                  ),
+                ],
+              );
+            }),
+          ],
+        ),
+      ),
+
+      // ===== Tasting Notes
+      _sectionCard(
+        title: 'Tasting Notes',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Text('Overall'),
+              const SizedBox(width: 8),
+              _starRow(
+                value: _tastingRating,
+                onChanged: (v) {
+                  setState(() {
+                    _tastingRating = v;
+                    batch.tastingRating = v;
+                    batch.save();
+                  });
+                },
+              ),
+            ]),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _tastingAromaController
+                ..text = batch.tastingNotes?['aroma'] ?? '',
+              decoration: const InputDecoration(labelText: 'Aroma'),
+              onChanged: (v) {
+                batch.tastingNotes ??= {};
+                batch.tastingNotes!['aroma'] = v;
+                batch.save();
+              },
+            ),
+            TextField(
+              controller: _tastingAppearanceController
+                ..text = batch.tastingNotes?['appearance'] ?? '',
+              decoration: const InputDecoration(labelText: 'Appearance'),
+              onChanged: (v) {
+                batch.tastingNotes ??= {};
+                batch.tastingNotes!['appearance'] = v;
+                batch.save();
+              },
+            ),
+            TextField(
+              controller: _tastingFlavorController
+                ..text = batch.tastingNotes?['flavor'] ?? '',
+              decoration: const InputDecoration(labelText: 'Flavor & Mouthfeel'),
+              onChanged: (v) {
+                batch.tastingNotes ??= {};
+                batch.tastingNotes!['flavor'] = v;
+                batch.save();
+              },
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              children: [
+                'Crisp', 'Dry', 'Tart', 'Fruity', 'Balanced', 'Funky', 'Sweet'
+              ].map((t) {
+                return InputChip(
+                  label: Text(t),
+                  onPressed: () {
+                    final current = _tastingFlavorController.text;
+                    final next = current.isEmpty ? t : '$current, $t';
+                    _tastingFlavorController.text = next;
+                    _tastingFlavorController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: next.length),
+                    );
+                    batch.tastingNotes ??= {};
+                    batch.tastingNotes!['flavor'] = next;
+                    batch.save();
+                    setState(() {});
+                  },
                 );
               }).toList(),
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildLessonsLearnedSection(BatchModel batch) {
-    // Sync controller with the latest model state
-    final currentNotes = batch.finalNotes ?? '';
-    if (_finalNotesController.text != currentNotes) {
-      _finalNotesController.text = currentNotes;
-      _finalNotesController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _finalNotesController.text.length));
-    }
-
-    return TextField(
-      controller: _finalNotesController,
-      maxLines: 5,
-      decoration: const InputDecoration(
-        labelText: 'Final Thoughts & Improvements',
-        hintText: 'What would you do differently next time? What went well?',
-        border: OutlineInputBorder(),
       ),
-      onChanged: (value) {
-        batch.finalNotes = value;
-        batch.save();
-      },
-    );
-  }
 
-  Widget _buildCompletedActions(BatchModel batch) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8.0),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
+      // ===== Lessons
+      _sectionCard(
+        title: 'Lessons Learned',
+        child: TextField(
+          controller: _finalNotesController..text = batch.finalNotes ?? '',
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'What would you do differently next time? What went well?',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (v) {
+            batch.finalNotes = v;
+            batch.save();
+          },
+        ),
+      ),
+
+      // ===== Actions
+      _sectionCard(
+        title: 'Actions',
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.save_alt),
+              label: const Text('Save as Recipe'),
+              onPressed: () {
+                // (leave your existing flow or wire here)
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Saved as new recipe!')),
+                );
+              },
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.copy),
+              label: const Text('Clone to New Batch'),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Batch cloned!')),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+
+  // ===== Helpers: metric chip, section card, star rating =====
+Widget _metricChip({
+  required IconData icon,
+  required String label,
+  required String value,
+  VoidCallback? onTap,
+}) {
+  final chip = Chip(
+    avatar: Icon(icon, size: 18),
+    label: Text('$label: $value'),
+    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+  );
+  return onTap == null
+      ? chip
+      : InkWell(borderRadius: BorderRadius.circular(16), onTap: onTap, child: chip);
+}
+
+Widget _sectionCard({
+  required String title,
+  Widget? trailing,
+  required Widget child,
+  EdgeInsetsGeometry padding = const EdgeInsets.all(16),
+}) {
+  return Card(
+    child: Padding(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ElevatedButton.icon(
-            icon: const Icon(Icons.save_alt),
-            label: const Text('Save as Recipe'),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Saved as new recipe!')));
-            },
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.copy),
-            label: const Text('Clone to New Batch'),
-            onPressed: () {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('Batch cloned!')));
-            },
-          ),
+          Row(children: [
+            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+            if (trailing != null) trailing,
+          ]),
+          const SizedBox(height: 12),
+          child,
         ],
       ),
-    );
+    ),
+  );
+}
+
+Widget _starRow({
+  required int value,
+  required ValueChanged<int> onChanged,
+}) {
+  return Row(
+    children: List.generate(5, (i) {
+      final filled = i < value;
+      return IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: Icon(filled ? Icons.star : Icons.star_border, color: Colors.amber),
+        onPressed: () => onChanged(i + 1),
+      );
+    }),
+  );
+}
+
+// ===== Small utils for packaging math =====
+double _toGallons(double qty, String unit) {
+  switch (unit) {
+    case 'gal':
+      return qty;
+    case 'L':
+      return qty * 0.264172;
+    case '12oz bottle':
+      return (qty * 12.0) / 128.0;
+    case '16oz bottle':
+      return (qty * 16.0) / 128.0;
+    case '32oz growler':
+      return (qty * 32.0) / 128.0;
+    case '5gal keg':
+      return qty * 5.0;
+    default:
+      return qty; // fallback assumes gal
   }
+}
+
+int _bottlesFromYield({
+  required double? finalYield,
+  required String finalYieldUnit,
+  required double bottleOz,
+}) {
+  if (finalYield == null) return 0;
+  final totalOz = _toGallons(finalYield, finalYieldUnit) * 128.0;
+  return (totalOz / bottleOz).floor();
+}
+
 
   Widget _buildPreparationNotesEditor(BatchModel batch) {
     // Sync controller with the latest model state

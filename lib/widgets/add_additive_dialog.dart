@@ -3,7 +3,7 @@ import '../utils/utils.dart';
 
 class AddAdditiveDialog extends StatefulWidget {
   final double mustPH;
-  final double volume; // in gallons
+  final double volume; // gallons
   final void Function(Map<String, dynamic>) onAdd;
   final Map<String, dynamic>? existing;
 
@@ -22,89 +22,49 @@ class AddAdditiveDialog extends StatefulWidget {
 class _AddAdditiveDialogState extends State<AddAdditiveDialog> {
   final _formKey = GlobalKey<FormState>();
 
-  String name = "Potassium Metabisulphite";
-  String unit = "grams";
-  double amount = 0.0;
-
   final amountController = TextEditingController();
   final customNameController = TextEditingController();
 
-  final List<String> additiveOptions = [
-    "Acid Blend",
-    "Pectic Enzyme",
-    "Potassium Metabisulphite",
-    "Potassium Sorbate",
-    "Tannin",
-    "Yeast Nutrient",
-    "Custom"
+  String name = 'Potassium Metabisulphite';
+  String unit = 'grams';
+  bool isCustom = false;
+
+  final List<String> additiveOptions = const [
+    'Acid Blend',
+    'Pectic Enzyme',
+    'Potassium Metabisulphite',
+    'Potassium Sorbate',
+    'Tannin',
+    'Yeast Nutrient',
+    'Custom',
   ];
 
-  final List<String> unitOptions = ["grams", "Campden Tablets", "tsp", "mL"];
-
-  bool isCustom = false;
+  final List<String> unitOptions = const ['grams', 'Campden Tablets', 'tsp', 'mL'];
 
   @override
   void initState() {
     super.initState();
 
     if (widget.existing != null) {
-      name = widget.existing!['name'] ?? "Custom";
-      amount = widget.existing!['amount'] ?? 0.0;
-      unit = widget.existing!['unit'] ?? "grams";
+      final m = widget.existing!;
+      name = (m['name'] as String?) ?? 'Custom';
+      unit = (m['unit'] as String?) ?? 'grams';
+      final amt = (m['amount'] as num?)?.toDouble();
 
+      // Decide if this is a "custom" tag based on whether it appears in list
       if (!additiveOptions.contains(name)) {
         isCustom = true;
-        name = "Custom";
-        customNameController.text = widget.existing!['name'];
+        customNameController.text = name;
+        name = 'Custom';
       } else {
-        isCustom = name == "Custom";
+        isCustom = name == 'Custom';
         if (isCustom) {
-          customNameController.text = widget.existing!['name'];
+          customNameController.text = (m['name'] as String?) ?? '';
         }
       }
-
-      amountController.text = amount.toString();
+      if (amt != null) amountController.text = amt.toString();
     } else {
-      _autoCalculateAmount();
-    }
-  }
-
-  void _autoCalculateAmount() {
-    if (name == "Potassium Metabisulphite") {
-      final liters = CiderUtils.gallonsToLiters(widget.volume);
-      final ppm = CiderUtils.recommendedFreeSO2ppm(widget.mustPH);
-      final grams = CiderUtils.sulfiteGramsForVolume(liters, ppm);
-      amount = CiderUtils.round2(grams);
-      amountController.text = amount.toString();
-    }
-  }
-
-  void _onNameChanged(String? selected) {
-    if (selected == null) return;
-    setState(() {
-      name = selected;
-      isCustom = name == "Custom";
-
-      if (name == "Potassium Metabisulphite") {
-        unit = "grams";
-        _autoCalculateAmount();
-      } else {
-        amount = 0.0;
-        amountController.clear();
-        customNameController.clear();
-      }
-    });
-  }
-
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      final finalName = isCustom ? customNameController.text.trim() : name;
-      widget.onAdd({
-        "name": finalName,
-        "amount": double.tryParse(amountController.text) ?? 0.0,
-        "unit": unit,
-      });
-      Navigator.of(context).pop();
+      _autoCalculateForKMBS(); // prefill for default selection
     }
   }
 
@@ -115,53 +75,141 @@ class _AddAdditiveDialogState extends State<AddAdditiveDialog> {
     super.dispose();
   }
 
+  // --- UI helpers ------------------------------------------------------------
+
+  InputDecoration _dec(String label) => InputDecoration(
+        labelText: label,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide.none,
+        ),
+        filled: true,
+      );
+
+  // --- Behavior --------------------------------------------------------------
+
+  void _autoCalculateForKMBS() {
+    // Auto-calc grams of KMBS to hit recommended free SO2 for the given pH
+    final liters = CiderUtils.gallonsToLiters(widget.volume);
+    final ppm = CiderUtils.recommendedFreeSO2ppm(widget.mustPH);
+    final grams = CiderUtils.sulfiteGramsForVolume(liters, ppm);
+    amountController.text = CiderUtils.round2(grams).toString();
+  }
+
+  void _onNameChanged(String? selected) {
+    if (selected == null) return;
+    setState(() {
+      name = selected;
+      isCustom = name == 'Custom';
+
+      if (name == 'Potassium Metabisulphite') {
+        unit = 'grams';
+        _autoCalculateForKMBS();
+      } else {
+        // Don’t nuke the user's custom name if they were editing it
+        if (!isCustom) customNameController.clear();
+        // Only clear amount if we’re switching away from KMBS auto-calc
+        if (amountController.text.isEmpty || name != 'Potassium Metabisulphite') {
+          amountController.clear();
+        }
+      }
+    });
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final parsedAmount = double.tryParse(amountController.text) ?? 0.0;
+    final finalName = isCustom ? customNameController.text.trim() : name;
+
+    widget.onAdd({
+      'name': finalName,
+      'amount': parsedAmount,
+      'unit': unit,
+    });
+    Navigator.of(context).pop();
+  }
+
+  // --- Build -----------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
+    final isEditing = widget.existing != null;
+
     return AlertDialog(
-      title: Text(widget.existing != null ? "Edit Additive" : "Add Additive"),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              value: name,
-              items: additiveOptions
-                  .map((a) => DropdownMenuItem(value: a, child: Text(a)))
-                  .toList(),
-              onChanged: _onNameChanged,
-              decoration: const InputDecoration(labelText: "Additive"),
+      title: Text(isEditing ? 'Edit Additive' : 'Add Additive'),
+      content: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: name,
+                  decoration: _dec('Additive'),
+                  isDense: true,
+                  onChanged: _onNameChanged,
+                  items: additiveOptions
+                      .map((a) => DropdownMenuItem(value: a, child: Text(a)))
+                      .toList(),
+                ),
+                if (isCustom) ...[
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: customNameController,
+                    decoration: _dec('Custom Name'),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Enter a custom name' : null,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: amountController,
+                        decoration: _dec('Amount'),
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Enter amount' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: DropdownButtonFormField<String>(
+                        value: unit,
+                        decoration: _dec('Unit'),
+                        isDense: true,
+                        isExpanded: true,
+                        onChanged: (val) => setState(() => unit = val ?? 'grams'),
+                        items: unitOptions
+                            .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                            .toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            if (isCustom)
-              TextFormField(
-                controller: customNameController,
-                decoration: const InputDecoration(labelText: "Custom Name"),
-                validator: (val) =>
-                    val == null || val.trim().isEmpty ? "Enter a custom name" : null,
-              ),
-            TextFormField(
-              controller: amountController,
-              decoration: const InputDecoration(labelText: "Amount"),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              validator: (val) =>
-                  val == null || val.isEmpty ? "Enter amount" : null,
-            ),
-            DropdownButtonFormField<String>(
-              value: unit,
-              items: unitOptions
-                  .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                  .toList(),
-              onChanged: (val) => setState(() => unit = val ?? "grams"),
-              decoration: const InputDecoration(labelText: "Unit"),
-            ),
-          ],
+          ),
         ),
       ),
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
-            onPressed: _submit,
-            child: Text(widget.existing != null ? "Update" : "Add")),
+          onPressed: _submit,
+          child: Text(isEditing ? 'Update' : 'Add'),
+        ),
       ],
     );
   }

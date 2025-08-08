@@ -29,6 +29,16 @@ double calculateAbv(double og, double fg) {
   return (og - fg) * 131.25;
 }
 
+final Map<String, IconData> tagIconMap = {
+  'cider': Icons.local_drink,
+  'wine': Icons.wine_bar,
+  'mead': Icons.emoji_nature,
+  'soda': Icons.local_cafe,
+  'sake': Icons.rice_bowl,
+  'kombucha': Icons.eco,
+  'kefir': Icons.icecream,
+};
+
 class RecipeBuilderPage extends StatefulWidget {
   const RecipeBuilderPage({
     super.key,
@@ -500,19 +510,44 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                       ),
                     ],
                   ),
-                  if (tags.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children:
-                            tags.map((tag) => Chip(label: Text(tag.name))).toList(),
-                      ),
-                    ),
-                ],
+                 if (tags.isNotEmpty)
+  Padding(
+    padding: const EdgeInsets.only(top: 8.0),
+    child: Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: tags.map((tag) {
+        final icon = tagIconMap[tag.name.toLowerCase()]; // same map from picker
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF8B5E3C), // warm brown from picker
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: Colors.white),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                tag.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
+            ],
+          ),
+        );
+      }).toList(),
+    ),
+  )
+
+        ]),
+          ),
           ),
           _sectionTitle("Ingredients"),
           Card(
