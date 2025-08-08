@@ -251,7 +251,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
     final onColor = danger ? cs.onError : cs.onPrimary;
 
     return Container(
-      color: color.withOpacity(0.90),
+      color: color.withValues(alpha:0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(

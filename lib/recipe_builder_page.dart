@@ -523,7 +523,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
           decoration: BoxDecoration(
             color: const Color(0xFF8B5E3C), // warm brown from picker
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.3)),
+            border: Border.all(color: Colors.white.withValues(alpha:0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

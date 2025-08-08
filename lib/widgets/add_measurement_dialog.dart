@@ -154,7 +154,7 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -297,7 +297,7 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(_daysText, style: Theme.of(context).textTheme.labelMedium),

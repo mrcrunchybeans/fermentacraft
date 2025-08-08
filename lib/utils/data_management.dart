@@ -60,8 +60,8 @@ class DataManagementService {
     try {
       for (final boxName in _boxNames) {
         await Hive.deleteBoxFromDisk(boxName);
-        
-        // FIX: Re-open each box with its specific type to prevent HiveError.
+
+        // Re-open each box with its specific type to prevent HiveError.
         switch (boxName) {
           case 'recipes':
             await Hive.openBox<RecipeModel>(boxName);
@@ -103,20 +103,18 @@ class DataManagementService {
           continue;
         }
 
-        List<Map<String, dynamic>> boxData = [];
+        final List<Map<String, dynamic>> boxData = [];
         for (var i = 0; i < box.length; i++) {
           final item = box.getAt(i);
-
-          if (item == null) {
-            continue;
-          }
+          if (item == null) continue;
 
           try {
             final Map<String, dynamic> jsonItem = item.toJson();
             boxData.add(jsonItem);
           } catch (e) {
             throw Exception(
-                "Failed to serialize item in box '$boxName'. Check the debug console for details.");
+              "Failed to serialize item in box '$boxName'. Check the debug console for details.",
+            );
           }
         }
         allData[boxName] = boxData;
@@ -126,7 +124,7 @@ class DataManagementService {
       bool didSave = false;
       final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
       final fileName = 'fermentacraft_backup_$timestamp.json';
-      
+
       if (kIsWeb) {
         final bytes = utf8.encode(jsonString);
         final blob = html.Blob([bytes]);
@@ -140,7 +138,14 @@ class DataManagementService {
         final dir = await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/$fileName');
         await file.writeAsString(jsonString);
-        await Share.shareXFiles([XFile(file.path)], text: 'FementaCaft Backup');
+
+        // New SharePlus instance API (replaces deprecated Share.shareXFiles)
+        final params = ShareParams(
+          text: 'FermentaCraft Backup',
+          files: [XFile(file.path)],
+        );
+        await SharePlus.instance.share(params);
+
         didSave = true;
       } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         final fileSaveLocation = await getSaveLocation(suggestedName: fileName);
@@ -181,16 +186,24 @@ class DataManagementService {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text("Confirm Import"),
-            content: const Text("This will overwrite all existing data. This action cannot be undone. Are you sure?"),
+            content: const Text(
+              "This will overwrite all existing data. This action cannot be undone. Are you sure?",
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("Import")),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Import"),
+              ),
             ],
           ),
         );
         if (confirmed != true) return;
       }
-      
+
       String jsonString;
       if (kIsWeb) {
         final fileBytes = result.files.single.bytes!;
@@ -222,10 +235,11 @@ class DataManagementService {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data imported successfully! Please restart the app.')),
+          const SnackBar(
+            content: Text('Data imported successfully! Please restart the app.'),
+          ),
         );
       }
-
     } catch (e) {
       debugPrint("IMPORT FAILED WITH ERROR: $e");
       if (context.mounted) {

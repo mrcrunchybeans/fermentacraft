@@ -70,7 +70,7 @@ void _showForgotPasswordDialog() {
 
   showDialog(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (dialogContext) => AlertDialog(
       title: const Text('Reset Password'),
       content: TextField(
         controller: resetEmailController,
@@ -81,7 +81,7 @@ void _showForgotPasswordDialog() {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(dialogContext).pop(),
           child: const Text('Cancel'),
         ),
         TextButton(
@@ -89,29 +89,37 @@ void _showForgotPasswordDialog() {
             final email = resetEmailController.text.trim();
 
             if (email.isEmpty) {
-              setState(() => errorMessage = 'Please enter an email address.');
+              if (mounted) {
+                setState(() => errorMessage = 'Please enter an email address.');
+              }
               return;
             }
 
-            setState(() {
-              isLoading = true;
-              errorMessage = null;
-            });
+            if (mounted) {
+              setState(() {
+                isLoading = true;
+                errorMessage = null;
+              });
+            }
 
             try {
               await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
+
+              // IMPORTANT: check the *dialog* context after the await
+              if (!dialogContext.mounted) return;
+
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
                 const SnackBar(content: Text('Password reset email sent.')),
               );
+
+              // Optional: close the dialog on success
+              Navigator.of(dialogContext).pop();
             } on FirebaseAuthException catch (e) {
-              setState(() => errorMessage = e.message);
-            } catch (e) {
-              setState(() => errorMessage = 'An error occurred.');
+              if (mounted) setState(() => errorMessage = e.message);
+            } catch (_) {
+              if (mounted) setState(() => errorMessage = 'An error occurred.');
             } finally {
-              if (mounted) {
-                setState(() => isLoading = false);
-              }
+              if (mounted) setState(() => isLoading = false);
             }
           },
           child: const Text('Send'),
@@ -120,6 +128,7 @@ void _showForgotPasswordDialog() {
     ),
   );
 }
+
 
   @override
   Widget build(BuildContext context) {
