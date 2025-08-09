@@ -6,20 +6,30 @@ part 'inventory_item.g.dart';
 
 @HiveType(typeId: 20)
 class InventoryItem extends HiveObject {
+  // 🔑 Stable string ID used for both Hive key and Firestore docId
   @HiveField(0)
-  String name;
+  String id;
+
   @HiveField(1)
-  String unit;
+  String name;
+
   @HiveField(2)
-  UnitType unitType;
+  String unit;
+
   @HiveField(3)
-  String? notes;
+  UnitType unitType;
+
   @HiveField(4)
-  List<PurchaseTransaction> purchaseHistory;
+  String? notes;
+
   @HiveField(5)
+  List<PurchaseTransaction> purchaseHistory;
+
+  @HiveField(6)
   String category;
 
   InventoryItem({
+    required this.id,
     required this.name,
     required this.unit,
     required this.unitType,
@@ -27,6 +37,8 @@ class InventoryItem extends HiveObject {
     this.notes,
     List<PurchaseTransaction>? purchaseHistory,
   }) : purchaseHistory = purchaseHistory ?? [];
+
+  // --------- Derived values ---------
 
   double get amountInStock =>
       purchaseHistory.fold(0.0, (sum, p) => sum + p.remainingAmount);
@@ -39,7 +51,7 @@ class InventoryItem extends HiveObject {
     available.sort((a, b) => a.expirationDate!.compareTo(b.expirationDate!));
     return available.first.expirationDate;
   }
-  
+
   double get costPerUnit {
     if (amountInStock <= 0) return 0.0;
     final totalCostOfStock = purchaseHistory.fold(0.0, (sum, p) {
@@ -49,6 +61,8 @@ class InventoryItem extends HiveObject {
     });
     return totalCostOfStock / amountInStock;
   }
+
+  // --------- Mutations ---------
 
   void addPurchase(PurchaseTransaction purchase) {
     purchaseHistory.add(purchase);
@@ -96,28 +110,55 @@ class InventoryItem extends HiveObject {
     save();
   }
 
+  // --------- JSON (for Firestore sync) ---------
+
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'name': name,
       'unit': unit,
-      'unitType': unitType.name, // Convert enum to string
+      'unitType': unitType.name, // enum -> string
       'notes': notes,
-      // Map the list of objects to a list of JSON maps
-      'purchaseHistory': purchaseHistory.map((p) => p.toJson()).toList(), 
+      'purchaseHistory': purchaseHistory.map((p) => p.toJson()).toList(),
       'category': category,
     };
   }
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
     return InventoryItem(
-      name: json['name'],
-      unit: json['unit'],
-      unitType: UnitType.values.firstWhere((e) => e.name == json['unitType']),
-      category: json['category'],
-      notes: json['notes'],
-      purchaseHistory: (json['purchaseHistory'] as List)
-          .map((p) => PurchaseTransaction.fromJson(p))
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      unit: (json['unit'] ?? '').toString(),
+      unitType: UnitType.values.firstWhere(
+        (e) => e.name == (json['unitType'] ?? '').toString(),
+        orElse: () => UnitType.values.first,
+      ),
+      category: (json['category'] ?? '').toString(),
+      notes: json['notes']?.toString(),
+      purchaseHistory: (json['purchaseHistory'] as List? ?? [])
+          .map((p) => PurchaseTransaction.fromJson(Map<String, dynamic>.from(p as Map)))
           .toList(),
+    );
+  }
+
+  // Optional convenience
+  InventoryItem copyWith({
+    String? id,
+    String? name,
+    String? unit,
+    UnitType? unitType,
+    String? notes,
+    List<PurchaseTransaction>? purchaseHistory,
+    String? category,
+  }) {
+    return InventoryItem(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      unit: unit ?? this.unit,
+      unitType: unitType ?? this.unitType,
+      notes: notes ?? this.notes,
+      purchaseHistory: purchaseHistory ?? List<PurchaseTransaction>.from(this.purchaseHistory),
+      category: category ?? this.category,
     );
   }
 }

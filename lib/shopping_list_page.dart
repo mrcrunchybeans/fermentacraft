@@ -3,6 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:collection/collection.dart'; // Import for groupBy
+
+// Import the unique ID generator
+import 'utils/id.dart';
 import 'models/shopping_list_item.dart';
 
 class ShoppingListPage extends StatefulWidget {
@@ -21,26 +24,59 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
     item.save();
   }
 
-  // Deletes a single item and provides an undo option.
-  void _deleteItem(ShoppingListItem item) {
-    final itemCopy = ShoppingListItem(
+  /// Deletes a single item after confirmation, providing an undo option.
+  /// This consolidates logic from the old _deleteItem and _showDeleteConfirmationDialog.
+  Future<void> _deleteItemWithConfirmation(ShoppingListItem item) async {
+    // First, ask the user for confirmation.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Item'),
+          content: Text('Are you sure you want to delete "${item.name}"?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error),
+              child: const Text('Delete'),
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+
+    // If the user did not confirm, do nothing.
+    if (confirmed != true || !mounted) return;
+
+    // FIX: Correctly handle deletion and undo.
+    // 1. Get the item's key and create a backup reference.
+    final itemKey = item.key;
+    final itemBackup = ShoppingListItem(
+      id: item.id,
       name: item.name,
       amount: item.amount,
       unit: item.unit,
       recipeName: item.recipeName,
       isChecked: item.isChecked,
-    )..id = item.id;
+    );
 
-    item.delete();
-
+    // 2. Delete the item from the box.
+    await item.delete();
+    if (!mounted) return;
+    // 3. Show a SnackBar with an UNDO action.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Deleted "${itemCopy.name}"'),
+        content: Text('Deleted "${itemBackup.name}"'),
         action: SnackBarAction(
           label: 'UNDO',
           onPressed: () {
-            // Re-add the item to the box to undo the deletion.
-            _shoppingBox.put(itemCopy.id, itemCopy);
+            // 4. If UNDO is pressed, put the backup item back using its original key.
+            _shoppingBox.put(itemKey, itemBackup);
           },
         ),
       ),
@@ -79,7 +115,8 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                 ),
                 TextFormField(
                   controller: unitController,
-                  decoration: const InputDecoration(labelText: 'Unit (e.g., lbs, oz)'),
+                  decoration:
+                      const InputDecoration(labelText: 'Unit (e.g., lbs, oz)'),
                   validator: (value) =>
                       value!.isEmpty ? 'Please enter a unit' : null,
                 ),
@@ -95,13 +132,16 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
               child: const Text('Add'),
               onPressed: () {
                 if (formKey.currentState!.validate()) {
+                  // FIX: Assign a unique ID and use `put` instead of `add`.
                   final newItem = ShoppingListItem(
+                    id: generateId(), // Generate a unique string ID.
                     name: nameController.text,
                     amount: double.tryParse(amountController.text) ?? 0,
                     unit: unitController.text,
                     recipeName: 'General', // Manually added items
                   );
-                  _shoppingBox.add(newItem);
+                  // Use the generated ID as the key for the item in the box.
+                  _shoppingBox.put(newItem.id, newItem);
                   Navigator.of(context).pop();
                 }
               },
@@ -114,41 +154,20 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
 
   // Deletes all items that are currently checked
   void _clearCheckedItems() {
+    // FIX: This logic is now robust. `item.key` will correctly refer
+    // to the unique ID we assigned.
     final List<dynamic> keysToDelete = _shoppingBox.values
         .where((item) => item.isChecked)
         .map((item) => item.key)
         .toList();
-    
+
     if (keysToDelete.isNotEmpty) {
       _shoppingBox.deleteAll(keysToDelete);
     }
   }
 
-  // Shows a confirmation dialog before deleting an item.
-  Future<void> _showDeleteConfirmationDialog(ShoppingListItem item) async {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Delete Item'),
-          content: Text('Are you sure you want to delete "${item.name}"?'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            TextButton(
-              child: const Text('Delete'),
-              onPressed: () {
-                _deleteItem(item);
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // NOTE: The _showDeleteConfirmationDialog is now merged into _deleteItemWithConfirmation
+  // and is no longer needed.
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +184,8 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: const Text('Are you sure?'),
-                  content: const Text('This will permanently delete all checked items.'),
+                  content:
+                      const Text('This will permanently delete all checked items.'),
                   actions: [
                     TextButton(
                       child: const Text('No'),
@@ -222,9 +242,16 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                   initiallyExpanded: true,
                   children: recipeItems.map((item) {
                     return Dismissible(
-                      key: ValueKey(item.id), // Use the unique ID for the key
-                      onDismissed: (direction) {
-                        _deleteItem(item);
+                      // FIX: Use the unique, non-null ID for the key.
+                      // Use ValueKey<String> for type safety.
+                      key: ValueKey<String>(item.id),
+                      confirmDismiss: (direction) async {
+                        // We show our own dialog with undo, so we call the function
+                        // but return `false` to prevent the Dismissible from
+                        // automatically removing the widget from the tree.
+                        // The rebuild from ValueListenableBuilder will handle it.
+                        _deleteItemWithConfirmation(item);
+                        return false;
                       },
                       background: Container(
                         color: Colors.red.shade400,
@@ -232,9 +259,9 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                         padding: const EdgeInsets.only(right: 20.0),
                         child: const Icon(Icons.delete, color: Colors.white),
                       ),
-                      // FIX: Wrap with InkWell to handle long press.
                       child: InkWell(
-                        onLongPress: () => _showDeleteConfirmationDialog(item),
+                        // FIX: Use the new unified delete function.
+                        onLongPress: () => _deleteItemWithConfirmation(item),
                         child: CheckboxListTile(
                           value: item.isChecked,
                           onChanged: (_) => _toggleItem(item),

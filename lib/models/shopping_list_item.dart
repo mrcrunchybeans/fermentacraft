@@ -1,5 +1,4 @@
 // lib/models/shopping_list_item.dart
-
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
@@ -7,8 +6,9 @@ part 'shopping_list_item.g.dart';
 
 @HiveType(typeId: 51)
 class ShoppingListItem extends HiveObject {
+  /// 🔑 Stable string id used as both the Hive key and Firestore doc id.
   @HiveField(0)
-  late String id;
+  String id;
 
   @HiveField(1)
   String name;
@@ -25,28 +25,49 @@ class ShoppingListItem extends HiveObject {
   @HiveField(5)
   bool isChecked;
 
+  /// Primary constructor — requires an id. Use [ShoppingListItem.newItem] to create with a fresh UUID.
   ShoppingListItem({
+    required this.id,
     required this.name,
     required this.amount,
     required this.unit,
     required this.recipeName,
     this.isChecked = false,
+  });
+
+  /// Convenience factory for creating a brand-new item with a generated id.
+  factory ShoppingListItem.newItem({
+    required String name,
+    required double amount,
+    required String unit,
+    required String recipeName,
+    bool isChecked = false,
   }) {
-    id = const Uuid().v4();
-  }
-
-  // FIX: Added fromJson factory constructor for data import.
-  factory ShoppingListItem.fromJson(Map<String, dynamic> json) {
     return ShoppingListItem(
-      name: json['name'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      unit: json['unit'] as String,
-      recipeName: json['recipeName'] as String,
-      isChecked: json['isChecked'] as bool,
-    )..id = json['id'] as String;
+      id: const Uuid().v4(),
+      name: name,
+      amount: amount,
+      unit: unit,
+      recipeName: recipeName,
+      isChecked: isChecked,
+    );
   }
 
-  // FIX: Added toJson method for data export.
+  // ---------- JSON (Firestore / export) ----------
+
+  factory ShoppingListItem.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? '').toString().trim();
+    return ShoppingListItem(
+      // If the incoming JSON somehow lacks an id, generate one so we never create a duplicate with a new int key.
+      id: id.isNotEmpty ? id : const Uuid().v4(),
+      name: (json['name'] ?? '').toString(),
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      unit: (json['unit'] ?? '').toString(),
+      recipeName: (json['recipeName'] ?? '').toString(),
+      isChecked: (json['isChecked'] as bool?) ?? false,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

@@ -1,3 +1,4 @@
+// lib/widgets/add_measurement_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -193,10 +194,13 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
       _sgCorrectedPreview = null;
     }
 
-    if (widget.previousMeasurement?.gravity != null && sgForCalcs != null) {
-      final prev = widget.previousMeasurement!;
-      final difference = _timestamp.difference(prev.timestamp);
-      _fsuPreview = calculateFSU(prev.gravity!, sgForCalcs, difference);
+    // Use corrected SG when available for FSU preview
+    final prevSg = widget.previousMeasurement?.sgCorrected ?? widget.previousMeasurement?.gravity;
+    final currSg = _sgCorrectedPreview ?? sgForCalcs;
+
+    if (prevSg != null && currSg != null && widget.previousMeasurement != null) {
+      final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
+      _fsuPreview = calculateFSU(prevSg, currSg, difference);
     } else {
       _fsuPreview = null;
     }
@@ -228,13 +232,19 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
       }
     }
 
+    // Prefer corrected SG for FSU if we have it
+    final prevSg = widget.previousMeasurement?.sgCorrected ?? widget.previousMeasurement?.gravity;
+    final currSgForFsu = _sgCorrectedPreview ?? currentSg;
+
     double? fsuspeed;
-    if (widget.previousMeasurement?.gravity != null && currentSg != null) {
+    if (prevSg != null && currSgForFsu != null && widget.previousMeasurement != null) {
       final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
-      fsuspeed = calculateFSU(widget.previousMeasurement!.gravity!, currentSg, difference);
+      fsuspeed = calculateFSU(prevSg, currSgForFsu, difference);
     }
 
     final measurement = Measurement(
+      // preserve id when editing so replacement-in-list works
+      id: widget.existingMeasurement?.id,
       timestamp: _timestamp,
       gravityUnit: _gravityUnit,
       gravity: currentSg,
@@ -284,7 +294,7 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
         key: _formKey,
         child: SingleChildScrollView(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + 8, // ignore: invalid_use (fallback below if needed)
+            bottom: MediaQuery.of(context).viewInsets.bottom + 8,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -327,10 +337,12 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                           hint: _gravityUnit == 'sg' ? 'e.g. 1.010' : 'e.g. 12.5',
                           suffix: _gravityUnit == 'sg' ? null : '°Bx',
                         ),
-                        validator: (v) =>
-                            (v != null && v.isNotEmpty && double.tryParse(v) == null)
-                                ? 'Enter a number'
-                                : null,
+                        validator: (v) {
+                          if (v != null && v.isNotEmpty && double.tryParse(v) == null) {
+                            return 'Enter a number';
+                          }
+                          return null;
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -363,10 +375,12 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                     hint: _gravityUnit == 'sg' ? 'e.g. 1.010' : 'e.g. 12.5',
                     suffix: _gravityUnit == 'sg' ? null : '°Bx',
                   ),
-                  validator: (v) =>
-                      (v != null && v.isNotEmpty && double.tryParse(v) == null)
-                          ? 'Enter a number'
-                          : null,
+                  validator: (v) {
+                    if (v != null && v.isNotEmpty && double.tryParse(v) == null) {
+                      return 'Enter a number';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 8),
                 _noErrorTheme(

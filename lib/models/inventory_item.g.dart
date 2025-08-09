@@ -17,35 +17,35 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return InventoryItem(
-      name: fields[0] as String,
-      unit: fields[1] as String,
-      unitType: fields[2] as UnitType,
-      category: fields[5] as String,
-      notes: fields[3] as String?,
-      purchaseHistory: (fields[4] as List?)?.cast<PurchaseTransaction>(),
+      id: fields[0] as String,
+      name: fields[1] as String,
+      unit: fields[2] as String,
+      unitType: fields[3] as UnitType,
+      category: fields[6] as String,
+      notes: fields[4] as String?,
+      purchaseHistory: (fields[5] as List).cast<PurchaseTransaction>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, InventoryItem obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
-      ..write(obj.name)
+      ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.unit)
+      ..write(obj.name)
       ..writeByte(2)
-      ..write(obj.unitType)
+      ..write(obj.unit)
       ..writeByte(3)
-      ..write(obj.notes)
+      ..write(obj.unitType)
       ..writeByte(4)
-      ..write(obj.purchaseHistory)
+      ..write(obj.notes)
       ..writeByte(5)
+      ..write(obj.purchaseHistory)
+      ..writeByte(6)
       ..write(obj.category);
   }
-
-  @override
-  int get hashCode => typeId.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -53,4 +53,7 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
       other is InventoryItemAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
+
+  @override
+  int get hashCode => typeId.hashCode;
 }

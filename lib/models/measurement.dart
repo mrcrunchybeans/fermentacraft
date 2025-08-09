@@ -1,40 +1,47 @@
+// lib/models/measurement.dart
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 part 'measurement.g.dart';
 
 @HiveType(typeId: 6)
-class Measurement extends HiveObject {
+class Measurement {
+  /// 🔑 Stable string id used in your app logic (not a Hive key).
   @HiveField(0)
-  DateTime timestamp;
+  String id;
 
   @HiveField(1)
-  double? gravity;
+  DateTime timestamp;
 
   @HiveField(2)
-  double? temperature;
+  double? gravity;
 
   @HiveField(3)
-  String? notes;
+  double? temperature;
 
   @HiveField(4)
-  String? gravityUnit;
+  String? notes;
 
   @HiveField(5)
-  List<String>? interventions;
+  String? gravityUnit;
 
   @HiveField(6)
-  double? ta;
+  List<String>? interventions;
 
   @HiveField(7)
-  double? brix;
+  double? ta;
 
   @HiveField(8)
-  double? sgCorrected;
+  double? brix;
 
   @HiveField(9)
+  double? sgCorrected;
+
+  @HiveField(10)
   double? fsuspeed;
 
   Measurement({
+    String? id,
     required this.timestamp,
     this.gravity,
     this.temperature,
@@ -45,9 +52,38 @@ class Measurement extends HiveObject {
     this.brix,
     this.sgCorrected,
     this.fsuspeed,
-  });
+  }) : id = id ?? const Uuid().v4();
+
+  Measurement copyWith({
+    String? id,
+    DateTime? timestamp,
+    double? gravity,
+    double? temperature,
+    String? notes,
+    String? gravityUnit,
+    List<String>? interventions,
+    double? ta,
+    double? brix,
+    double? sgCorrected,
+    double? fsuspeed,
+  }) {
+    return Measurement(
+      id: id ?? this.id,
+      timestamp: timestamp ?? this.timestamp,
+      gravity: gravity ?? this.gravity,
+      temperature: temperature ?? this.temperature,
+      notes: notes ?? this.notes,
+      gravityUnit: gravityUnit ?? this.gravityUnit,
+      interventions: interventions ?? this.interventions,
+      ta: ta ?? this.ta,
+      brix: brix ?? this.brix,
+      sgCorrected: sgCorrected ?? this.sgCorrected,
+      fsuspeed: fsuspeed ?? this.fsuspeed,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
+        'id': id,
         'timestamp': timestamp.toIso8601String(),
         'gravity': gravity,
         'temperature': temperature,
@@ -61,17 +97,26 @@ class Measurement extends HiveObject {
       };
 
   factory Measurement.fromJson(Map<String, dynamic> json) => Measurement(
-        timestamp: DateTime.parse(json['timestamp']),
-        gravity: json['gravity'],
-        temperature: json['temperature'],
-        notes: json['notes'],
-        gravityUnit: json['gravityUnit'],
+        id: (json['id'] as String?) ?? const Uuid().v4(),
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        gravity: (json['gravity'] as num?)?.toDouble(),
+        temperature: (json['temperature'] as num?)?.toDouble(),
+        notes: json['notes'] as String?,
+        gravityUnit: json['gravityUnit'] as String?,
         interventions: json['interventions'] != null
-            ? List<String>.from(json['interventions'])
+            ? List<String>.from(json['interventions'] as List)
             : null,
-        ta: json['ta'],
-        brix: json['brix'],
-        sgCorrected: json['sgCorrected'],
-        fsuspeed: json['fsuspeed'],
+        ta: (json['ta'] as num?)?.toDouble(),
+        brix: (json['brix'] as num?)?.toDouble(),
+        sgCorrected: (json['sgCorrected'] as num?)?.toDouble(),
+        fsuspeed: (json['fsuspeed'] as num?)?.toDouble(),
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Measurement && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

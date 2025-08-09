@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:fermentacraft/models/tag.dart';
-// import 'package:fermentacraft/utils/temp_display.dart'; // REMOVED: Duplicate import
 import 'package:fermentacraft/utils/unit_conversion.dart';
 import 'package:logger/logger.dart';
 import 'package:hive/hive.dart';
-import 'package:provider/provider.dart'; // ADDED: For context.watch
+import 'package:provider/provider.dart';
 import 'models/ingredient.dart';
 import 'models/inventory_item.dart';
-import 'models/settings_model.dart'; // ADDED: For SettingsModel
+import 'models/settings_model.dart';
 import 'utils/sugar_gravity_data.dart';
 import 'widgets/add_additive_dialog.dart';
 import 'widgets/add_fermentation_stage_dialog.dart';
@@ -22,6 +21,9 @@ import 'dart:async';
 import 'models/purchase_transaction.dart';
 import 'models/unit_type.dart';
 import 'utils/temp_display.dart';
+
+// Import the unique ID generator
+import '../utils/id.dart';
 
 final logger = Logger();
 
@@ -43,7 +45,7 @@ class RecipeBuilderPage extends StatefulWidget {
   const RecipeBuilderPage({
     super.key,
     this.existingRecipe,
-    this.recipeKey,
+    this.recipeKey, // Note: This is less critical now we rely on the model's ID.
     this.isClone = false,
   });
 
@@ -87,9 +89,6 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   double? waterToAddLiters;
   double? weightedAverageOG;
   List<Map<dynamic, dynamic>> yeast = [];
-  // REMOVED: Cannot initialize here using 'context'
-  // final settings = context.watch<SettingsModel>();
-
 
   @override
   void initState() {
@@ -129,7 +128,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       notesController.text = recipe.notes;
       additives = List<Map<dynamic, dynamic>>.from(recipe.additives);
       ingredients = List<Map<dynamic, dynamic>>.from(recipe.ingredients);
-      fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
+      fermentationStages =
+          List<FermentationStage>.from(recipe.fermentationStages);
       og = recipe.og;
       fg = recipe.fg!;
       abv = recipe.abv!;
@@ -293,8 +293,9 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
             date: yeastData['purchaseDate'] as DateTime? ?? DateTime.now(),
             expirationDate: yeastData['expirationDate'] as DateTime?,
           );
-          // FIX: Use the new InventoryItem constructor pattern
+          // FIX: Assign a unique ID and use `put` to save.
           final item = InventoryItem(
+            id: generateId(),
             name: yeastData['name'] as String? ?? 'Unnamed',
             unit: yeastData['unit'] as String? ?? 'packets',
             unitType: inferUnitType(yeastData['unit'] as String? ?? 'packets'),
@@ -302,7 +303,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
             purchaseHistory: [purchase],
           );
           final box = Hive.box<InventoryItem>('inventory');
-          await box.add(item);
+          await box.put(item.id, item);
           if (!mounted) return;
           scaffoldMessenger.showSnackBar(
             SnackBar(content: Text("Added '${item.name}' to Inventory")),
@@ -346,7 +347,12 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
           ),
           ElevatedButton(
             onPressed: () async {
+              // FIX: Assign a unique ID for new recipes, or reuse the existing one.
               final newRecipe = RecipeModel(
+                // If editing (and not cloning), use existing ID. Otherwise, generate a new one.
+                id: (widget.existingRecipe != null && !widget.isClone)
+                    ? widget.existingRecipe!.id
+                    : generateId(),
                 name: recipeName,
                 tags: tags,
                 createdAt: DateTime.now(),
@@ -360,13 +366,12 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                 notes: notesController.text.trim(),
               );
               final box = Hive.box<RecipeModel>('recipes');
-              if (widget.existingRecipe != null && !widget.isClone && widget.recipeKey != null) {
-                await box.put(widget.recipeKey, newRecipe);
-              } else {
-                await box.add(newRecipe);
-              }
+
+              // FIX: Use `put` with the recipe's ID. This handles both creating and updating.
+              await box.put(newRecipe.id, newRecipe);
+
               if (!mounted) return;
-              Navigator.of(context).pop(); 
+              Navigator.of(context).pop(); // Close confirmation dialog
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const RecipeListPage()),
                 (route) => route.isFirst,
@@ -467,7 +472,6 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
 
   @override
   Widget build(BuildContext context) {
-    // MOVED: settings initialization to here, where context is available.
     final settings = context.watch<SettingsModel>();
 
     return Scaffold(
@@ -485,69 +489,73 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: "Recipe Name",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Text("Tags", style: Theme.of(context).textTheme.titleMedium),
-                      const Spacer(),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final result = await showTagPickerDialog(context, tags);
-                          if (result != null) {
-                            setState(() => tags = result);
-                          }
-                        },
-                        child: const Text("Choose Tags"),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: "Recipe Name",
+                        border: OutlineInputBorder(),
                       ),
-                    ],
-                  ),
-                 if (tags.isNotEmpty)
-  Padding(
-    padding: const EdgeInsets.only(top: 8.0),
-    child: Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      children: tags.map((tag) {
-        final icon = tagIconMap[tag.name.toLowerCase()]; // same map from picker
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFF8B5E3C), // warm brown from picker
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha:0.3)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 16, color: Colors.white),
-                const SizedBox(width: 4),
-              ],
-              Text(
-                tag.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    ),
-  )
-
-        ]),
-          ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Text("Tags",
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const Spacer(),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final result =
+                                await showTagPickerDialog(context, tags);
+                            if (result != null) {
+                              setState(() => tags = result);
+                            }
+                          },
+                          child: const Text("Choose Tags"),
+                        ),
+                      ],
+                    ),
+                    if (tags.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: tags.map((tag) {
+                            final icon = tagIconMap[tag.name.toLowerCase()];
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                    0xFF8B5E3C), // warm brown from picker
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                    color: Colors.white.withValues(alpha:0.3)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (icon != null) ...[
+                                    Icon(icon, size: 16, color: Colors.white),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Text(
+                                    tag.name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      )
+                  ]),
+            ),
           ),
           _sectionTitle("Ingredients"),
           Card(
@@ -596,30 +604,42 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                             final scaffoldMessenger =
                                 ScaffoldMessenger.of(context);
                             final purchase = PurchaseTransaction(
-                              amount: (ingredientData['amount'] as num?)?.toDouble() ?? 0.0,
-                              cost: (ingredientData['cost'] as num?)?.toDouble() ?? 0.0,
-                              date: ingredientData['purchaseDate'] as DateTime? ?? DateTime.now(),
-                              expirationDate: ingredientData['expirationDate'] as DateTime?,
+                              amount: (ingredientData['amount'] as num?)
+                                      ?.toDouble() ??
+                                  0.0,
+                              cost: (ingredientData['cost'] as num?)
+                                      ?.toDouble() ??
+                                  0.0,
+                              date: ingredientData['purchaseDate']
+                                      as DateTime? ??
+                                  DateTime.now(),
+                              expirationDate:
+                                  ingredientData['expirationDate'] as DateTime?,
                             );
-                            
-                            // FIX: Use the new InventoryItem constructor
+
+                            // FIX: Assign a unique ID and use `put` to save.
                             final item = InventoryItem(
-                              name: ingredientData['name'] as String? ?? 'Unnamed',
+                              id: generateId(),
+                              name:
+                                  ingredientData['name'] as String? ?? 'Unnamed',
                               unit: ingredientData['unit'] as String? ?? 'oz',
-                              unitType: inferUnitType(ingredientData['unit'] as String? ?? 'oz'),
-                              category: ingredientData['type'] as String? ?? 'Other',
+                              unitType: inferUnitType(
+                                  ingredientData['unit'] as String? ?? 'oz'),
+                              category:
+                                  ingredientData['type'] as String? ?? 'Other',
                               purchaseHistory: [purchase],
                             );
-                            
+
                             final box = Hive.box<InventoryItem>('inventory');
-                            await box.add(item);
+                            await box.put(item.id, item);
                             if (!mounted) return;
                             scaffoldMessenger.showSnackBar(
                               SnackBar(
-                                  content:
-                                      Text("Added '${item.name}' to Inventory")),
+                                  content: Text(
+                                      "Added '${item.name}' to Inventory")),
                             );
-                            addIngredient(Map<String, dynamic>.from(ingredientData));
+                            addIngredient(
+                                Map<String, dynamic>.from(ingredientData));
                           },
                         ),
                       );
@@ -652,7 +672,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                             onPressed: () => editAdditive(i)),
                         IconButton(
                             icon: const Icon(Icons.delete),
-                            onPressed: () => setState(() => additives.removeAt(i))),
+                            onPressed: () =>
+                                setState(() => additives.removeAt(i))),
                       ],
                     ),
                   );
@@ -722,23 +743,36 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                                 onAdd: addYeast,
                                 onAddToInventory: (yeastData) async {
                                   final purchase = PurchaseTransaction(
-                                    amount: (yeastData['amount'] as num?)?.toDouble() ?? 0.0,
-                                    cost: (yeastData['cost'] as num?)?.toDouble() ?? 0.0,
-                                    date: yeastData['purchaseDate'] as DateTime? ?? DateTime.now(),
-                                    expirationDate: yeastData['expirationDate'] as DateTime?,
+                                    amount: (yeastData['amount'] as num?)
+                                            ?.toDouble() ??
+                                        0.0,
+                                    cost:
+                                        (yeastData['cost'] as num?)?.toDouble() ??
+                                            0.0,
+                                    date: yeastData['purchaseDate']
+                                            as DateTime? ??
+                                        DateTime.now(),
+                                    expirationDate:
+                                        yeastData['expirationDate'] as DateTime?,
                                   );
 
-                                  // FIX: Use the new InventoryItem constructor
+                                  // FIX: Assign a unique ID and use `put` to save.
                                   final item = InventoryItem(
-                                    name: yeastData['name'] as String? ?? 'Unnamed',
-                                    unit: yeastData['unit'] as String? ?? 'packets',
-                                    unitType: inferUnitType(yeastData['unit'] as String? ?? 'packets'),
+                                    id: generateId(),
+                                    name: yeastData['name'] as String? ??
+                                        'Unnamed',
+                                    unit: yeastData['unit'] as String? ??
+                                        'packets',
+                                    unitType: inferUnitType(
+                                        yeastData['unit'] as String? ??
+                                            'packets'),
                                     category: 'Yeast',
                                     purchaseHistory: [purchase],
                                   );
-                                  
-                                  final box = Hive.box<InventoryItem>('inventory');
-                                  await box.add(item);
+
+                                  final box =
+                                      Hive.box<InventoryItem>('inventory');
+                                  await box.put(item.id, item);
                                   if (!mounted) return;
                                   scaffoldMessenger.showSnackBar(
                                     SnackBar(
@@ -768,13 +802,13 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                 ...fermentationStages.asMap().entries.map((entry) {
                   final i = entry.key;
                   final stage = entry.value;
-                  final tempString = stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? '—';
+                  final tempString =
+                      stage.targetTempC?.toDisplay(targetUnit: settings.unit) ??
+                          '—';
 
                   return ListTile(
                     title: Text(stage.name),
-                    // FIXED: Used the tempString variable which respects user settings.
-                    subtitle: Text(
-                        "${stage.durationDays} days @ $tempString"),
+                    subtitle: Text("${stage.durationDays} days @ $tempString"),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -792,8 +826,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                             }),
                         IconButton(
                             icon: const Icon(Icons.delete),
-                            onPressed: () =>
-                                setState(() => fermentationStages.removeAt(i))),
+                            onPressed: () => setState(
+                                () => fermentationStages.removeAt(i))),
                       ],
                     ),
                   );
@@ -847,10 +881,13 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                     initialValue: fg.toStringAsFixed(3),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: "Final Gravity"),
+                    decoration:
+                        const InputDecoration(labelText: "Final Gravity"),
                     onChanged: (val) {
                       final parsed = double.tryParse(val);
-                      if (parsed != null && parsed >= 0.990 && parsed <= 1.200) {
+                      if (parsed != null &&
+                          parsed >= 0.990 &&
+                          parsed <= 1.200) {
                         setState(() {
                           fg = parsed;
                           calculateStats();
@@ -894,8 +931,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                               labelText: "Batch Volume",
                               border: OutlineInputBorder(),
                             ),
-                            keyboardType:
-                                const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
                             onChanged: (_) {
                               setState(() {
                                 userOverrodeBatchVolume = true;

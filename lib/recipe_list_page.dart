@@ -22,73 +22,71 @@ class _RecipeListPageState extends State<RecipeListPage> {
   SortMode _sortMode = SortMode.dateCreated;
   bool _showArchived = false;
 
-IconData _iconForTag(String tag) {
-  switch (tag.toLowerCase()) {
-    case 'cider':
-      return Icons.local_drink_outlined;
-    case 'mead':
-      return Icons.hive_outlined;
-    case 'wine':
-      return Icons.wine_bar_outlined;
-    case 'fruit wine':
-      return Icons.local_florist_outlined;
-    case 'experimental':
-      return Icons.science_outlined;
-    case 'draft':
-      return Icons.edit_note_outlined;
-    case 'favorite':
-    case 'favourite':
-      return Icons.star_outline;
-    case 'archived':
-      return Icons.archive_outlined;
-    case 'no tag':
-      return Icons.label_off_outlined;
-    default:
-      return Icons.label_outline;
+  IconData _iconForTag(String tag) {
+    switch (tag.toLowerCase()) {
+      case 'cider':
+        return Icons.local_drink_outlined;
+      case 'mead':
+        return Icons.hive_outlined;
+      case 'wine':
+        return Icons.wine_bar_outlined;
+      case 'fruit wine':
+        return Icons.local_florist_outlined;
+      case 'experimental':
+        return Icons.science_outlined;
+      case 'draft':
+        return Icons.edit_note_outlined;
+      case 'favorite':
+      case 'favourite':
+        return Icons.star_outline;
+      case 'archived':
+        return Icons.archive_outlined;
+      case 'no tag':
+        return Icons.label_off_outlined;
+      default:
+        return Icons.label_outline;
+    }
   }
-}
 
-/// Stable “nice” color per tag (keeps icons consistent across reloads)
-Color _colorForTag(BuildContext context, String tag) {
-  final cs = Theme.of(context).colorScheme;
-  final seed = tag.hashCode;
-  // Pick one of a few accents derived from the theme
-  final palette = <Color>[
-    cs.primary,
-    cs.tertiary,
-    cs.secondary,
-    cs.primaryContainer,
-    cs.tertiaryContainer,
-    cs.secondaryContainer,
-  ];
-  return palette[(seed.abs()) % palette.length];
-}
+  /// Stable “nice” color per tag (keeps icons consistent across reloads)
+  Color _colorForTag(BuildContext context, String tag) {
+    final cs = Theme.of(context).colorScheme;
+    final seed = tag.hashCode;
+    final palette = <Color>[
+      cs.primary,
+      cs.tertiary,
+      cs.secondary,
+      cs.primaryContainer,
+      cs.tertiaryContainer,
+      cs.secondaryContainer,
+    ];
+    return palette[(seed.abs()) % palette.length];
+  }
 
-/// Composes the header row for ExpansionTile
-Widget _tagHeader(BuildContext context, String tag, int count) {
-  final icon = _iconForTag(tag);
-  final color = _colorForTag(context, tag);
-  return Row(
-    children: [
-      Icon(icon, color: color),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(
-          tag,
-          style: Theme.of(context).textTheme.titleMedium,
-          overflow: TextOverflow.ellipsis,
+  /// Composes the header row for ExpansionTile
+  Widget _tagHeader(BuildContext context, String tag, int count) {
+    final icon = _iconForTag(tag);
+    final color = _colorForTag(context, tag);
+    return Row(
+      children: [
+        Icon(icon, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            tag,
+            style: Theme.of(context).textTheme.titleMedium,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-      ),
-      const SizedBox(width: 8),
-      // optional: show a count chip for how many recipes in this section
-      Chip(
-        label: Text('$count'),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    ],
-  );
-}
+        const SizedBox(width: 8),
+        Chip(
+          label: Text('$count'),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ],
+    );
+  }
 
   // --- Actions ---------------------------------------------------------------
 
@@ -112,14 +110,20 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
     );
 
     if (confirmed == true) {
-      setState(() {
-        recipe.isArchived = isArchiving;
-        recipe.save();
-      });
+      recipe.isArchived = isArchiving;
+      await recipe.save();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isArchiving ? 'Archived "${recipe.name}"' : 'Unarchived "${recipe.name}"')),
+
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars(); // avoid stacking
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(isArchiving ? 'Archived "${recipe.name}"' : 'Unarchived "${recipe.name}"'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
+      setState(() {}); // trigger list regroup/rebuild
     }
   }
 
@@ -132,7 +136,10 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -147,12 +154,16 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
     final name = recipe.name;
 
     await recipe.delete();
-
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars(); // ensure we don't leave prior snackbars hanging
+
+    messenger.showSnackBar(
       SnackBar(
         content: Text('Deleted "$name"'),
+        duration: const Duration(seconds: 5), // explicit, finite duration
+        behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'UNDO',
           onPressed: () async {
@@ -163,12 +174,18 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
               await box.add(backup);
             }
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Recipe restored')),
+
+            // Replace the delete snackbar with a brief confirmation
+            messenger.hideCurrentSnackBar();
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text('Recipe restored'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
             );
           },
         ),
-        duration: const Duration(seconds: 6),
       ),
     );
   }
@@ -218,7 +235,7 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
     final onColor = danger ? cs.onError : cs.onPrimary;
 
     return Container(
-      color: color.withValues(alpha:0.90),
+      color: color.withValues(alpha: 0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -337,6 +354,9 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
                         danger: true,
                       ),
                       confirmDismiss: (direction) async {
+                        // Ensure we don't leave old snackbars lingering
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
                         if (direction == DismissDirection.startToEnd) {
                           await _toggleArchiveStatus(recipe);
                           return false; // keep tile; list rebuild will move it
@@ -380,6 +400,8 @@ Widget _tagHeader(BuildContext context, String tag, int count) {
       floatingActionButton: FloatingActionButton(
         heroTag: 'addRecipeFab',
         onPressed: () {
+          // Clear any lingering snackbars before route push (prevents "immortal" bars)
+          ScaffoldMessenger.of(context).clearSnackBars();
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const RecipeBuilderPage()),

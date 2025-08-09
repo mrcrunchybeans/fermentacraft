@@ -10,6 +10,7 @@ import '../widgets/log_purchase_dialog.dart';
 import 'inventory_item_detail_view.dart';
 import '../models/inventory_item_detail_model.dart';
 
+
 // Sort options
 enum SortOption { name, stock, expiration }
 // Row menu actions

@@ -13,49 +13,75 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final emailController = TextEditingController();
-  String? errorMessage;
-  bool isLoading = false;
   final passwordController = TextEditingController();
 
+  String? errorMessage;
+  bool isLoading = false;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> login() async {
+    if (!mounted) return;
     setState(() {
       errorMessage = null;
       isLoading = true;
     });
 
+    bool success = false;
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
+      success = true; // AuthGate will replace this page
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        errorMessage = e.message;
-      });
+      if (mounted) {
+        setState(() {
+          errorMessage = e.message;
+        });
+      }
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      // Only stop spinner if we're still on this page and login didn't succeed
+      if (mounted && !success) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
   Future<void> loginWithGoogle() async {
+    if (!mounted) return;
     setState(() {
       errorMessage = null;
       isLoading = true;
     });
 
-    final user = await signInWithGoogle();
+    bool success = false;
+    try {
+      final user = await signInWithGoogle();
+      success = user != null;
 
-    if (user == null) {
-      setState(() {
-        errorMessage = 'Google sign-in failed or was cancelled.';
-      });
+      if (!success && mounted) {
+        setState(() {
+          errorMessage = 'Google sign-in failed or was cancelled.';
+        });
+      }
+      // If success, AuthGate will swap this page—do not call setState.
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          errorMessage = 'Google sign-in failed.';
+        });
+      }
+    } finally {
+      if (mounted && !success) {
+        setState(() => isLoading = false);
+      }
     }
-
-    setState(() {
-      isLoading = false;
-    });
   }
 
   void goToRegister() {
@@ -65,70 +91,67 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-void _showForgotPasswordDialog() {
-  final resetEmailController = TextEditingController();
+  void _showForgotPasswordDialog() {
+    final resetEmailController = TextEditingController();
 
-  showDialog(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Reset Password'),
-      content: TextField(
-        controller: resetEmailController,
-        decoration: const InputDecoration(
-          labelText: 'Enter your email address',
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: TextField(
+          controller: resetEmailController,
+          decoration: const InputDecoration(
+            labelText: 'Enter your email address',
+          ),
+          keyboardType: TextInputType.emailAddress,
         ),
-        keyboardType: TextInputType.emailAddress,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () async {
-            final email = resetEmailController.text.trim();
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final email = resetEmailController.text.trim();
 
-            if (email.isEmpty) {
-              if (mounted) {
-                setState(() => errorMessage = 'Please enter an email address.');
+              if (email.isEmpty) {
+                if (mounted) {
+                  setState(() => errorMessage = 'Please enter an email address.');
+                }
+                return;
               }
-              return;
-            }
 
-            if (mounted) {
-              setState(() {
-                isLoading = true;
-                errorMessage = null;
-              });
-            }
+              if (mounted) {
+                setState(() {
+                  isLoading = true;
+                  errorMessage = null;
+                });
+              }
 
-            try {
-              await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
 
-              // IMPORTANT: check the *dialog* context after the await
-              if (!dialogContext.mounted) return;
+                if (!dialogContext.mounted) return;
 
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                const SnackBar(content: Text('Password reset email sent.')),
-              );
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('Password reset email sent.')),
+                );
 
-              // Optional: close the dialog on success
-              Navigator.of(dialogContext).pop();
-            } on FirebaseAuthException catch (e) {
-              if (mounted) setState(() => errorMessage = e.message);
-            } catch (_) {
-              if (mounted) setState(() => errorMessage = 'An error occurred.');
-            } finally {
-              if (mounted) setState(() => isLoading = false);
-            }
-          },
-          child: const Text('Send'),
-        ),
-      ],
-    ),
-  );
-}
-
+                Navigator.of(dialogContext).pop();
+              } on FirebaseAuthException catch (e) {
+                if (mounted) setState(() => errorMessage = e.message);
+              } catch (_) {
+                if (mounted) setState(() => errorMessage = 'An error occurred.');
+              } finally {
+                if (mounted) setState(() => isLoading = false);
+              }
+            },
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +175,6 @@ void _showForgotPasswordDialog() {
                 placeholderBuilder: (context) => const CircularProgressIndicator(),
               ),
               const SizedBox(height: 20),
-
               Text(
                 'Log in to start crafting!',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
@@ -260,10 +282,9 @@ void _showForgotPasswordDialog() {
                 ],
               ),
               TextButton(
-            onPressed: isLoading ? null : _showForgotPasswordDialog,
-            child: const Text('Forgot password?'),
-          ),
-
+                onPressed: isLoading ? null : _showForgotPasswordDialog,
+                child: const Text('Forgot password?'),
+              ),
             ],
           ),
         ),
