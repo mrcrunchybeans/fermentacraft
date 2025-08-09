@@ -35,6 +35,7 @@ dependencies:
   google_sign_in: ^6.1.4
   cloud_firestore: ^6.0.0
   connectivity_plus: ^6.1.4
+  purchases_flutter: ^9.2.0
 
 dev_dependencies:
   flutter_test:
