@@ -1,12 +1,16 @@
+// lib/pages/settings_page.dart
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+import 'package:fermentacraft/services/feature_gate.dart';
+// adjust if your PaywallPage is elsewhere
 
 import '../utils/data_management.dart';
 import '../models/settings_model.dart';
 import '../services/firestore_sync_service.dart';
 
-// FIX: Convert to a StatefulWidget
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -15,15 +19,16 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  // Helper for creating section titles
   Widget _sectionTitle(String title, BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleLarge,
-      ),
+      child: Text(title, style: Theme.of(context).textTheme.titleLarge),
     );
+  }
+
+  void _upsell(BuildContext context, String reason) {
+showPaywall(context);
+
   }
 
   @override
@@ -31,13 +36,14 @@ class _SettingsPageState extends State<SettingsPage> {
     final settings = context.watch<SettingsModel>();
     final sync = FirestoreSyncService.instance;
     final user = FirebaseAuth.instance.currentUser;
+    final fg = FeatureGate.instance;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Settings")),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          // --- CLOUD SYNC (Firebase + Firestore) ---
+          // --- CLOUD SYNC (visible, Pro-only functionality) ---
           _sectionTitle("Cloud Sync", context),
           Card(
             child: Padding(
@@ -48,60 +54,78 @@ class _SettingsPageState extends State<SettingsPage> {
                   ListTile(
                     contentPadding: const EdgeInsets.all(12.0),
                     leading: const Icon(Icons.person_outline),
-                    title: Text(user == null
-                        ? "Signed in as: Not signed in"
-                        : "Signed in as: ${user.email ?? "Signed in"}"),
-                    subtitle: Text(
+                    title: Text(
                       user == null
-                          ? "Sign in to enable online sync across devices."
-                          : "",
+                          ? "Signed in as: Not signed in"
+                          : "Signed in as: ${user.email ?? "Signed in"}",
+                    ),
+                    subtitle: Text(
+                      user == null ? "Sign in to enable online sync across devices." : "",
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(height: 4),
+
+                  // Soft-lock: switch remains visible; Free shows upsell
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text("Enable Sync"),
                     subtitle: const Text(
-                        "Sync recipes, batches, inventory, shopping list, tags, and settings"),
-                    value: sync.isEnabled,
+                      "Sync recipes, batches, inventory, shopping list, tags, and settings",
+                    ),
+                    value: fg.allowSync ? sync.isEnabled : false, // force OFF if free
                     onChanged: (v) async {
-  setState(() {
-    sync.isEnabled = v;
-  });
+                      if (!fg.allowSync) {
+                        _upsell(context, "Cloud Sync is a Pro feature");
+                        return;
+                      }
+                      if (v && user == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Please sign in to enable sync.")),
+                        );
+                        return;
+                      }
 
-  if (v && user != null) {
-    // Capture the messenger BEFORE the async gap.
-    final messenger = ScaffoldMessenger.of(context);
-    
-    await sync.forceSync();
-    
-    if (!mounted) return;
-    
-    // Use the captured messenger instance AFTER the gap.
-    messenger.showSnackBar(
-      const SnackBar(
-          content:
-              Text("Sync enabled. Merging changes…")),
-    );
-  }
-},
+                      setState(() {
+                        sync.isEnabled = v;
+                      });
+
+                      if (v) {
+                        final messenger = ScaffoldMessenger.of(context);
+                        await sync.forceSync();
+                        if (!mounted) return;
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text("Sync enabled. Merging changes…")),
+                        );
+                      }
+                    },
                   ),
+
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       ElevatedButton.icon(
-                        onPressed: (user != null && sync.isEnabled)
+                        onPressed: (fg.allowSync && user != null && sync.isEnabled)
                             ? () {
-                                // instant feedback
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('Sync queued…')),
                                 );
-                                // fire and forget
                                 sync.forceSync();
                               }
-                            : null,
+                            : () {
+                                if (!fg.allowSync) {
+                                  _upsell(context, "Cloud Sync is a Premium feature");
+                                } else if (user == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Please sign in to sync.')),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Enable Sync first.')),
+                                  );
+                                }
+                              },
                         icon: const Icon(Icons.sync),
                         label: const Text("Sync now"),
                       ),
@@ -120,7 +144,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
-          // --- UNITS SECTION ---
+          // --- UNITS ---
           _sectionTitle("Units", context),
           Card(
             child: Padding(
@@ -132,8 +156,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   SegmentedButton<bool>(
                     segments: const [
                       ButtonSegment(value: true, label: Text("Celsius (°C)")),
-                      ButtonSegment(
-                          value: false, label: Text("Fahrenheit (°F)")),
+                    // ignore: prefer_const_constructors
+                      ButtonSegment(value: false, label: Text("Fahrenheit (°F)")),
                     ],
                     selected: {settings.useCelsius},
                     onSelectionChanged: (Set<bool> newSelection) {
@@ -145,7 +169,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
-          // --- APPEARANCE SECTION ---
+          // --- APPEARANCE ---
           _sectionTitle("Appearance", context),
           Card(
             child: Padding(
@@ -156,18 +180,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 8),
                   SegmentedButton<ThemeMode>(
                     segments: const [
-                      ButtonSegment(
-                          value: ThemeMode.light,
-                          label: Text("Light"),
-                          icon: Icon(Icons.wb_sunny)),
-                      ButtonSegment(
-                          value: ThemeMode.dark,
-                          label: Text("Dark"),
-                          icon: Icon(Icons.nightlight_round)),
-                      ButtonSegment(
-                          value: ThemeMode.system,
-                          label: Text("System"),
-                          icon: Icon(Icons.settings_suggest)),
+                      ButtonSegment(value: ThemeMode.light,  label: Text("Light"),  icon: Icon(Icons.wb_sunny)),
+                      ButtonSegment(value: ThemeMode.dark,   label: Text("Dark"),   icon: Icon(Icons.nightlight_round)),
+                      ButtonSegment(value: ThemeMode.system, label: Text("System"), icon: Icon(Icons.settings_suggest)),
                     ],
                     selected: {settings.themeMode},
                     onSelectionChanged: (Set<ThemeMode> newSelection) {
@@ -179,25 +194,41 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
-          // --- DATA MANAGEMENT SECTION ---
+          // --- DEV: Toggle Pro (remove later) ---
+          TextButton(
+            onPressed: () {
+              FeatureGate.instance.isPro = !FeatureGate.instance.isPro;
+              setState(() {});
+            },
+            child: Text('Toggle Pro (Now: ${FeatureGate.instance.isPro ? 'Pro' : 'Free'})'),
+          ),
+
+          // --- DATA MANAGEMENT ---
           _sectionTitle("Data Management", context),
           Card(
             child: Column(
               children: [
+                // Export is Pro-only (soft-locked)
                 ListTile(
                   leading: const Icon(Icons.upload_file),
                   title: const Text("Export Data"),
-                  subtitle: const Text(
-                      "Save a backup of all your recipes and inventory."),
+                  subtitle: const Text("Save a backup of all your recipes and inventory."),
                   onTap: () {
+                    if (!fg.allowDataExport) {
+                      _upsell(context, "Export is a Pro feature");
+                      return;
+                    }
                     DataManagementService.exportData(context);
                   },
                 ),
+                // Import is allowed for Free (your choice; you can gate it too)
                 ListTile(
                   leading: const Icon(Icons.download_for_offline),
                   title: const Text("Import Data"),
                   subtitle: const Text("Restore from a backup file."),
                   onTap: () {
+                    // If you want to lock import too, uncomment:
+                    // if (!fg.allowDataExport) { _upsell(context, "Import from backup is a Pro feature"); return; }
                     DataManagementService.importData(context);
                   },
                 ),
@@ -210,42 +241,32 @@ class _SettingsPageState extends State<SettingsPage> {
           Card(
             color: Colors.red[50],
             child: ListTile(
-              leading:
-                  const Icon(Icons.warning_amber_rounded, color: Colors.red),
-              title:
-                  const Text("Clear All Data", style: TextStyle(color: Colors.red)),
-              subtitle:
-                  const Text("Deletes all recipes, batches, and inventory."),
+              leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+              title: const Text("Clear All Data", style: TextStyle(color: Colors.red)),
+              subtitle: const Text("Deletes all recipes, batches, and inventory."),
               onTap: () {
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
                     title: const Text("Are you sure?"),
-                    content: const Text(
-                        "This action is irreversible and will delete all of your data."),
+                    content: const Text("This action is irreversible and will delete all of your data."),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text("Cancel"),
                       ),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                         onPressed: () async {
-  // Capture the navigator and messenger BEFORE the async gap.
-  final navigator = Navigator.of(context);
-  final messenger = ScaffoldMessenger.of(context);
-
-  await DataManagementService.clearAllData();
-
-  if (!mounted) return;
-  
-  // Use the captured instances AFTER the gap.
-  navigator.pop();
-  messenger.showSnackBar(
-    const SnackBar(content: Text("All data has been cleared.")),
-  );
-},
+                          final navigator = Navigator.of(context);
+                          final messenger = ScaffoldMessenger.of(context);
+                          await DataManagementService.clearAllData();
+                          if (!mounted) return;
+                          navigator.pop();
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text("All data has been cleared.")),
+                          );
+                        },
                         child: const Text("Delete Everything"),
                       ),
                     ],

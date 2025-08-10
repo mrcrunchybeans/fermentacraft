@@ -1,12 +1,17 @@
+import 'package:fermentacraft/utils/inventory_item_extensions.dart';
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:collection/collection.dart';
 import 'package:uuid/uuid.dart';
-
+import 'package:fermentacraft/utils/units.dart'; // <- shared units
 import '../models/inventory_item.dart';
 import '../models/unit_type.dart';
 import '../utils/unit_conversion.dart';
 import '../models/purchase_transaction.dart';
+
+// NEW: gating imports
+import 'package:fermentacraft/services/feature_gate.dart';
 
 class AddInventoryDialog extends StatefulWidget {
   final Map<String, dynamic>? initialData;
@@ -24,24 +29,26 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
   String _name = '';
   String _category = 'Juice';
   double _amount = 0;
-  String _unit = 'grams';
+  String _unit = 'g'; // <- default to canonical
   double _cost = 0;
   String? _notes;
   UnitType _unitType = UnitType.mass;
   DateTime? _expirationDate;
 
   final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
-  final List<String> _units = [
-    'grams', 'mL', 'fl oz', 'cup', 'oz', 'tsp', 'tbsp', 'gal', 'packets'
-  ];
 
   @override
   void initState() {
     super.initState();
+
+    // Normalize incoming unit (if any) to our canonical set
+    _unit = normalizeUnit(widget.initialData?['unit'] as String?);
+    _unitType = inferUnitType(_unit);
+
     if (widget.initialData != null) {
       _name = (widget.initialData!['name'] ?? '').toString();
-      _unit = (widget.initialData!['unit'] ?? 'grams').toString();
-      _unitType = inferUnitType(_unit);
+
+      // DO NOT overwrite with the raw string; keep normalized (_unit already set)
       final inputCategory = widget.initialData!['category'];
       if (inputCategory != null && _categories.contains(inputCategory)) {
         _category = inputCategory;
@@ -67,23 +74,41 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
       (item) => item.name.toLowerCase() == _name.toLowerCase(),
     );
 
+    // Gate only when creating a brand-new item (merges are allowed)
+    if (existingItem == null) {
+      final fg = FeatureGate.instance;
+      final activeCount = inventoryBox.values.where((i) => !i.isArchived).length;
+      final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+
+      if (atLimit) {
+        // Tell the user and offer upgrade. Keep the dialog open.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+showPaywall(context);
+
+        }
+        return;
+      }
+    }
+
     if (existingItem != null) {
-      // Merge: add a purchase to the existing item
-      existingItem.addPurchase(transaction);
-      // existingItem.save() is called inside addPurchase()
+      existingItem.addPurchase(transaction); // merge path
     } else {
-      // Create a brand-new item with a stable string id, then PUT under that id
       final newItem = InventoryItem(
         id: _uuid.v4(),
         name: _name.trim(),
-        unit: _unit,
+        unit: _unit,            // <- canonical unit
         unitType: _unitType,
         notes: _notes,
         category: _category,
         purchaseHistory: [transaction],
       );
-      // IMPORTANT: never use box.add(...) — always put(id, item)
-      await inventoryBox.put(newItem.id, newItem);
+      await inventoryBox.put(newItem.id, newItem); // stable key
     }
 
     if (!mounted) return;
@@ -158,8 +183,8 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _unit,
-                      items: _units
+                      value: kCanonicalUnits.contains(_unit) ? _unit : kCanonicalUnits.first, // <- guard
+                      items: kCanonicalUnits
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),
                       onChanged: (val) {

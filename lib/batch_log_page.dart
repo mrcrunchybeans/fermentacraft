@@ -1,9 +1,15 @@
+// lib/batch_log_page.dart
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/batch_detail_page.dart';
 import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/widgets/add_batch_dialog.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+
+// gating + counts + paywall
+import 'package:fermentacraft/services/feature_gate.dart';
+import 'package:fermentacraft/services/counts_service.dart';
 
 class BatchLogPage extends StatefulWidget {
   const BatchLogPage({super.key});
@@ -18,6 +24,20 @@ class _BatchLogPageState extends State<BatchLogPage> {
 
   Future<void> _toggleArchiveStatus(BatchModel batch) async {
     final isArchiving = !batch.isArchived;
+
+    // Enforce archived cap for Free
+    if (isArchiving && !FeatureGate.instance.isPro) {
+      final archived = CountsService.instance.archivedBatchCount();
+      if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Free allows ${FeatureGate.instance.archivedBatchLimitFree} archived batches')),
+        );
+showPaywall(context);
+
+        return;
+      }
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -36,14 +56,13 @@ class _BatchLogPageState extends State<BatchLogPage> {
     );
 
     if (confirmed == true) {
-      setState(() {
-        batch.isArchived = isArchiving;
-        batch.save();
-      });
+      batch.isArchived = isArchiving;
+      await batch.save();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(isArchiving ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
       );
+      setState(() {});
     }
   }
 
@@ -69,35 +88,33 @@ class _BatchLogPageState extends State<BatchLogPage> {
     if (confirmed != true) return;
 
     final backup = batch; // keep in memory
-    final key = batch.key; // original Hive key
+    final key = batch.key;
     final name = batch.name;
 
     await batch.delete();
-
     if (!mounted) return;
 
-    final snack = SnackBar(
-      content: Text('Deleted "$name"'),
-      action: SnackBarAction(
-        label: 'UNDO',
-        onPressed: () async {
-          final box = Hive.box<BatchModel>('batches');
-          try {
-            await box.put(key, backup);
-          } catch (_) {
-            // If original key not valid (e.g., integer auto key removed), just add.
-            await box.add(backup);
-          }
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Batch restored')),
-          );
-        },
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Deleted "$name"'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () async {
+            final box = Hive.box<BatchModel>('batches');
+            try {
+              await box.put(key, backup);
+            } catch (_) {
+              await box.add(backup);
+            }
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Batch restored')),
+            );
+          },
+        ),
       ),
-      duration: const Duration(seconds: 6),
     );
-
-    ScaffoldMessenger.of(context).showSnackBar(snack);
   }
 
   PopupMenuButton<_BatchAction> _moreMenu(BatchModel batch) {
@@ -130,6 +147,22 @@ class _BatchLogPageState extends State<BatchLogPage> {
         ),
       ],
     );
+  }
+
+  void _onAddBatchPressed() async {
+    // Enforce Free limit: max 1 active batch
+    final fg = FeatureGate.instance;
+    final currentActive = CountsService.instance.activeBatchCount();
+    if (!fg.canAddActiveBatch(currentActive)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batch')),
+      );
+showPaywall(context);
+
+      return;
+    }
+
+    await showDialog(context: context, builder: (_) => const AddBatchDialog());
   }
 
   @override
@@ -171,9 +204,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'addBatchFab',
-        onPressed: () async {
-          await showDialog(context: context, builder: (_) => const AddBatchDialog());
-        },
+        onPressed: _onAddBatchPressed,
         child: const Icon(Icons.add),
       ),
     );
@@ -251,7 +282,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
     final onColor = danger ? cs.onError : cs.onPrimary;
 
     return Container(
-      color: color.withValues(alpha:0.90),
+      color: color.withValues(alpha:0.90), // safer across SDKs
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(

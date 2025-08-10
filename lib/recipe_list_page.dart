@@ -1,11 +1,17 @@
 // lib/recipe_list_page.dart
 
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/recipe_detail_page.dart';
 import 'package:fermentacraft/recipe_builder_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+
 import 'models/recipe_model.dart';
+
+// NEW: imports for gating
+import 'package:fermentacraft/services/feature_gate.dart';
+import 'package:fermentacraft/services/counts_service.dart';
 
 enum SortMode { dateCreated, aToZ, zToA, recentlyOpened }
 enum _RecipeAction { archiveToggle, delete }
@@ -48,7 +54,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
     }
   }
 
-  /// Stable “nice” color per tag (keeps icons consistent across reloads)
   Color _colorForTag(BuildContext context, String tag) {
     final cs = Theme.of(context).colorScheme;
     final seed = tag.hashCode;
@@ -63,7 +68,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
     return palette[(seed.abs()) % palette.length];
   }
 
-  /// Composes the header row for ExpansionTile
   Widget _tagHeader(BuildContext context, String tag, int count) {
     final icon = _iconForTag(tag);
     final color = _colorForTag(context, tag);
@@ -115,7 +119,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
       if (!mounted) return;
 
       final messenger = ScaffoldMessenger.of(context);
-      messenger.clearSnackBars(); // avoid stacking
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
           content: Text(isArchiving ? 'Archived "${recipe.name}"' : 'Unarchived "${recipe.name}"'),
@@ -149,7 +153,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
 
     if (confirmed != true) return;
 
-    final backup = recipe; // keep object in memory
+    final backup = recipe;
     final key = recipe.key;
     final name = recipe.name;
 
@@ -157,12 +161,12 @@ class _RecipeListPageState extends State<RecipeListPage> {
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars(); // ensure we don't leave prior snackbars hanging
+    messenger.clearSnackBars();
 
     messenger.showSnackBar(
       SnackBar(
         content: Text('Deleted "$name"'),
-        duration: const Duration(seconds: 5), // explicit, finite duration
+        duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'UNDO',
@@ -174,8 +178,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
               await box.add(backup);
             }
             if (!mounted) return;
-
-            // Replace the delete snackbar with a brief confirmation
             messenger.hideCurrentSnackBar();
             messenger.showSnackBar(
               const SnackBar(
@@ -222,7 +224,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
     );
   }
 
-  // Swipe background helper
   Widget _swipeBg(
     BuildContext context, {
     required IconData icon,
@@ -251,13 +252,32 @@ class _RecipeListPageState extends State<RecipeListPage> {
 
   // --- UI --------------------------------------------------------------------
 
+  void _onAddRecipePressed() {
+    final fg = FeatureGate.instance;
+    final current = CountsService.instance.recipeCount();
+    if (!fg.canAddRecipe(current)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Free allows ${fg.recipeLimitFree} recipes')),
+      );
+showPaywall(context);
+
+      return;
+    }
+
+    // Clear any lingering snackbars before route push
+    ScaffoldMessenger.of(context).clearSnackBars();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RecipeBuilderPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_showArchived ? 'Archived Recipes' : 'Saved Recipes'),
         actions: [
-          // Sort menu
           PopupMenuButton<SortMode>(
             onSelected: (mode) => setState(() => _sortMode = mode),
             icon: const Icon(Icons.sort),
@@ -268,7 +288,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
               PopupMenuItem(value: SortMode.recentlyOpened, child: Text('Recently Opened')),
             ],
           ),
-          // Toggle archived/active view
           IconButton(
             icon: Icon(_showArchived ? Icons.inventory_2_outlined : Icons.archive_outlined),
             tooltip: _showArchived ? 'View Active Recipes' : 'View Archived',
@@ -285,7 +304,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
             );
           }
 
-          // Filter by archived state
           List<RecipeModel> filtered = box.values.where((r) => r.isArchived == _showArchived).toList();
 
           if (filtered.isEmpty) {
@@ -294,7 +312,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
             );
           }
 
-          // Sort
           final epoch = DateTime.fromMillisecondsSinceEpoch(0);
           switch (_sortMode) {
             case SortMode.dateCreated:
@@ -311,7 +328,6 @@ class _RecipeListPageState extends State<RecipeListPage> {
               break;
           }
 
-          // Group by first tag (or "No Tag")
           final Map<String, List<RecipeModel>> grouped = {};
           for (final recipe in filtered) {
             final tags = recipe.tags.isEmpty ? ['No Tag'] : recipe.tags.map((t) => t.name);
@@ -354,15 +370,14 @@ class _RecipeListPageState extends State<RecipeListPage> {
                         danger: true,
                       ),
                       confirmDismiss: (direction) async {
-                        // Ensure we don't leave old snackbars lingering
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
                         if (direction == DismissDirection.startToEnd) {
                           await _toggleArchiveStatus(recipe);
-                          return false; // keep tile; list rebuild will move it
+                          return false;
                         } else {
                           await _deleteRecipeWithUndo(recipe);
-                          return false; // handled
+                          return false;
                         }
                       },
                       child: ListTile(
@@ -399,14 +414,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'addRecipeFab',
-        onPressed: () {
-          // Clear any lingering snackbars before route push (prevents "immortal" bars)
-          ScaffoldMessenger.of(context).clearSnackBars();
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const RecipeBuilderPage()),
-          );
-        },
+        onPressed: _onAddRecipePressed,
         tooltip: 'New Recipe',
         child: const Icon(Icons.add),
       ),

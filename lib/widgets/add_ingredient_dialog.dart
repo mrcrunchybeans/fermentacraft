@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/models/unit_type.dart';
 import 'package:intl/intl.dart';
+
+// Unified units helpers (same ones used by Inventory)
+import 'package:fermentacraft/utils/units.dart';
+
 import '../utils/utils.dart';
 
 class AddIngredientDialog extends StatefulWidget {
   final Function(Map<String, dynamic>) onAddToRecipe;
   final Function(Map<String, dynamic>)? onAddToInventory;
   final Map<String, dynamic>? existing;
+  final UnitType unitType; // <-- keep and use it
 
   const AddIngredientDialog({
     super.key,
     required this.onAddToRecipe,
     this.onAddToInventory,
     this.existing,
-    required UnitType unitType,
+    required this.unitType,
   });
 
   @override
@@ -32,23 +37,49 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
   DateTime purchaseDate = DateTime.now();
   DateTime? expirationDate;
 
-  String amountUnit = 'gal';
+  // Use canonical units and sensible defaults by unitType
+  String amountUnit = 'g';
   String type = 'Juice';
 
   @override
   void initState() {
     super.initState();
+
+    // Default unit based on the requested unit type (if no existing)
+    amountUnit = (widget.unitType == UnitType.mass) ? 'g' : 'ml';
+
     if (widget.existing != null) {
       final f = widget.existing!;
+
       nameController.text = f['name']?.toString() ?? '';
       amountController.text = f['amount']?.toString() ?? '';
-      amountUnit = f['unit']?.toString() ?? 'gal';
+
+      // Normalize any incoming unit to our canonical set
+      final incomingUnit = f['unit']?.toString();
+      final normalized = normalizeUnit(incomingUnit);
+      if (kCanonicalUnits.contains(normalized)) {
+        amountUnit = normalized;
+      }
+
       type = f['type']?.toString() ?? 'Juice';
       ogController.text = f['og']?.toString() ?? '';
       phController.text = f['ph']?.toString() ?? '';
       costController.text = f['cost']?.toString() ?? '';
-      purchaseDate = f['purchaseDate'] ?? DateTime.now();
-      expirationDate = f['expirationDate'];
+
+      // Existing dates could be DateTime or String
+      final pd = f['purchaseDate'];
+      if (pd is DateTime) {
+        purchaseDate = pd;
+      } else if (pd is String) {
+        purchaseDate = DateTime.tryParse(pd) ?? DateTime.now();
+      }
+
+      final ed = f['expirationDate'];
+      if (ed is DateTime) {
+        expirationDate = ed;
+      } else if (ed is String) {
+        expirationDate = DateTime.tryParse(ed);
+      }
     }
   }
 
@@ -60,7 +91,7 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
     return {
       'name': nameController.text.trim(),
       'amount': double.tryParse(amountController.text) ?? 0,
-      'unit': amountUnit,
+      'unit': amountUnit, // canonical unit
       'type': type,
       'og': og,
       'ph': ph,
@@ -112,16 +143,22 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                     ),
                     const SizedBox(width: 8),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 96),
+                      constraints: const BoxConstraints(maxWidth: 120),
                       child: DropdownButtonFormField<String>(
                         isDense: true,
-                        isExpanded: true, // fits inside the 96px box
-                        value: amountUnit,
+                        isExpanded: true, // fits inside the constrained box
+                        // Guard the value so it ALWAYS matches exactly one item
+                        value: kCanonicalUnits.contains(amountUnit)
+                            ? amountUnit
+                            : (widget.unitType == UnitType.mass ? 'g' : 'ml'),
                         decoration: _dec('Unit'),
-                        onChanged: (val) => setState(() => amountUnit = val!),
-                        items: const [
-                          'oz','g','lb','ml','l','gal','tsp','tbsp','package'
-                        ].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                        onChanged: (val) {
+                          if (val == null) return;
+                          setState(() => amountUnit = val);
+                        },
+                        items: kCanonicalUnits
+                            .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                            .toList(growable: false),
                       ),
                     ),
                   ],
@@ -132,7 +169,7 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                   value: type,
                   decoration: _dec('Type'),
                   isDense: true,
-                  onChanged: (val) => setState(() => type = val!),
+                  onChanged: (val) => setState(() => type = val ?? type),
                   items: const [
                     'Juice','Fruit','Sugar','Concentrate','Additive','Other'
                   ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),

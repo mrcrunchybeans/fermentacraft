@@ -1,3 +1,4 @@
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'utils/temp_display.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +9,8 @@ import 'models/recipe_model.dart';
 import 'recipe_builder_page.dart';
 import 'recipe_list_page.dart';
 import 'package:provider/provider.dart';
+import 'package:fermentacraft/services/feature_gate.dart';
+
 
 
 // NOTE: In the page that navigates here (e.g., RecipeListPage),
@@ -37,6 +40,11 @@ class RecipeDetailPage extends StatefulWidget {
 
   @override
   State<RecipeDetailPage> createState() => _RecipeDetailPageState();
+}
+
+void _upsell(BuildContext context, String reason) {
+showPaywall(context);
+
 }
 
 class _RecipeDetailPageState extends State<RecipeDetailPage> {
@@ -125,21 +133,34 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
             ),
           );
         }
+final fg = FeatureGate.instance;
+// If you have a dedicated recipe limit, use it. Otherwise pick a number:
+final int freeLimit = fg.recipeLimitFree; // define in FeatureGate if not present
+final int recipeCount = Hive.box<RecipeModel>('recipes').length;
+final bool atRecipeLimit = !fg.isPro && recipeCount >= freeLimit;
 
         return Scaffold(
           appBar: AppBar(
             title: Text(recipe.name),
             actions: [
-              IconButton(
-                  onPressed: () => _editRecipe(context, recipe),
-                  icon: const Icon(Icons.edit)),
-              IconButton(
-                  onPressed: () => _cloneRecipe(context, recipe),
-                  icon: const Icon(Icons.copy)),
-              IconButton(
-                  onPressed: () => _deleteRecipe(context),
-                  icon: const Icon(Icons.delete)),
-            ],
+  IconButton(
+    onPressed: () => _editRecipe(context, recipe),
+    icon: const Icon(Icons.edit),
+    tooltip: 'Edit',
+  ),
+  IconButton(
+    onPressed: atRecipeLimit
+        ? () => _upsell(context, 'Free limit reached ($freeLimit recipes). Upgrade to copy.')
+        : () => _cloneRecipe(context, recipe),
+    icon: const Icon(Icons.copy),
+    tooltip: atRecipeLimit ? 'Upgrade to copy' : 'Copy recipe',
+  ),
+  IconButton(
+    onPressed: () => _deleteRecipe(context),
+    icon: const Icon(Icons.delete),
+    tooltip: 'Delete',
+  ),
+],
           ),
           body: ListView(
             padding: const EdgeInsets.all(12),

@@ -1,3 +1,4 @@
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -10,6 +11,8 @@ import '../widgets/log_purchase_dialog.dart';
 import 'inventory_item_detail_view.dart';
 import '../models/inventory_item_detail_model.dart';
 
+// NEW: gating
+import 'package:fermentacraft/services/feature_gate.dart';
 
 // Sort options
 enum SortOption { name, stock, expiration }
@@ -64,6 +67,14 @@ class _InventoryPageState extends State<InventoryPage> {
     }
     // Fallback: attempt with the string itself
     return stringKey;
+  }
+
+  int _activeCount(Box<InventoryItem> box) =>
+      box.values.where((i) => i.isArchived == false).length;
+
+  void _upsell(BuildContext context, String reason) {
+showPaywall(context);
+
   }
 
   // ---------- Bulk Delete ----------
@@ -196,7 +207,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final color = danger ? cs.error : cs.primary;
     final onColor = danger ? cs.onError : cs.onPrimary;
     return Container(
-      color: color.withValues(alpha: 0.90),
+      color: color.withValues(alpha:0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -215,6 +226,7 @@ class _InventoryPageState extends State<InventoryPage> {
   @override
   Widget build(BuildContext context) {
     final inventoryBox = Hive.box<InventoryItem>('inventory');
+    final fg = FeatureGate.instance;
 
     return Scaffold(
       appBar: AppBar(
@@ -233,209 +245,265 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      hintText: "Search by name...",
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setState(() {}),
+
+      // ✅ One listener drives banner + list
+      body: ValueListenableBuilder<Box<InventoryItem>>(
+        valueListenable: inventoryBox.listenable(),
+        builder: (context, box, _) {
+          final activeCount = _activeCount(box);
+          final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+
+          return Column(
+            children: [
+              // Small limit banner for Free users on Active view
+              if (!_showArchived && !fg.isPro)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha:0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text('Free plan: $activeCount / ${fg.inventoryLimitFree} active items'),
+                      ),
+                      if (atLimit)
+                        TextButton(
+                          onPressed: () => _upsell(context, 'Inventory limit reached (Free)'),
+                          child: const Text('Upgrade'),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                DropdownButton<SortOption>(
-                  value: _sortOption,
-                  onChanged: (value) => setState(() => _sortOption = value!),
-                  items: const [
-                    DropdownMenuItem(value: SortOption.name, child: Text("Sort: Name")),
-                    DropdownMenuItem(value: SortOption.stock, child: Text("Sort: Stock Level")),
-                    DropdownMenuItem(value: SortOption.expiration, child: Text("Sort: Expiration")),
+
+              // Search + sort row
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: const InputDecoration(
+                          hintText: "Search by name...",
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    DropdownButton<SortOption>(
+                      value: _sortOption,
+                      onChanged: (value) => setState(() => _sortOption = value!),
+                      items: const [
+                        DropdownMenuItem(value: SortOption.name, child: Text("Sort: Name")),
+                        DropdownMenuItem(value: SortOption.stock, child: Text("Sort: Stock Level")),
+                        DropdownMenuItem(value: SortOption.expiration, child: Text("Sort: Expiration")),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ValueListenableBuilder(
-              valueListenable: inventoryBox.listenable(),
-              builder: (context, Box<InventoryItem> box, _) {
-                if (box.values.isEmpty) {
-                  return Center(
-                    child: Text(_showArchived ? "No archived items." : "No inventory items yet."),
-                  );
-                }
+              ),
 
-                final searchTerm = _searchController.text.toLowerCase();
-
-                final List<InventoryItem> filteredItems = box.values
-                    .where((item) =>
-                        item.isArchived == _showArchived && // filter by archive state
-                        item.name.toLowerCase().contains(searchTerm))
-                    .toList();
-
-                if (filteredItems.isEmpty) {
-                  return Center(
-                    child: Text(_showArchived ? "No archived items." : "No items match your filter."),
-                  );
-                }
-
-                // Sorting (includes expiration)
-                filteredItems.sort((a, b) {
-                  switch (_sortOption) {
-                    case SortOption.name:
-                      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-                    case SortOption.stock:
-                      return b.amountInStock.compareTo(a.amountInStock);
-                    case SortOption.expiration:
-                      final aDate = a.expirationDate;
-                      final bDate = b.expirationDate;
-                      if (aDate == null && bDate == null) return 0;
-                      if (aDate == null) return 1; // Items without dates go last
-                      if (bDate == null) return -1;
-                      return aDate.compareTo(bDate);
-                  }
-                });
-
-                // Group by category
-                final Map<String, List<InventoryItem>> grouped = {};
-                for (var item in filteredItems) {
-                  grouped.putIfAbsent(item.category, () => []).add(item);
-                }
-                final sortedCats = grouped.keys.toList()..sort();
-
-                return ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: sortedCats.map((cat) {
-                    final items = grouped[cat]!;
-                    return ExpansionTile(
-                      initiallyExpanded: true,
-                      title: Text(cat, style: Theme.of(context).textTheme.titleLarge),
-                      children: items.map((item) {
-                        final itemKey = item.key.toString(); // normalize key
-                        final isSelected = _selectedItemKeys.contains(itemKey);
-
-                        // Expiration color/text
-                        final now = DateTime.now();
-                        final twoWeeksFromNow = now.add(const Duration(days: 14));
-                        Color? expirationColor;
-                        String? expirationText;
-
-                        if (item.expirationDate != null) {
-                          final date = item.expirationDate!;
-                          expirationText = 'Expires: ${DateFormat.yMMMd().format(date)}';
-                          if (date.isBefore(now)) {
-                            expirationColor = Colors.red; // Expired
-                          } else if (date.isBefore(twoWeeksFromNow)) {
-                            expirationColor = Colors.orange; // Soon
-                          }
-                        }
-
-                        return Dismissible(
-                          key: ValueKey<String>(itemKey),
-                          background: _swipeBg(
-                            context,
-                            icon: item.isArchived ? Icons.unarchive : Icons.archive_outlined,
-                            label: item.isArchived ? 'Unarchive' : 'Archive',
-                            alignment: Alignment.centerLeft,
-                          ),
-                          secondaryBackground: _swipeBg(
-                            context,
-                            icon: Icons.delete_outline,
-                            label: 'Delete',
-                            alignment: Alignment.centerRight,
-                            danger: true,
-                          ),
-                          direction: DismissDirection.horizontal,
-                          confirmDismiss: (direction) async {
-                            if (direction == DismissDirection.startToEnd) {
-                              await _toggleArchiveStatus(item);
-                              return false; // handled via rebuild
-                            } else {
-                              await _deleteItemWithUndo(item);
-                              return false; // handled via snackbar/undo
-                            } 
-                          },
-                          child: Card(
-                            child: ListTile(
-                              leading: Checkbox(
-                                value: isSelected,
-                                onChanged: (selected) {
-                                  setState(() {
-                                    if (selected == true) {
-                                      _selectedItemKeys.add(itemKey);
-                                    } else {
-                                      _selectedItemKeys.remove(itemKey);
-                                    }
-                                  });
-                                },
-                              ),
-                              onTap: () => _showInventoryItemDetail(context, item),
-                              title: Text(item.name),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text("${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
-                                  if (expirationText != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                        expirationText,
-                                        style: TextStyle(color: expirationColor, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.attach_money),
-                                    tooltip: 'Log Purchase',
-                                    onPressed: () async {
-                                      await showDialog(context: context, builder: (_) => LogPurchaseDialog(item: item));
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.edit),
-                                    tooltip: 'Edit Item',
-                                    onPressed: () async {
-                                      await showDialog(context: context, builder: (_) => EditInventoryDialog(item: item));
-                                    },
-                                  ),
-                                  _moreMenu(item),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'addInventoryFab',
-        onPressed: () async {
-          await showDialog(
-            context: context,
-            builder: (_) => const AddInventoryDialog(),
+              // The list itself
+              Expanded(child: _buildInventoryList(box)),
+            ],
           );
         },
-        tooltip: 'Add Inventory Item',
-        child: const Icon(Icons.add),
       ),
+
+      // ✅ FAB listens too; disabled & tooltip when at limit
+floatingActionButton: ValueListenableBuilder<Box<InventoryItem>>(
+  valueListenable: Hive.box<InventoryItem>('inventory').listenable(),
+  builder: (context, box, _) {
+    final fg = FeatureGate.instance;
+    final activeCount = box.values.where((i) => !i.isArchived).length;
+    final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+
+    return FloatingActionButton(
+      heroTag: 'addInventoryFab',
+      onPressed: () async {
+        if (atLimit) {
+          _upsell(context, 'Inventory limit reached (Free)');
+          return;
+        }
+        await showDialog(
+          context: context,
+          builder: (_) => const AddInventoryDialog(),
+        );
+      },
+      tooltip: atLimit
+          ? 'Free limit reached (${fg.inventoryLimitFree}). Tap to upgrade.'
+          : 'Add Inventory Item',
+      child: const Icon(Icons.add),
+    );
+  },
+),
+
+    );
+  }
+
+  // ---------- List builder (kept separate for readability) ----------
+
+  Widget _buildInventoryList(Box<InventoryItem> box) {
+    if (box.values.isEmpty) {
+      return Center(
+        child: Text(_showArchived ? "No archived items." : "No inventory items yet."),
+      );
+    }
+
+    final searchTerm = _searchController.text.toLowerCase();
+
+    final List<InventoryItem> filteredItems = box.values
+        .where((item) =>
+            item.isArchived == _showArchived &&
+            item.name.toLowerCase().contains(searchTerm))
+        .toList();
+
+    if (filteredItems.isEmpty) {
+      return Center(
+        child: Text(_showArchived ? "No archived items." : "No items match your filter."),
+      );
+    }
+
+    // Sorting (includes expiration)
+    filteredItems.sort((a, b) {
+      switch (_sortOption) {
+        case SortOption.name:
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        case SortOption.stock:
+          return b.amountInStock.compareTo(a.amountInStock);
+        case SortOption.expiration:
+          final aDate = a.expirationDate;
+          final bDate = b.expirationDate;
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1; // Items without dates go last
+          if (bDate == null) return -1;
+          return aDate.compareTo(bDate);
+      }
+    });
+
+    // Group by category
+    final Map<String, List<InventoryItem>> grouped = {};
+    for (var item in filteredItems) {
+      grouped.putIfAbsent(item.category, () => []).add(item);
+    }
+    final sortedCats = grouped.keys.toList()..sort();
+
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: sortedCats.map((cat) {
+        final items = grouped[cat]!;
+        return ExpansionTile(
+          initiallyExpanded: true,
+          title: Text(cat, style: Theme.of(context).textTheme.titleLarge),
+          children: items.map((item) {
+            final itemKey = item.key.toString(); // normalize key
+            final isSelected = _selectedItemKeys.contains(itemKey);
+
+            // Expiration color/text
+            final now = DateTime.now();
+            final twoWeeksFromNow = now.add(const Duration(days: 14));
+            Color? expirationColor;
+            String? expirationText;
+
+            if (item.expirationDate != null) {
+              final date = item.expirationDate!;
+              expirationText = 'Expires: ${DateFormat.yMMMd().format(date)}';
+              if (date.isBefore(now)) {
+                expirationColor = Colors.red; // Expired
+              } else if (date.isBefore(twoWeeksFromNow)) {
+                expirationColor = Colors.orange; // Soon
+              }
+            }
+
+            return Dismissible(
+              key: ValueKey<String>(itemKey),
+              background: _swipeBg(
+                context,
+                icon: item.isArchived ? Icons.unarchive : Icons.archive_outlined,
+                label: item.isArchived ? 'Unarchive' : 'Archive',
+                alignment: Alignment.centerLeft,
+              ),
+              secondaryBackground: _swipeBg(
+                context,
+                icon: Icons.delete_outline,
+                label: 'Delete',
+                alignment: Alignment.centerRight,
+                danger: true,
+              ),
+              direction: DismissDirection.horizontal,
+              confirmDismiss: (direction) async {
+                if (direction == DismissDirection.startToEnd) {
+                  await _toggleArchiveStatus(item);
+                  return false; // handled via rebuild
+                } else {
+                  await _deleteItemWithUndo(item);
+                  return false; // handled via snackbar/undo
+                }
+              },
+              child: Card(
+                child: ListTile(
+                  leading: Checkbox(
+                    value: isSelected,
+                    onChanged: (selected) {
+                      setState(() {
+                        if (selected == true) {
+                          _selectedItemKeys.add(itemKey);
+                        } else {
+                          _selectedItemKeys.remove(itemKey);
+                        }
+                      });
+                    },
+                  ),
+                  onTap: () => _showInventoryItemDetail(context, item),
+                  title: Text(item.name),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("${item.amountInStock.toStringAsFixed(2)} ${item.getDisplayUnit(item.amountInStock)}"),
+                      if (expirationText != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            expirationText,
+                            style: TextStyle(color: expirationColor, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.attach_money),
+                        tooltip: 'Log Purchase',
+                        onPressed: () async {
+                          await showDialog(context: context, builder: (_) => LogPurchaseDialog(item: item));
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        tooltip: 'Edit Item',
+                        onPressed: () async {
+                          await showDialog(context: context, builder: (_) => EditInventoryDialog(item: item));
+                        },
+                      ),
+                      _moreMenu(item),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      }).toList(),
     );
   }
 }

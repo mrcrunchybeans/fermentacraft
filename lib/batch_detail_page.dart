@@ -1,3 +1,5 @@
+import 'package:fermentacraft/utils/inventory_item_extensions.dart';
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fermentacraft/models/recipe_model.dart';
@@ -23,6 +25,8 @@ import '../models/unit_type.dart';
 import 'package:intl/intl.dart';
 import 'models/shopping_list_item.dart';
 import 'widgets/planned_event_dialog.dart';
+import 'package:fermentacraft/services/feature_gate.dart';
+import 'package:fermentacraft/services/counts_service.dart';
 
 // Import the unique ID generator
 import '../utils/id.dart';
@@ -104,6 +108,47 @@ class _BatchDetailPageState extends State<BatchDetailPage>
         TextEditingController(text: initialBatch.finalNotes ?? '');
   }
 
+  Future<void> _onArchiveToggle(BatchModel batch) async {
+  final isArchiving = !batch.isArchived;
+
+  // Enforce Free cap when archiving
+  if (isArchiving && !FeatureGate.instance.isPro) {
+    final archived = CountsService.instance.archivedBatchCount();
+    if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Free allows ${FeatureGate.instance.archivedBatchLimitFree} archived batches')),
+      );
+      showPaywall(context);
+
+      return;
+    }
+  }
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text(isArchiving ? 'Archive Batch?' : 'Unarchive Batch?'),
+      content: Text('Are you sure you want to ${isArchiving ? 'archive' : 'unarchive'} "${batch.name}"?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text(isArchiving ? 'Archive' : 'Unarchive')),
+      ],
+    ),
+  );
+
+  if (confirmed != true) return;
+
+  batch.isArchived = isArchiving;
+  await batch.save();
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(isArchiving ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
+  );
+  setState(() {}); // refresh UI/read-only state
+}
+
+
   @override
   void dispose() {
     if (_isBrewModeEnabled) {
@@ -162,6 +207,24 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     );
   }
 
+bool _guardRecipeLimit(BuildContext context) {
+  final fg = FeatureGate.instance;
+  if (fg.isPro) return true;
+
+  final recipeBox = Hive.box<RecipeModel>('recipes');
+  final limit = fg.recipeLimitFree;
+  if (recipeBox.length >= limit) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Free allows $limit recipes')),
+    );
+showPaywall(context);
+
+    return false;
+  }
+  return true;
+}
+
+
   Future<void> _editYeastDialog(BatchModel batch, int index) async {
     final existing = batch.yeast[index];
     await showDialog(
@@ -175,6 +238,22 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       ),
     );
   }
+
+  bool _guardActiveBatchLimit(BuildContext context) {
+  final fg = FeatureGate.instance;
+  if (fg.isPro) return true;
+
+  final activeCount = CountsService.instance.activeBatchCount();
+  if (activeCount >= fg.activeBatchLimitFree) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batches')),
+    );
+showPaywall(context);
+
+    return false;
+  }
+  return true;
+}
 
   void _toggleBrewMode() {
     setState(() {
@@ -320,35 +399,60 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           );
         }
 
-        return ValueListenableBuilder<Box<InventoryItem>>(
-          valueListenable: Hive.box<InventoryItem>('inventory').listenable(),
-          builder: (context, inventoryBox, _) {
-            return Scaffold(
-              appBar: AppBar(
-                title: Text(batch.name),
-                actions: [
-                  IconButton(
-                    icon: Icon(
-                      _isBrewModeEnabled
-                          ? Icons.lightbulb
-                          : Icons.lightbulb_outline,
-                      color: _isBrewModeEnabled ? Colors.amber : null,
-                    ),
-                    tooltip: 'Toggle Brew Mode',
-                    onPressed: _toggleBrewMode,
-                  ),
-                ],
-                bottom: TabBar(
-                  controller: _tabController,
-                  tabs: const [
-                    Tab(text: 'Planning'),
-                    Tab(text: 'Preparation'),
-                    Tab(text: 'Fermenting'),
-                    Tab(text: 'Completed'),
-                  ],
-                ),
-              ),
-              body: TabBarView(
+  return Scaffold(
+    appBar: AppBar(
+      title: Text(batch.name),
+      actions: [
+        IconButton(
+          icon: Icon(
+            _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
+            color: _isBrewModeEnabled ? Colors.amber : null,
+          ),
+          tooltip: 'Toggle Brew Mode',
+          onPressed: _toggleBrewMode,
+        ),
+        IconButton(
+          tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
+          icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
+          onPressed: () => _onArchiveToggle(batch),
+        ),
+      ],
+      bottom: TabBar(
+        controller: _tabController,
+        tabs: const [
+          Tab(text: 'Planning'),
+          Tab(text: 'Preparation'),
+          Tab(text: 'Fermenting'),
+          Tab(text: 'Completed'),
+        ],
+      ),
+    ),
+    body: Column(
+      children: [
+        if (batch.isArchived)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha:0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.lock, size: 18),
+                SizedBox(width: 8),
+                Expanded(child: Text('This batch is archived and read-only.')),
+              ],
+            ),
+          ),
+
+        Expanded(
+          child: AbsorbPointer(
+            absorbing: batch.isArchived == true,
+            child: Opacity(
+              opacity: batch.isArchived == true ? 0.75 : 1.0,
+              child: TabBarView(
                 controller: _tabController,
                 children: [
                   _buildPlanningTab(batch),
@@ -357,12 +461,16 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   _buildCompletedTab(batch),
                 ],
               ),
-            );
-          },
-        );
-      },
-    );
-  }
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+},  // <-- closes the ValueListenableBuilder builder
+);
+}   // <-- closes build()
+
 
   Widget _buildPlanningTab(BatchModel batch) {
     return SingleChildScrollView(
@@ -384,17 +492,21 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             icon: const Icon(Icons.add),
             label: const Text('Add Ingredient'),
             onPressed: () async {
-              await showDialog<void>(
-                context: context,
-                builder: (_) => AddIngredientDialog(
-                  unitType: UnitType.mass,
-                  onAddToRecipe: (ingredient) {
-                    batch.ingredients.add(ingredient);
-                    batch.save();
-                  },
-                ),
-              );
-            },
+  await showDialog<void>(
+    context: context,
+    builder: (_) => AddIngredientDialog(
+      unitType: UnitType.mass,
+      onAddToRecipe: (ingredient) async {
+        // always add to the batch
+        batch.ingredients.add(ingredient);
+        await batch.save();
+
+        // if there's a linked recipe, add to it using the attached instance
+        await _addIngredientToLinkedRecipeIfAny(batch, ingredient);
+      },
+    ),
+  );
+},
           ),
           const SizedBox(height: 16),
           _sectionTitle('Yeast'),
@@ -989,6 +1101,8 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     if (confirmed != true || !mounted) return;
     final recipe = selectedRecipe;
     if (recipe == null) return;
+
+    
     if (syncYeast) {
       batch.yeast = List<Map<String, dynamic>>.from(recipe.yeast);
     }
@@ -1042,6 +1156,28 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       setState(() {});
     }
   }
+
+  // ADD: safely add to the linked recipe (if any) using an ATTACHED Hive object
+Future<void> _addIngredientToLinkedRecipeIfAny(
+  BatchModel batch,
+  Map<String, dynamic> ingredient,
+) async {
+  if (batch.recipeId.isEmpty) return; // no link, nothing to do
+
+  final recipeBox = Hive.box<RecipeModel>('recipes');
+  final recipe = recipeBox.get(batch.recipeId);
+  if (recipe == null) return; // stale link
+
+  // mutate the ATTACHED instance and save
+  recipe.ingredients = [...recipe.ingredients, ingredient];
+  await recipe.save();
+
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Also added to linked recipe')),
+  );
+}
+
 
   Future<void> _editPlannedEventDialog(BatchModel batch, int index) async {
     final updatedEvent = await showDialog<PlannedEvent>(
@@ -1301,34 +1437,40 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 ),
             ],
           ),
-          trailing: (!sufficient && !shouldDeduct)
-              ? ElevatedButton(
-                  onPressed: () {
-                    final shoppingBox =
-                        Hive.box<ShoppingListItem>('shopping_list');
-                    final amountNeeded = amount - inStock;
+trailing: (!sufficient && !shouldDeduct)
+    ? ElevatedButton(
+        onPressed: () {
+          if (!FeatureGate.instance.isPro) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Shopping List is a Premium feature')),
+            );
+showPaywall(context);
 
-                    if (amountNeeded > 0) {
-                      final newItem = ShoppingListItem(
-                        id: generateId(),
-                        // FIX: Removed 'createdAt' as it's not a parameter
-                        name: name,
-                        amount: amountNeeded,
-                        unit: unit,
-                        recipeName: batch.name,
-                      );
-                      shoppingBox.put(newItem.id, newItem);
+            return;
+          }
 
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text(
-                            'Added item to shopping list!'),
-                        duration: Duration(seconds: 2),
-                      ));
-                    }
-                  },
-                  child: const Icon(Icons.add_shopping_cart),
-                )
-              : null,
+          final shoppingBox = Hive.box<ShoppingListItem>('shopping_list');
+          final amountNeeded = amount - inStock;
+          if (amountNeeded > 0) {
+            final newItem = ShoppingListItem(
+              id: generateId(),
+              name: name,
+              amount: amountNeeded,
+              unit: unit,
+              recipeName: batch.name,
+            );
+            shoppingBox.put(newItem.id, newItem);
+
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Added item to shopping list!'),
+              duration: Duration(seconds: 2),
+            ));
+          }
+        },
+        child: const Icon(Icons.add_shopping_cart),
+      )
+    : null,
+
         ),
         Padding(
           padding:
@@ -1399,14 +1541,43 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     }
   }
 
-  void _showCreateInventoryItemDialog(String name, String unit) {
-    showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AddInventoryDialog(initialData: {'name': name, 'unit': unit});
-      },
-    );
+void _showCreateInventoryItemDialog(String name, String unit) {
+  final box = Hive.box<InventoryItem>('inventory');
+
+  // If an item with this name already exists, let the dialog open
+  // (it will merge into the existing item and is allowed on Free).
+  final alreadyExists = box.values.any(
+    (i) => i.name.toLowerCase() == name.toLowerCase(),
+  );
+
+  if (!alreadyExists) {
+    final fg = FeatureGate.instance;
+    final activeCount = box.values.where((i) => !i.isArchived).length;
+    final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+
+    if (atLimit) {
+      // Tell the user and offer upgrade. Do NOT open the dialog.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+showPaywall(context);
+
+      return;
+    }
   }
+
+  // Open as usual (AddInventoryDialog also re-checks inside, just in case)
+  showDialog<void>(
+    context: context,
+    builder: (BuildContext dialogContext) {
+      return AddInventoryDialog(initialData: {'name': name, 'unit': unit});
+    },
+  );
+}
+
 
   Future<void> _handleDeductionChange({
     required BatchModel batch,
@@ -1925,6 +2096,7 @@ FermentationChartWidget(
                 icon: const Icon(Icons.save_alt),
                 label: const Text('Save as Recipe'),
                 onPressed: () {
+                  if (!_guardRecipeLimit(context)) return; // <-- gate
                   final recipeBox = Hive.box<RecipeModel>('recipes');
                   final newRecipe = RecipeModel(
                     id: generateId(),
@@ -1955,6 +2127,7 @@ FermentationChartWidget(
                 icon: const Icon(Icons.copy),
                 label: const Text('Clone to New Batch'),
                 onPressed: () {
+                  if (!_guardActiveBatchLimit(context)) return; // <-- gate
                   final batchesBox = Hive.box<BatchModel>('batches');
 
                   final clonedBatch = BatchModel(
