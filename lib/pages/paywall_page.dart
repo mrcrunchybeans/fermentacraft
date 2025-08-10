@@ -43,7 +43,6 @@ class PaywallPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Consistent H1
                       Text(
                         'Unlock FermentaCraft Premium',
                         style: theme.textTheme.headlineSmall!.copyWith(
@@ -81,7 +80,6 @@ class PaywallPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Consistent H2
                     Text(
                       'Remove Free Version Limitations',
                       style: theme.textTheme.titleLarge!.copyWith(
@@ -101,12 +99,9 @@ class PaywallPage extends StatelessWidget {
                       subtitle:
                           'Gain full access to advanced calculators and tools when you need them most.',
                     ),
-
                     const SizedBox(height: 16),
                     Divider(color: cs.outlineVariant),
                     const SizedBox(height: 16),
-
-                    // Consistent H2
                     Text(
                       'What You Get with Premium',
                       style: theme.textTheme.titleLarge!.copyWith(
@@ -132,7 +127,7 @@ class PaywallPage extends StatelessWidget {
             ),
           ),
 
-          // CTA area (sticky) — wired to RevenueCat (mobile only)
+          // CTA area (sticky)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -154,7 +149,6 @@ class PaywallPage extends StatelessWidget {
                 final offerings = snap.data;
                 final current = offerings?.current;
 
-                // Find "annual" and "monthly" packages by identifier/title or type.
                 Package? annualPkg = _findPkg(current, idHint: 'annual');
                 Package? monthlyPkg = _findPkg(current, idHint: 'monthly');
 
@@ -167,7 +161,6 @@ class PaywallPage extends StatelessWidget {
                     (Theme.of(context).platform == TargetPlatform.android ||
                         Theme.of(context).platform == TargetPlatform.iOS);
 
-                // Build dynamic trial/intro text for each package
                 final String? monthlyIntroText = _buildIntroText(monthlyPkg);
                 final String? annualIntroText = _buildIntroText(annualPkg);
 
@@ -187,7 +180,6 @@ class PaywallPage extends StatelessWidget {
                           style: TextStyle(color: cs.error),
                         ),
                       ),
-
                     if (!isLoading && !hasError && annualPkg == null && monthlyPkg == null)
                       const Padding(
                         padding: EdgeInsets.only(bottom: 12),
@@ -204,7 +196,6 @@ class PaywallPage extends StatelessWidget {
                     ] else ...[
                       Row(
                         children: [
-                          // Annual Plan Card
                           Expanded(
                             child: _PlanOptionCard(
                               title: 'Yearly',
@@ -220,7 +211,6 @@ class PaywallPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 16),
-                          // Monthly Plan Card
                           Expanded(
                             child: _PlanOptionCard(
                               title: 'Monthly',
@@ -241,24 +231,49 @@ class PaywallPage extends StatelessWidget {
                     const SizedBox(height: 16),
                     TextButton(
                       onPressed: () async {
+                        // Show quick feedback
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Restoring purchases...'),
-                            duration: Duration(seconds: 2),
-                          ),
+                          const SnackBar(content: Text('Restoring purchases...')),
                         );
+
                         try {
-                          await RevenueCatService.instance.restore();
-                          if (FeatureGate.instance.isPremium && context.mounted) {
+                          // 1) Ask RC/Play to re-sync receipts
+                          final info = await Purchases.restorePurchases();
+
+                          // 2) Trust only RevenueCat entitlements (not local flags)
+                          final hasPremium = info.entitlements.active.containsKey('premium');
+
+                          if (hasPremium) {
+                            // Optional: update your own gate after the fact
+                            FeatureGate.instance.refreshFromCustomerInfo(info);
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Purchases restored.')),
+                              );
+                              Navigator.of(context).maybePop(true);
+                            }
+                          } else {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('No previous purchases found.')),
+                              );
+                            }
+                          }
+                        } on PlatformException catch (e) {
+                          final code = PurchasesErrorHelper.getErrorCode(e);
+                          if (code == PurchasesErrorCode.purchaseCancelledError) {
+                            return; // user backed out
+                          }
+                          if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Restored!')),
+                              SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
                             );
-                            Navigator.of(context).maybePop(true);
                           }
                         } catch (e) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Restore failed: $e')),
+                              SnackBar(content: Text('Restore error: $e')),
                             );
                           }
                         }
@@ -274,10 +289,8 @@ class PaywallPage extends StatelessWidget {
       ),
     );
 
-    // Dialog mode: body only; parent provides Material + width.
     if (asDialog) return content;
 
-    // Full-screen page mode
     return Scaffold(
       appBar: AppBar(title: const Text('Go Premium')),
       body: content,
@@ -305,7 +318,6 @@ class PaywallPage extends StatelessWidget {
   }
 
   /// Build dynamic intro/trial text from RevenueCat StoreProduct.introductoryPrice.
-  /// Handles free trials and paid intro discounts (cycles × period).
   static String? _buildIntroText(Package? pkg) {
     final sp = pkg?.storeProduct;
     if (sp == null) return null;
@@ -313,7 +325,6 @@ class PaywallPage extends StatelessWidget {
     final intro = sp.introductoryPrice;
     if (intro == null) return null;
 
-    // In your SDK version these are non-nullable; avoid null-aware ops.
     final String periodIso = intro.period;
     final int cycles = intro.cycles;
     final String introPriceString = intro.priceString;
@@ -324,25 +335,22 @@ class PaywallPage extends StatelessWidget {
     if (periodLabel == null) return null;
 
     if (isFree) {
-      // Example: "Free for 7 days" or "Free for 1 month"
       return 'Free for $periodLabel';
     } else {
-      // Example: "Intro: $1.99 for 3 months, then $4.99/month"
       final String regular = sp.priceString;
       final String unit = _baseUnit(periodIso) ?? 'period';
-      final String cyclesLabel = cycles > 1 ? ' for $cycles ${_pluralize(unit, cycles)}' : ' for 1 $unit';
+      final String cyclesLabel =
+          cycles > 1 ? ' for $cycles ${_pluralize(unit, cycles)}' : ' for 1 $unit';
       final String billingUnit = _billingUnit(sp.subscriptionPeriod ?? '');
       return 'Intro: $introPriceString$cyclesLabel, then $regular/$billingUnit';
     }
   }
 
-  /// Returns a short billing unit for the regular price (e.g., 'month', 'year') from ISO 8601 period.
   static String _billingUnit(String iso) {
     final unit = _baseUnit(iso);
     return unit ?? 'period';
   }
 
-  /// Extracts base unit ('day'/'week'/'month'/'year') from ISO 8601 period like 'P1M'
   static String? _baseUnit(String? iso) {
     if (iso == null) return null;
     if (iso.contains('D')) return 'day';
@@ -350,12 +358,10 @@ class PaywallPage extends StatelessWidget {
     if (iso.contains('M')) return 'month';
     if (iso.contains('Y')) return 'year';
     return null;
-    }
+  }
 
   static String _pluralize(String unit, int n) => n == 1 ? unit : '${unit}s';
 
-  /// Formats ISO 8601 period into human text.
-  /// P7D -> '7 days', P1W -> '1 week', P1M -> '1 month', P3M -> '3 months', P1Y -> '1 year'
   static String? _formatPeriod(String? iso) {
     if (iso == null) return null;
 
@@ -391,13 +397,12 @@ class PaywallPage extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Thanks for upgrading!')),
         );
-        Navigator.of(context).maybePop(true); // close paywall/dialog
+        Navigator.of(context).maybePop(true);
       }
     } on PlatformException catch (e) {
-      // Proper cancel handling on purchases_flutter v9+
       final code = PurchasesErrorHelper.getErrorCode(e);
       if (code == PurchasesErrorCode.purchaseCancelledError) {
-        return; // user backed out; don't show an error
+        return;
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -414,7 +419,6 @@ class PaywallPage extends StatelessWidget {
   }
 }
 
-// Reusable widget for highlighting benefits with an icon and text
 class _BenefitTile extends StatelessWidget {
   const _BenefitTile({
     required this.icon,
@@ -455,10 +459,8 @@ class _BenefitTile extends StatelessWidget {
   }
 }
 
-// Bullet point list
 class _FeatureBullet extends StatelessWidget {
   const _FeatureBullet({required this.text});
-
   final String text;
 
   @override
@@ -478,7 +480,6 @@ class _FeatureBullet extends StatelessWidget {
   }
 }
 
-// Plan option card
 class _PlanOptionCard extends StatelessWidget {
   const _PlanOptionCard({
     required this.title,
@@ -494,7 +495,7 @@ class _PlanOptionCard extends StatelessWidget {
   final String price;
   final String subtitle;
   final String? savings;
-  final String? trialText; // NEW
+  final String? trialText;
   final VoidCallback onPressed;
   final bool enabled;
 
@@ -592,7 +593,6 @@ class _PlanOptionCard extends StatelessWidget {
   }
 }
 
-/// Removes the overscroll glow for a cleaner modal feel.
 class _NoGlow extends ScrollBehavior {
   const _NoGlow();
   @override

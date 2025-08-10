@@ -43,7 +43,7 @@ class SoftLockOverlay extends StatelessWidget {
                     children: const [
                       Icon(Icons.lock),
                       SizedBox(width: 8),
-                      Text('Pro feature'),
+                      Text('Premium feature'),
                     ],
                   ),
                 ),

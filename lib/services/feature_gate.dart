@@ -1,14 +1,42 @@
 // lib/services/feature_gate.dart
-class FeatureGate {
+import 'package:flutter/foundation.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+
+class FeatureGate extends ChangeNotifier {
   FeatureGate._();
   static final instance = FeatureGate._();
 
-  bool isPremium = false;
+  // ---- Premium state (mirrors RevenueCat only) ----
+  bool _isPremium = false;
+  bool get isPremium => _isPremium;
 
-  void setPremium(bool value) {
-    if (isPremium == value) return;
-    isPremium = value;
-    // Later: if you wrap this with ChangeNotifier, call notifyListeners().
+  /// Call once after `Purchases.configure(...)` (e.g., in app init).
+  Future<void> bootstrap() async {
+    try {
+      final info = await Purchases.getCustomerInfo();
+      _apply(info);
+    } catch (_) {
+      // swallow; user just starts as free until RC responds
+    }
+    Purchases.addCustomerInfoUpdateListener((info) => _apply(info));
+  }
+
+  /// Use after explicit restore or purchase flows.
+  void refreshFromCustomerInfo(CustomerInfo info) => _apply(info);
+
+  void _apply(CustomerInfo info) {
+    final hasPremium = info.entitlements.active.containsKey('premium');
+    if (_isPremium != hasPremium) {
+      _isPremium = hasPremium;
+      notifyListeners();
+    }
+  }
+
+    void setFromBackend(bool active) {
+    if (_isPremium != active) {
+      _isPremium = active;
+      notifyListeners();
+    }
   }
 
   // ---- Free limits ----

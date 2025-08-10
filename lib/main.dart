@@ -11,6 +11,7 @@ import 'firebase_options.dart';
 import 'auth_gate.dart';
 
 // Models / Hive adapters
+import 'services/feature_gate.dart';
 import 'services/revenuecat_service.dart';
 import 'services/firestore_sync_service.dart';
 
@@ -60,6 +61,8 @@ Future<void> setupHive() async {
   await Hive.openBox('settings');
   await Hive.openBox<ShoppingListItem>('shopping_list');
   await Hive.openBox<Tag>('tags');
+  
+  
 }
 
 Future<void> main() async {
@@ -80,6 +83,8 @@ Future<void> main() async {
   // On Android/iOS: sets up RC and listens to Firebase Auth changes (logIn/logOut).
   // On Windows/Web/Mac: skips RC and mirrors premium from Firestore (per your service).
   await RevenueCatService.instance.init();
+  await FeatureGate.instance.bootstrap();
+
 
   // This is the line that was removed.
   // The service handles login after the user actually signs in.
@@ -106,6 +111,7 @@ Future<void> main() async {
     // FirebaseCrashlytics.instance.recordError(error, stack);
   });
 }
+
 
 class FermentaCraftApp extends StatelessWidget {
   const FermentaCraftApp({super.key});
