@@ -1,33 +1,33 @@
 // lib/main.dart
 import 'dart:async';
+import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:fermentacraft/services/feature_gate.dart';
 import 'firebase_options.dart';
 import 'auth_gate.dart';
 
 // Models / Hive adapters
-import 'package:fermentacraft/models/batch_model.dart';
-import 'package:fermentacraft/models/fermentation_stage.dart';
-import 'package:fermentacraft/models/inventory_item.dart';
-import 'package:fermentacraft/models/inventory_transaction_model.dart';
-import 'package:fermentacraft/models/measurement.dart';
-import 'package:fermentacraft/models/measurement_log.dart';
-import 'package:fermentacraft/models/planned_event.dart';
-import 'package:fermentacraft/models/recipe_model.dart';
-import 'package:fermentacraft/models/shopping_list_item.dart';
-import 'package:fermentacraft/models/tag.dart';
-import 'package:fermentacraft/models/purchase_transaction.dart';
-import 'package:fermentacraft/models/unit_type.dart';
-import 'package:fermentacraft/models/tag_manager.dart';
-
-import 'models/settings_model.dart';
+import 'services/revenuecat_service.dart';
 import 'services/firestore_sync_service.dart';
-import 'utils/inventory_item_extensions.dart'; // InventoryArchiveStore.ensureOpen()
+
+import 'models/batch_model.dart';
+import 'models/fermentation_stage.dart';
+import 'models/inventory_item.dart';
+import 'models/inventory_transaction_model.dart';
+import 'models/measurement.dart';
+import 'models/measurement_log.dart';
+import 'models/planned_event.dart';
+import 'models/recipe_model.dart';
+import 'models/shopping_list_item.dart';
+import 'models/tag.dart';
+import 'models/purchase_transaction.dart';
+import 'models/unit_type.dart';
+import 'models/tag_manager.dart';
+import 'models/settings_model.dart';
 
 // Theme
 import 'theme/app_theme.dart';
@@ -36,7 +36,7 @@ Future<void> setupHive() async {
   await Hive.initFlutter();
 
   // Register adapters BEFORE opening boxes that use them
-  Hive.registerAdapter(MeasurementAdapter());          // typeId: 6
+  Hive.registerAdapter(MeasurementAdapter());
   Hive.registerAdapter(FermentationStageAdapter());
   Hive.registerAdapter(PlannedEventAdapter());
   Hive.registerAdapter(TagAdapter());
@@ -47,7 +47,7 @@ Future<void> setupHive() async {
   Hive.registerAdapter(ShoppingListItemAdapter());
   Hive.registerAdapter(PurchaseTransactionAdapter());
   Hive.registerAdapter(UnitTypeAdapter());
-  Hive.registerAdapter(BatchModelAdapter());           // typeId: 34
+  Hive.registerAdapter(BatchModelAdapter());
 
   // Open boxes actually used
   await Hive.openBox<BatchModel>('batches');
@@ -64,28 +64,33 @@ Future<void> setupHive() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // TEMP: Toggle Free/Pro for testing soft-locks (replace with RevenueCat later)
-  FeatureGate.instance.isPro = false; // false = Free mode, true = Pro mode
+  // Configure Firestore once
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+  FirebaseFirestore.setLoggingEnabled(true);
+
+  // Local storage
+  await setupHive();
+
+  // Start your own sync service
+  await FirestoreSyncService.instance.init();
+
+  // Configure RevenueCat once.
+  // On Android/iOS: sets up RC and listens to Firebase Auth changes (logIn/logOut).
+  // On Windows/Web/Mac: skips RC and mirrors premium from Firestore (per your service).
+  await RevenueCatService.instance.init();
+
+  // This is the line that was removed.
+  // The service handles login after the user actually signs in.
 
   // Catch uncaught framework errors
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.dumpErrorToConsole(details);
-    // Forward to Crashlytics here later if you add it.
+    // Hook Crashlytics here later if you add it.
   };
 
   await runZonedGuarded<Future<void>>(() async {
-    // Firebase
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
-    FirebaseFirestore.setLoggingEnabled(true);
-
-    // Local storage
-    await setupHive();
-
-    // Start sync service (auth listener inside handles start/stop)
-    await FirestoreSyncService.instance.init();
-
     runApp(
       MultiProvider(
         providers: [

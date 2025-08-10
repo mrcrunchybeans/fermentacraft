@@ -26,7 +26,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
     final isArchiving = !batch.isArchived;
 
     // Enforce archived cap for Free
-    if (isArchiving && !FeatureGate.instance.isPro) {
+    if (isArchiving && !FeatureGate.instance.isPremium) {
       final archived = CountsService.instance.archivedBatchCount();
       if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
         ScaffoldMessenger.of(context).showSnackBar(

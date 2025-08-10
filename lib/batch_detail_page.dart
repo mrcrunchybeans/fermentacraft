@@ -112,7 +112,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   final isArchiving = !batch.isArchived;
 
   // Enforce Free cap when archiving
-  if (isArchiving && !FeatureGate.instance.isPro) {
+  if (isArchiving && !FeatureGate.instance.isPremium) {
     final archived = CountsService.instance.archivedBatchCount();
     if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -209,7 +209,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
 bool _guardRecipeLimit(BuildContext context) {
   final fg = FeatureGate.instance;
-  if (fg.isPro) return true;
+  if (fg.isPremium) return true;
 
   final recipeBox = Hive.box<RecipeModel>('recipes');
   final limit = fg.recipeLimitFree;
@@ -241,7 +241,7 @@ showPaywall(context);
 
   bool _guardActiveBatchLimit(BuildContext context) {
   final fg = FeatureGate.instance;
-  if (fg.isPro) return true;
+  if (fg.isPremium) return true;
 
   final activeCount = CountsService.instance.activeBatchCount();
   if (activeCount >= fg.activeBatchLimitFree) {
@@ -1440,7 +1440,7 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
 trailing: (!sufficient && !shouldDeduct)
     ? ElevatedButton(
         onPressed: () {
-          if (!FeatureGate.instance.isPro) {
+          if (!FeatureGate.instance.isPremium) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Shopping List is a Premium feature')),
             );
@@ -1553,7 +1553,7 @@ void _showCreateInventoryItemDialog(String name, String unit) {
   if (!alreadyExists) {
     final fg = FeatureGate.instance;
     final activeCount = box.values.where((i) => !i.isArchived).length;
-    final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+    final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 
     if (atLimit) {
       // Tell the user and offer upgrade. Do NOT open the dialog.

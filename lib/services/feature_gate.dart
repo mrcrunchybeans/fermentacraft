@@ -1,15 +1,15 @@
 // lib/services/feature_gate.dart
-
-/// Central switchboard for Free vs Pro behavior.
-/// - Flip [isPro] during development to simulate entitlements
-///   (we’ll wire this to RevenueCat later).
 class FeatureGate {
   FeatureGate._();
   static final instance = FeatureGate._();
 
-  /// TEMP: simulated entitlement (replace via RevenueCat later).
-  /// Set this in main() or a debug toggle in Settings.
-  bool isPro = false;
+  bool isPremium = false;
+
+  void setPremium(bool value) {
+    if (isPremium == value) return;
+    isPremium = value;
+    // Later: if you wrap this with ChangeNotifier, call notifyListeners().
+  }
 
   // ---- Free limits ----
   final int recipeLimitFree = 3;
@@ -18,21 +18,21 @@ class FeatureGate {
   final int inventoryLimitFree = 10;
 
   // ---- Count checks ----
-  bool canAddRecipe(int current)        => isPro || current < recipeLimitFree;
-  bool canAddActiveBatch(int current)   => isPro || current < activeBatchLimitFree;
-  bool canAddArchivedBatch(int current) => isPro || current < archivedBatchLimitFree;
-  bool canAddInventoryItem(int current) => isPro || current < inventoryLimitFree;
+  bool canAddRecipe(int current)        => isPremium || current < recipeLimitFree;
+  bool canAddActiveBatch(int current)   => isPremium || current < activeBatchLimitFree;
+  bool canAddArchivedBatch(int current) => isPremium || current < archivedBatchLimitFree;
+  bool canAddInventoryItem(int current) => isPremium || current < inventoryLimitFree;
 
-  // ---- Pro-only features (soft-locked when false) ----
-  bool get allowSync          => isPro;
-  bool get allowShoppingList  => isPro;
-  bool get allowDataExport    => isPro;
-  bool get allowGravityAdjust => isPro;
-  bool get allowSO2           => isPro;
-  bool get allowAcidTA        => isPro;
-  bool get allowStripReader   => isPro;
+  // ---- Premium-only features ----
+  bool get allowSync          => isPremium;
+  bool get allowShoppingList  => isPremium;
+  bool get allowDataExport    => isPremium;
+  bool get allowGravityAdjust => isPremium;
+  bool get allowSO2           => isPremium;
+  bool get allowAcidTA        => isPremium;
+  bool get allowStripReader   => isPremium;
 
-  // ---- Free tools (always available) ----
+  // ---- Free tools ----
   bool get allowABV           => true;
   bool get allowSGCorrection  => true;
   bool get allowFSU           => true;

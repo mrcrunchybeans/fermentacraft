@@ -194,15 +194,6 @@ showPaywall(context);
             ),
           ),
 
-          // --- DEV: Toggle Pro (remove later) ---
-          TextButton(
-            onPressed: () {
-              FeatureGate.instance.isPro = !FeatureGate.instance.isPro;
-              setState(() {});
-            },
-            child: Text('Toggle Pro (Now: ${FeatureGate.instance.isPro ? 'Pro' : 'Free'})'),
-          ),
-
           // --- DATA MANAGEMENT ---
           _sectionTitle("Data Management", context),
           Card(

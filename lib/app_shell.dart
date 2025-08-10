@@ -42,7 +42,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final isPro = FeatureGate.instance.isPro;
+    final isPremium = FeatureGate.instance.isPremium;
 
     return Scaffold(
       appBar: AppBar(
@@ -60,7 +60,7 @@ class _AppShellState extends State<AppShell> {
           preferredSize: const Size.fromHeight(28),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: isPro
+            child: isPremium
                 ? const ProBadge(unlocked: true, compact: true)
                 : InkWell(
                     borderRadius: BorderRadius.circular(999),
@@ -194,6 +194,14 @@ class MorePage extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 16),
+                                Text(
+                  'Built in La Crescent, MN. Apple Capital of Minnesota',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 Row(

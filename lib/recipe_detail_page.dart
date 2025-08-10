@@ -137,7 +137,7 @@ final fg = FeatureGate.instance;
 // If you have a dedicated recipe limit, use it. Otherwise pick a number:
 final int freeLimit = fg.recipeLimitFree; // define in FeatureGate if not present
 final int recipeCount = Hive.box<RecipeModel>('recipes').length;
-final bool atRecipeLimit = !fg.isPro && recipeCount >= freeLimit;
+final bool atRecipeLimit = !fg.isPremium && recipeCount >= freeLimit;
 
         return Scaffold(
           appBar: AppBar(

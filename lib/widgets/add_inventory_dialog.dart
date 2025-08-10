@@ -78,7 +78,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
     if (existingItem == null) {
       final fg = FeatureGate.instance;
       final activeCount = inventoryBox.values.where((i) => !i.isArchived).length;
-      final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+      final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 
       if (atLimit) {
         // Tell the user and offer upgrade. Keep the dialog open.

@@ -251,12 +251,12 @@ showPaywall(context);
         valueListenable: inventoryBox.listenable(),
         builder: (context, box, _) {
           final activeCount = _activeCount(box);
-          final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+          final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 
           return Column(
             children: [
               // Small limit banner for Free users on Active view
-              if (!_showArchived && !fg.isPro)
+              if (!_showArchived && !fg.isPremium)
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -324,7 +324,7 @@ floatingActionButton: ValueListenableBuilder<Box<InventoryItem>>(
   builder: (context, box, _) {
     final fg = FeatureGate.instance;
     final activeCount = box.values.where((i) => !i.isArchived).length;
-    final atLimit = !fg.isPro && activeCount >= fg.inventoryLimitFree;
+    final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 
     return FloatingActionButton(
       heroTag: 'addInventoryFab',
