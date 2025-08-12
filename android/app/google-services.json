@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "747130944683-p01e2kl5vf21b5977sepvo771945b6e9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fermentacraft",
+            "certificate_hash": "7bb3e98e2388fb9d0b32f0e34c0d4f264cb60af2"
+          }
+        },
+        {
           "client_id": "747130944683-3hjb8rbv0rm9ts7kha4ghk83m8pl22pf.apps.googleusercontent.com",
           "client_type": 3
         }

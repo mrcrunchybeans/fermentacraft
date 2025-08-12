@@ -81,4 +81,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'fermentacraft.firebasestorage.app',
     measurementId: 'G-7P16BEM159',
   );
+
 }

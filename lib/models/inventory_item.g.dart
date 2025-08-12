@@ -23,7 +23,7 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
       unitType: fields[3] as UnitType,
       category: fields[6] as String,
       notes: fields[4] as String?,
-      purchaseHistory: (fields[5] as List).cast<PurchaseTransaction>(),
+      purchaseHistory: (fields[5] as List?)?.cast<PurchaseTransaction>(),
     );
   }
 
@@ -48,12 +48,12 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
   }
 
   @override
+  int get hashCode => typeId.hashCode;
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is InventoryItemAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
-
-  @override
-  int get hashCode => typeId.hashCode;
 }

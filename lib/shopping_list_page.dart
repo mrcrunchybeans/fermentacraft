@@ -185,14 +185,17 @@ showPaywall(context);
     final fg = FeatureGate.instance;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: const [
-            Text('🛒 Shopping List'),
-            SizedBox(width: 8),
-            ProBadge(), // subtle Pro tag
-          ],
-        ),
+appBar: AppBar(
+  title: Row(
+    children: [
+      const Text('🛒 Shopping List'),
+      const SizedBox(width: 8),
+      ProBadge(
+        label: 'Premium', // always say "Premium"
+        unlocked: FeatureGate.instance.allowShoppingList, // tint if user has it
+      ),
+    ],
+  ),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),

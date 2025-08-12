@@ -73,10 +73,7 @@ class FermentaStatusTheme extends ThemeExtension<FermentaStatusTheme> {
     );
   }
 
-  /// Foreground/text color for a given phase.
   Color fgFor(FermentationPhase phase) => fg[phase]!;
-
-  /// Background "chip" color for a given phase.
   Color bgFor(FermentationPhase phase) => bg[phase]!;
 
   @override
@@ -215,10 +212,11 @@ class AppTheme {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       );
 
+  /// Dark inputs were too transparent on OLED → increase fill.
   static InputDecorationTheme _inputs(ColorScheme c, {required bool dark}) {
     final fill = dark
-        ? c.surfaceContainerHighest.withValues(alpha: 0.30)
-        : c.surfaceContainerHighest.withValues(alpha: 0.50);
+        ? c.surfaceContainerHighest.withValues(alpha:0.55) // was ~0.30
+        : c.surfaceContainerHighest.withValues(alpha:0.50);
 
     OutlineInputBorder border(Color color, [double w = 1]) =>
         OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: color, width: w));
@@ -259,7 +257,6 @@ class AppTheme {
           insets: EdgeInsets.symmetric(horizontal: 8),
         ),
       ).copyWith(
-        // color must be set outside const
         indicator: UnderlineTabIndicator(
           borderSide: BorderSide(width: 3, color: c.primary),
           insets: const EdgeInsets.symmetric(horizontal: 8),
@@ -335,11 +332,11 @@ class AppTheme {
         textStyle: TextStyle(color: c.onSurface),
       );
 
-  static ScrollbarThemeData _scrollbars(ColorScheme c) => const ScrollbarThemeData(
-        thumbVisibility: WidgetStatePropertyAll(true),
-        thickness: WidgetStatePropertyAll(6),
-        radius: Radius.circular(999),
-      );
+  static const ScrollbarThemeData _scrollbars = ScrollbarThemeData(
+    thumbVisibility: WidgetStatePropertyAll(true),
+    thickness: WidgetStatePropertyAll(6),
+    radius: Radius.circular(999),
+  );
 
   static DividerThemeData _dividers(ColorScheme c) => DividerThemeData(
         color: c.outline.withValues(alpha: 0.5),
@@ -361,17 +358,38 @@ class AppTheme {
         trackOutlineColor: WidgetStatePropertyAll(c.outline.withValues(alpha: 0.5)),
       );
 
-  static SegmentedButtonThemeData _segments(ColorScheme c) => SegmentedButtonThemeData(
-        style: ButtonStyle(
-          shape: WidgetStatePropertyAll(_shape),
-          side: WidgetStatePropertyAll(BorderSide(color: c.outline)),
-          backgroundColor: WidgetStateProperty.resolveWith(
-            (s) => s.contains(WidgetState.selected)
-                ? c.primary.withValues(alpha: 0.12)
-                : c.surface,
-          ),
+  /// Refactored: high-contrast segmented buttons, esp. for dark mode/OLED.
+  static SegmentedButtonThemeData _segments(ColorScheme c, {required bool dark}) {
+    final Color unselectedBg = dark ? c.surfaceContainerHighest : c.surface;
+    final Color unselectedFg = dark ? c.onSurface : c.onSurfaceVariant;
+    final Color selectedBg = dark ? c.primaryContainer : c.primary.withValues(alpha:0.16);
+    final Color selectedFg = dark ? c.onPrimaryContainer : c.onPrimary;
+
+    return SegmentedButtonThemeData(
+      style: ButtonStyle(
+        shape: WidgetStatePropertyAll(_shape),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
+        side: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return BorderSide(color: selected ? c.primary : c.outline, width: selected ? 1.6 : 1.0);
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return c.surface.withValues(alpha:0.12);
+          }
+          if (states.contains(WidgetState.selected)) return selectedBg;
+          return unselectedBg; // opaque enough for OLED
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? selectedFg : unselectedFg,
         ),
-      );
+        iconColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? selectedFg : unselectedFg,
+        ),
+        overlayColor: WidgetStatePropertyAll(c.primary.withValues(alpha:0.10)),
+      ),
+    );
+  }
 
   // ---------- Light Theme ----------
   static ThemeData get lightTheme {
@@ -408,11 +426,11 @@ class AppTheme {
       tooltipTheme: _tooltip(c),
       expansionTileTheme: _expansion(c),
       popupMenuTheme: _menu(c),
-      scrollbarTheme: _scrollbars(c),
+      scrollbarTheme: _scrollbars,
       dividerTheme: _dividers(c),
       progressIndicatorTheme: _progress(c),
       switchTheme: _switches(c),
-      segmentedButtonTheme: _segments(c),
+      segmentedButtonTheme: _segments(c, dark: false),
       sliderTheme: const SliderThemeData(showValueIndicator: ShowValueIndicator.always),
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
         TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
@@ -421,7 +439,6 @@ class AppTheme {
         TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
         TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
       }),
-      // <- Extensions live here
       extensions: <ThemeExtension<dynamic>>[
         FermentaStatusTheme.light(c),
       ],
@@ -463,11 +480,11 @@ class AppTheme {
       tooltipTheme: _tooltip(c),
       expansionTileTheme: _expansion(c),
       popupMenuTheme: _menu(c),
-      scrollbarTheme: _scrollbars(c),
+      scrollbarTheme: _scrollbars,
       dividerTheme: _dividers(c),
       progressIndicatorTheme: _progress(c),
       switchTheme: _switches(c),
-      segmentedButtonTheme: _segments(c),
+      segmentedButtonTheme: _segments(c, dark: true), // <- stronger contrast
       sliderTheme: const SliderThemeData(showValueIndicator: ShowValueIndicator.always),
       pageTransitionsTheme: const PageTransitionsTheme(builders: {
         TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),

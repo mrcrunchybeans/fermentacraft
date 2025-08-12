@@ -1,4 +1,3 @@
-// lib/models/measurement.g.dart
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
 part of 'measurement.dart';

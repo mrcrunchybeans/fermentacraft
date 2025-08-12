@@ -208,19 +208,21 @@ showPaywall(context);
 
               // Total Cost
               TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Total Cost (\$)',
-                  contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onSaved: (val) {
-                  final parsed = double.tryParse((val ?? '').trim());
-                  _cost = (parsed != null && parsed >= 0) ? parsed : 0;
-                },
-                validator: (val) => (val == null || val.trim().isEmpty)
-                    ? 'Required'
-                    : (double.tryParse(val.trim()) == null ? 'Invalid number' : null),
-              ),
+  decoration: const InputDecoration(
+    labelText: 'Total Cost (\$) — optional',
+    contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+  ),
+  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+  onSaved: (val) {
+    final v = double.tryParse((val ?? '').trim());
+    _cost = (v != null && v >= 0) ? v : 0; // blank/invalid -> 0
+  },
+  validator: (val) {
+    if (val == null || val.trim().isEmpty) return null; // optional
+    return double.tryParse(val.trim()) == null ? 'Invalid number' : null;
+  },
+),
+
               const SizedBox(height: 10),
 
               // Notes

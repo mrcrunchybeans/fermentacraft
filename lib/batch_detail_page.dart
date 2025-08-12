@@ -399,6 +399,12 @@ showPaywall(context);
           );
         }
 
+final media = MediaQuery.of(context);
+final width = media.size.width;
+final double scale = MediaQuery.textScalerOf(context).scale(1.0); // 👈 new API
+final bool needsScroll = width < 380 || scale > 1.0;
+
+// Optional: shorter labels on tight screens
   return Scaffold(
     appBar: AppBar(
       title: Text(batch.name),
@@ -419,11 +425,16 @@ showPaywall(context);
       ],
       bottom: TabBar(
         controller: _tabController,
+        isScrollable: needsScroll,
+        tabAlignment: needsScroll ? TabAlignment.start : TabAlignment.center,
+
+    labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+    
         tabs: const [
-          Tab(text: 'Planning'),
-          Tab(text: 'Preparation'),
-          Tab(text: 'Fermenting'),
-          Tab(text: 'Completed'),
+          Tab(text: 'Plan'),
+          Tab(text: 'Prep'),
+          Tab(text: 'Ferment'),
+          Tab(text: 'Complete'),
         ],
       ),
     ),
@@ -577,6 +588,116 @@ showPaywall(context);
     );
   }
 
+Future<bool> _confirmDelete({
+  required String title,
+  required String message,
+}) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+}
+
+void _showUndoSnackBar({
+  required String label,
+  required VoidCallback onUndo,
+}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(label),
+      action: SnackBarAction(label: 'Undo', onPressed: onUndo),
+      duration: const Duration(seconds: 4),
+    ),
+  );
+}
+
+// Delete + Undo for Ingredients
+Future<void> _deleteIngredient(BatchModel batch, int index) async {
+  final map = Map<String, dynamic>.from(batch.ingredients[index]);
+  final name = (map['name'] as String?) ?? 'ingredient';
+  final confirmed = await _confirmDelete(
+    title: 'Remove Ingredient',
+    message: 'Remove "$name" from this batch?',
+  );
+  if (!confirmed) return;
+
+  final removed = batch.ingredients.removeAt(index);
+  await batch.save();
+  if (!mounted) return;
+
+  _showUndoSnackBar(
+    label: 'Removed $name',
+    onUndo: () async {
+      batch.ingredients.insert(index, removed);
+      await batch.save();
+      if (mounted) setState(() {});
+    },
+  );
+  setState(() {});
+}
+
+// Delete + Undo for Yeast
+Future<void> _deleteYeast(BatchModel batch, int index) async {
+  final map = Map<String, dynamic>.from(batch.yeast[index]);
+  final name = (map['name'] as String?) ?? 'yeast';
+  final confirmed = await _confirmDelete(
+    title: 'Remove Yeast',
+    message: 'Remove "$name" from this batch?',
+  );
+  if (!confirmed) return;
+
+  final removed = batch.yeast.removeAt(index);
+  await batch.save();
+  if (!mounted) return;
+
+  _showUndoSnackBar(
+    label: 'Removed $name',
+    onUndo: () async {
+      batch.yeast.insert(index, removed);
+      await batch.save();
+      if (mounted) setState(() {});
+    },
+  );
+  setState(() {});
+}
+
+// Delete + Undo for Additives
+Future<void> _deleteAdditive(BatchModel batch, int index) async {
+  final map = Map<String, dynamic>.from(batch.additives[index]);
+  final name = (map['name'] as String?) ?? 'additive';
+  final confirmed = await _confirmDelete(
+    title: 'Remove Additive',
+    message: 'Remove "$name" from this batch?',
+  );
+  if (!confirmed) return;
+
+  final removed = batch.additives.removeAt(index);
+  await batch.save();
+  if (!mounted) return;
+
+  _showUndoSnackBar(
+    label: 'Removed $name',
+    onUndo: () async {
+      batch.additives.insert(index, removed);
+      await batch.save();
+      if (mounted) setState(() {});
+    },
+  );
+  setState(() {});
+}
+
   // --- PLANNING TAB LIST WIDGETS ---
 
   Widget _ingredientsList(BatchModel batch) {
@@ -605,30 +726,45 @@ showPaywall(context);
         final inStock = inventoryItem.amountInStock;
         final sufficient = inStock >= amount;
 
-        return InkWell(
-          onLongPress: () => _editIngredientDialog(batch, index),
-          child: ListTile(
-            leading: const Icon(Icons.liquor_outlined),
-            title: Text('$amount $unit $name'),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (note.isNotEmpty) Text(note),
-                if (inventoryItem.name.isNotEmpty)
-                  Text(
-                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
-                    style: TextStyle(
-                      color: sufficient ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  )
-                else
-                  const Text('Not in inventory',
-                      style: TextStyle(color: Colors.grey)),
-              ],
+return InkWell(
+  onLongPress: () => _editIngredientDialog(batch, index),
+  child: ListTile(
+    leading: const Icon(Icons.liquor_outlined),
+    title: Text('$amount $unit $name'),
+    subtitle: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (note.isNotEmpty) Text(note),
+        if (inventoryItem.name.isNotEmpty)
+          Text(
+            'In stock: ${inStock.toStringAsFixed(2)} $unit',
+            style: TextStyle(
+              color: sufficient ? Colors.green : Colors.red,
+              fontWeight: FontWeight.w500,
             ),
-          ),
-        );
+          )
+        else
+          const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
+      ],
+    ),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Edit',
+          icon: const Icon(Icons.edit),
+          onPressed: () => _editIngredientDialog(batch, index),
+        ),
+        IconButton(
+          tooltip: 'Delete',
+          icon: const Icon(Icons.delete, color: Colors.red),
+          onPressed: () => _deleteIngredient(batch, index),
+        ),
+      ],
+    ),
+  ),
+);
+
       }).toList(),
     );
   }
@@ -660,29 +796,44 @@ showPaywall(context);
         final sufficient = inStock >= amount;
 
         return InkWell(
-          onLongPress: () => _editAdditiveDialog(batch, index),
-          child: ListTile(
-            leading: const Icon(Icons.science),
-            title: Text('$amount $unit $name'),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (note.isNotEmpty) Text(note),
-                if (inventoryItem.name.isNotEmpty)
-                  Text(
-                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
-                    style: TextStyle(
-                      color: sufficient ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  )
-                else
-                  const Text('Not in inventory',
-                      style: TextStyle(color: Colors.grey)),
-              ],
+  onLongPress: () => _editAdditiveDialog(batch, index),
+  child: ListTile(
+    leading: const Icon(Icons.science),
+    title: Text('$amount $unit $name'),
+    subtitle: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (note.isNotEmpty) Text(note),
+        if (inventoryItem.name.isNotEmpty)
+          Text(
+            'In stock: ${inStock.toStringAsFixed(2)} $unit',
+            style: TextStyle(
+              color: sufficient ? Colors.green : Colors.red,
+              fontWeight: FontWeight.w500,
             ),
-          ),
-        );
+          )
+        else
+          const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
+      ],
+    ),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Edit',
+          icon: const Icon(Icons.edit),
+          onPressed: () => _editAdditiveDialog(batch, index),
+        ),
+        IconButton(
+          tooltip: 'Delete',
+          icon: const Icon(Icons.delete, color: Colors.red),
+          onPressed: () => _deleteAdditive(batch, index),
+        ),
+      ],
+    ),
+  ),
+);
+
       }).toList(),
     );
   }
@@ -713,22 +864,37 @@ showPaywall(context);
         final sufficient = inStock >= amount;
 
         return InkWell(
-          onLongPress: () => _editYeastDialog(batch, index),
-          child: ListTile(
-            leading: const Icon(Icons.bubble_chart),
-            title: Text('$amount $unit $name'),
-            subtitle: inventoryItem.name.isNotEmpty
-                ? Text(
-                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
-                    style: TextStyle(
-                      color: sufficient ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  )
-                : const Text('Not in inventory',
-                    style: TextStyle(color: Colors.grey)),
-          ),
-        );
+  onLongPress: () => _editYeastDialog(batch, index),
+  child: ListTile(
+    leading: const Icon(Icons.bubble_chart),
+    title: Text('$amount $unit $name'),
+    subtitle: inventoryItem.name.isNotEmpty
+        ? Text(
+            'In stock: ${inStock.toStringAsFixed(2)} $unit',
+            style: TextStyle(
+              color: sufficient ? Colors.green : Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          )
+        : const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Edit',
+          icon: const Icon(Icons.edit),
+          onPressed: () => _editYeastDialog(batch, index),
+        ),
+        IconButton(
+          tooltip: 'Delete',
+          icon: const Icon(Icons.delete, color: Colors.red),
+          onPressed: () => _deleteYeast(batch, index),
+        ),
+      ],
+    ),
+  ),
+);
+
       }).toList(),
     );
   }

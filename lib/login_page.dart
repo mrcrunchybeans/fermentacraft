@@ -1,6 +1,11 @@
+// lib/pages/login_page.dart
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+
 import '../services/auth_service.dart';
 import 'register_page.dart';
 
@@ -18,11 +23,23 @@ class _LoginPageState extends State<LoginPage> {
   String? errorMessage;
   bool isLoading = false;
 
+  bool get _rcSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _logInRevenueCat(User? user) async {
+    if (!_rcSupported || user == null) return;
+    try {
+      await Purchases.logIn(user.uid);
+      debugPrint('RevenueCat login OK for ${user.uid}');
+    } catch (e) {
+      debugPrint('RevenueCat login failed: $e');
+    }
   }
 
   Future<void> login() async {
@@ -32,22 +49,19 @@ class _LoginPageState extends State<LoginPage> {
       isLoading = true;
     });
 
-    bool success = false;
+    User? user;
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-      success = true; // AuthGate will replace this page
+      user = cred.user;
+      await _logInRevenueCat(user);
+      // AuthGate will navigate on auth state change.
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() {
-          errorMessage = e.message;
-        });
-      }
+      if (mounted) setState(() => errorMessage = e.message);
     } finally {
-      // Only stop spinner if we're still on this page and login didn't succeed
-      if (mounted && !success) {
+      if (mounted && user == null) {
         setState(() => isLoading = false);
       }
     }
@@ -60,35 +74,36 @@ class _LoginPageState extends State<LoginPage> {
       isLoading = true;
     });
 
-    bool success = false;
+    User? user;
     try {
-      final user = await signInWithGoogle();
-      success = user != null;
+      // Uses web popup→redirect fallback internally on web.
+      final cred = await AuthService.instance.signInWithGoogle();
+      user = cred?.user;
 
-      if (!success && mounted) {
-        setState(() {
-          errorMessage = 'Google sign-in failed or was cancelled.';
-        });
+      if (kIsWeb && cred == null) {
+        // On web, null here likely means we triggered a redirect.
+        // Don’t show an error; the page will reload and complete via getRedirectResult().
+        return;
       }
-      // If success, AuthGate will swap this page—do not call setState.
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          errorMessage = 'Google sign-in failed.';
-        });
+
+      if (user == null && mounted) {
+        setState(() => errorMessage = 'Google sign-in failed or was cancelled.');
+      } else {
+        await _logInRevenueCat(user);
       }
+    } catch (e) {
+      if (mounted) setState(() => errorMessage = 'Google sign-in failed.');
     } finally {
-      if (mounted && !success) {
+      if (mounted && user == null && !kIsWeb) {
+        // If we’re not redirecting (mobile) and no user, stop spinner.
         setState(() => isLoading = false);
       }
+      // On web redirect path, we intentionally leave the spinner alone since the page is navigating.
     }
   }
 
   void goToRegister() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const RegisterPage()),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterPage()));
   }
 
   void _showForgotPasswordDialog() {
@@ -113,11 +128,8 @@ class _LoginPageState extends State<LoginPage> {
           TextButton(
             onPressed: () async {
               final email = resetEmailController.text.trim();
-
               if (email.isEmpty) {
-                if (mounted) {
-                  setState(() => errorMessage = 'Please enter an email address.');
-                }
+                if (mounted) setState(() => errorMessage = 'Please enter an email address.');
                 return;
               }
 
@@ -130,13 +142,10 @@ class _LoginPageState extends State<LoginPage> {
 
               try {
                 await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-
                 if (!dialogContext.mounted) return;
-
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   const SnackBar(content: Text('Password reset email sent.')),
                 );
-
                 Navigator.of(dialogContext).pop();
               } on FirebaseAuthException catch (e) {
                 if (mounted) setState(() => errorMessage = e.message);
@@ -241,10 +250,7 @@ class _LoginPageState extends State<LoginPage> {
                           child: SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           ),
                         )
                       : const Text('Log In'),
@@ -275,10 +281,7 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text("Don't have an account? "),
-                  TextButton(
-                    onPressed: goToRegister,
-                    child: const Text('Create one'),
-                  ),
+                  TextButton(onPressed: goToRegister, child: const Text('Create one')),
                 ],
               ),
               TextButton(

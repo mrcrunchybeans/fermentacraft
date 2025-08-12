@@ -1,40 +1,59 @@
 // lib/services/feature_gate.dart
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 class FeatureGate extends ChangeNotifier {
   FeatureGate._();
   static final instance = FeatureGate._();
 
-  // ---- Premium state (mirrors RevenueCat only) ----
+  // ---- Premium state (single source of truth for the UI) ----
   bool _isPremium = false;
   bool get isPremium => _isPremium;
 
-  /// Call once after `Purchases.configure(...)` (e.g., in app init).
+  // RevenueCat is only available/used on mobile platforms.
+  bool get _rcSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+       defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// Call once during app init.
+  /// - On Android/iOS, mirrors RevenueCat entitlements.
+  /// - On desktop/web, no-op (you should call `setFromBackend(...)`
+  ///   from your Firestore listener when the Stripe/CF mirror flips premium).
   Future<void> bootstrap() async {
+    if (!_rcSupported) return;
+
     try {
       final info = await Purchases.getCustomerInfo();
-      _apply(info);
+      _applyRC(info);
     } catch (_) {
-      // swallow; user just starts as free until RC responds
+      // Start as free until RC responds.
     }
-    Purchases.addCustomerInfoUpdateListener((info) => _apply(info));
+
+    Purchases.addCustomerInfoUpdateListener((info) => _applyRC(info));
   }
 
-  /// Use after explicit restore or purchase flows.
-  void refreshFromCustomerInfo(CustomerInfo info) => _apply(info);
+  /// Use after explicit RC restore/purchase flows (mobile only).
+  void refreshFromCustomerInfo(CustomerInfo info) {
+    if (_rcSupported) _applyRC(info);
+  }
 
-  void _apply(CustomerInfo info) {
+  /// Desktop/Web (or any trusted backend signal):
+  /// call this when your Firestore mirror says premium is active/inactive.
+  void setFromBackend(bool active) {
+    _setPremium(active);
+  }
+
+  // ---- Internal setters ----
+  void _applyRC(CustomerInfo info) {
     final hasPremium = info.entitlements.active.containsKey('premium');
-    if (_isPremium != hasPremium) {
-      _isPremium = hasPremium;
-      notifyListeners();
-    }
+    _setPremium(hasPremium);
   }
 
-    void setFromBackend(bool active) {
-    if (_isPremium != active) {
-      _isPremium = active;
+  void _setPremium(bool next) {
+    if (_isPremium != next) {
+      _isPremium = next;
       notifyListeners();
     }
   }
@@ -60,7 +79,7 @@ class FeatureGate extends ChangeNotifier {
   bool get allowAcidTA        => isPremium;
   bool get allowStripReader   => isPremium;
 
-  // ---- Free tools ----
+  // ---- Always-free tools ----
   bool get allowABV           => true;
   bool get allowSGCorrection  => true;
   bool get allowFSU           => true;

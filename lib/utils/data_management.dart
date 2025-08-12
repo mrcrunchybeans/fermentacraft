@@ -1,14 +1,9 @@
 import 'dart:convert';
-import 'dart:io' if (dart.library.html) 'dart:html'; // Use dart:io, but not on web
-
-import 'package:flutter/foundation.dart' show kIsWeb; // To check for web platform
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:file_selector/file_selector.dart';
-import 'package:universal_html/html.dart' as html; // For web downloads
 
 // Hive model imports
 import '../models/recipe_model.dart';
@@ -16,6 +11,9 @@ import '../models/batch_model.dart';
 import '../models/inventory_item.dart';
 import '../models/tag.dart';
 import '../models/shopping_list_item.dart';
+
+// Cross-platform save helper (IO on device, download on web)
+import '../utils/file_saver.dart';
 
 class DataManagementService {
   static const List<String> _boxNames = [
@@ -27,21 +25,21 @@ class DataManagementService {
     'shopping_list',
   ];
 
-    static final Map<String, Function> _fromJsonConstructors = {
-      'recipes': (json) => RecipeModel.fromJson(json),
-      'batches': (json) => BatchModel.fromJson(json),
-      'inventory': (json) => InventoryItem.fromJson(json),
-      'tags': (json) => Tag.fromJson(json),
-      'shopping_list': (json) => ShoppingListItem.fromJson(json),
-    };
+  static final Map<String, Function> _fromJsonConstructors = {
+    'recipes': (json) => RecipeModel.fromJson(json),
+    'batches': (json) => BatchModel.fromJson(json),
+    'inventory': (json) => InventoryItem.fromJson(json),
+    'tags': (json) => Tag.fromJson(json),
+    'shopping_list': (json) => ShoppingListItem.fromJson(json),
+  };
 
-    static Function fromJsonFor(String boxName) {
-      final ctor = _fromJsonConstructors[boxName];
-      if (ctor == null) {
-        throw ArgumentError('No fromJson constructor for box: $boxName');
-      }
-      return ctor;
+  static Function fromJsonFor(String boxName) {
+    final ctor = _fromJsonConstructors[boxName];
+    if (ctor == null) {
+      throw ArgumentError('No fromJson constructor for box: $boxName');
     }
+    return ctor;
+  }
 
   // Helper to get a typed Hive box
   static Box getTypedBox(String name) {
@@ -63,13 +61,11 @@ class DataManagementService {
     }
   }
 
-  /// Deletes all data from all Hive boxes and re-opens them with the correct types.
+  /// Deletes all data from all Hive boxes and reopens them with correct types.
   static Future<void> clearAllData() async {
     try {
       for (final boxName in _boxNames) {
         await Hive.deleteBoxFromDisk(boxName);
-
-        // Re-open each box with its specific type to prevent HiveError.
         switch (boxName) {
           case 'recipes':
             await Hive.openBox<RecipeModel>(boxName);
@@ -87,7 +83,7 @@ class DataManagementService {
             await Hive.openBox<ShoppingListItem>(boxName);
             break;
           case 'settings':
-            await Hive.openBox(boxName); // Settings box is not strongly typed
+            await Hive.openBox(boxName);
             break;
         }
       }
@@ -96,7 +92,7 @@ class DataManagementService {
     }
   }
 
-  /// Exports all Hive data to a JSON file.
+  /// Exports all Hive data to a JSON file (download on web, save/share on device).
   static Future<void> exportData(BuildContext context) async {
     try {
       final Map<String, dynamic> allData = {};
@@ -115,13 +111,13 @@ class DataManagementService {
         for (var i = 0; i < box.length; i++) {
           final item = box.getAt(i);
           if (item == null) continue;
-
           try {
             final Map<String, dynamic> jsonItem = item.toJson();
             boxData.add(jsonItem);
           } catch (e) {
             throw Exception(
-              "Failed to serialize item in box '$boxName'. Check the debug console for details.",
+              "Failed to serialize item in box '$boxName'. "
+              "Check the debug console for details.",
             );
           }
         }
@@ -129,42 +125,25 @@ class DataManagementService {
       }
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(allData);
-      bool didSave = false;
-      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final bytes = utf8.encode(jsonString);
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(RegExp(r'[:.]'), '-');
       final fileName = 'fermentacraft_backup_$timestamp.json';
 
-      if (kIsWeb) {
-        final bytes = utf8.encode(jsonString);
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        html.AnchorElement(href: url)
-          ..setAttribute("download", fileName)
-          ..click();
-        html.Url.revokeObjectUrl(url);
-        didSave = true;
-      } else if (Platform.isAndroid || Platform.isIOS) {
-        final dir = await getApplicationDocumentsDirectory();
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(jsonString);
+      final savedPath = await saveBytesToDevice(fileName, bytes);
 
-        // New SharePlus instance API (replaces deprecated Share.shareXFiles)
+      // Optional: share the file on device platforms when we have a path.
+      if (!kIsWeb && savedPath != null) {
         final params = ShareParams(
           text: 'FermentaCraft Backup',
-          files: [XFile(file.path)],
+          files: [XFile(savedPath)],
         );
         await SharePlus.instance.share(params);
-
-        didSave = true;
-      } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        final fileSaveLocation = await getSaveLocation(suggestedName: fileName);
-        if (fileSaveLocation != null) {
-          final file = File(fileSaveLocation.path);
-          await file.writeAsString(jsonString);
-          didSave = true;
-        }
       }
 
-      if (context.mounted && didSave) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Data backup created successfully!')),
         );
@@ -184,9 +163,9 @@ class DataManagementService {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
-        withData: kIsWeb,
+        // Always request bytes so we don't need dart:io File on any platform.
+        withData: true,
       );
-
       if (result == null) return;
 
       if (context.mounted) {
@@ -195,7 +174,8 @@ class DataManagementService {
           builder: (context) => AlertDialog(
             title: const Text("Confirm Import"),
             content: const Text(
-              "This will overwrite all existing data. This action cannot be undone. Are you sure?",
+              "This will overwrite all existing data. "
+              "This action cannot be undone. Are you sure?",
             ),
             actions: [
               TextButton(
@@ -212,31 +192,25 @@ class DataManagementService {
         if (confirmed != true) return;
       }
 
-      String jsonString;
-      if (kIsWeb) {
-        final fileBytes = result.files.single.bytes!;
-        jsonString = utf8.decode(fileBytes);
-      } else {
-        final filePath = result.files.single.path!;
-        final file = File(filePath);
-        jsonString = await file.readAsString();
-      }
+      final fileBytes = result.files.single.bytes;
+      if (fileBytes == null) throw Exception("No file data provided.");
+      final jsonString = utf8.decode(fileBytes);
 
       final allData = jsonDecode(jsonString) as Map<String, dynamic>;
 
       for (final boxName in _boxNames) {
-        if (allData.containsKey(boxName)) {
-          final box = getTypedBox(boxName);
-          await box.clear();
-          final boxData = allData[boxName] as List;
+        if (!allData.containsKey(boxName)) continue;
 
-          for (var itemJson in boxData) {
-            if (_fromJsonConstructors.containsKey(boxName)) {
-              final item = _fromJsonConstructors[boxName]!(itemJson);
-              await box.add(item);
-            } else if (boxName == 'settings') {
-              await box.putAll(Map<String, dynamic>.from(itemJson));
-            }
+        final box = getTypedBox(boxName);
+        await box.clear();
+        final boxData = allData[boxName] as List;
+
+        for (var itemJson in boxData) {
+          if (_fromJsonConstructors.containsKey(boxName)) {
+            final item = _fromJsonConstructors[boxName]!(itemJson);
+            await box.add(item);
+          } else if (boxName == 'settings') {
+            await box.putAll(Map<String, dynamic>.from(itemJson));
           }
         }
       }
@@ -244,7 +218,8 @@ class DataManagementService {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Data imported successfully! Please restart the app.'),
+            content:
+                Text('Data imported successfully! Please restart the app.'),
           ),
         );
       }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import '../utils/tag_icons.dart';
 
 part 'tag.g.dart';
 
@@ -8,35 +9,40 @@ class Tag extends HiveObject {
   @HiveField(0)
   String name;
 
+  // Legacy fields (kept so old boxes still open)
   @HiveField(1)
-  int? iconCodePoint; // Stores the Material icon code point
+  int? iconCodePoint; // DEPRECATED
   @HiveField(2)
-  String? iconFontFamily; // Usually 'MaterialIcons'
+  String? iconFontFamily; // DEPRECATED
+
+  /// NEW: stable key → const IconData mapping (tree-shake friendly)
+  @HiveField(3)
+  String? iconKey;
 
   Tag({
     required this.name,
     this.iconCodePoint,
     this.iconFontFamily,
+    this.iconKey,
   });
 
-  /// Returns an IconData if icon info exists, otherwise null
-  IconData? get icon => iconCodePoint != null
-      ? IconData(iconCodePoint!, fontFamily: iconFontFamily ?? 'MaterialIcons')
-      : null;
+  /// UI should always use this. Never construct IconData dynamically.
+  IconData get icon => iconForTagKey(iconKey);
 
-  // --- ADDED for data export/import ---
+  // --- JSON (include new field, keep legacy for round trips) ---
   Map<String, dynamic> toJson() => {
         'name': name,
+        'iconKey': iconKey,
         'iconCodePoint': iconCodePoint,
         'iconFontFamily': iconFontFamily,
       };
 
   factory Tag.fromJson(Map<String, dynamic> json) => Tag(
-        name: json['name'],
-        iconCodePoint: json['iconCodePoint'],
-        iconFontFamily: json['iconFontFamily'],
+        name: json['name'] as String,
+        iconKey: json['iconKey'] as String?,
+        iconCodePoint: json['iconCodePoint'] as int?,
+        iconFontFamily: json['iconFontFamily'] as String?,
       );
-  // --- END of added code ---
 
   @override
   String toString() => name;

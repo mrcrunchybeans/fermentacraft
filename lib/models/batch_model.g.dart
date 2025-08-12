@@ -1,4 +1,3 @@
-// lib/models/batch_model.g.dart
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
 part of 'batch_model.dart';
@@ -17,7 +16,6 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return BatchModel(
       id: fields[0] as String,
       name: fields[1] as String,
@@ -28,30 +26,27 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
       finalYieldUnit: fields[32] as String?,
-      fermentationStages:
-          (fields[6] as List?)?.cast<FermentationStage>(),
-      measurementLogs:
-          (fields[7] as List?)?.cast<Map>() // stored as Map<dynamic, dynamic>
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList(),
-      status: fields[8] as String? ?? 'Planning',
+      fermentationStages: (fields[6] as List?)?.cast<FermentationStage>(),
+      measurementLogs: (fields[7] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          .toList(),
+      status: fields[8] as String,
       notes: fields[9] as String?,
-      deductedIngredients:
-          (fields[10] as Map?)?.map((k, v) => MapEntry(k as String, v as bool)) ?? {},
+      deductedIngredients: (fields[10] as Map?)?.cast<String, bool>(),
       type: fields[11] as String?,
       prepNotes: fields[25] as String?,
       plannedOg: fields[12] as double?,
       plannedAbv: fields[13] as double?,
-      ingredients:
-          (fields[14] as List?)?.cast<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList(),
+      ingredients: (fields[14] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          .toList(),
       plannedEvents: (fields[15] as List?)?.cast<PlannedEvent>(),
-      additives:
-          (fields[16] as List?)?.cast<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList(),
-      yeast: (fields[17] as List?)?.cast<Map>(),
+      additives: (fields[16] as List?)
+          ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
+          .toList(),
+      yeast: (fields[17] as List?)
+          ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
+          .toList(),
       og: fields[20] as double?,
       fg: fields[21] as double?,
       abv: fields[22] as double?,
@@ -60,27 +55,11 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       packagingDate: fields[30] as DateTime?,
       finalNotes: fields[31] as String?,
       tastingRating: fields[26] as int?,
-      tastingNotes: (fields[27] as Map?)
-          ?.map((k, v) => MapEntry(k as String, v as String)),
+      tastingNotes: (fields[27] as Map?)?.cast<String, String>(),
       packagingMethod: fields[28] as String?,
       finalYield: fields[29] as double?,
-      isArchived: fields[33] as bool? ?? false,
-    )
-      ..fermentationStages = (fields[6] as List?)?.cast<FermentationStage>() ?? []
-      ..measurementLogs = ((fields[7] as List?)?.cast<Map>() ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList()
-      ..deductedIngredients =
-          (fields[10] as Map?)?.map((k, v) => MapEntry(k as String, v as bool)) ?? {}
-      ..ingredients = ((fields[14] as List?)?.cast<Map>() ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList()
-      ..plannedEvents = (fields[15] as List?)?.cast<PlannedEvent>() ?? []
-      ..additives = ((fields[16] as List?)?.cast<Map>() ?? [])
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList()
-      ..measurements = (fields[23] as List?)?.cast<Measurement>() ?? []
-      ..yeast = (fields[17] as List?)?.cast<Map>() ?? [];
+      isArchived: fields[33] as bool,
+    );
   }
 
   @override
