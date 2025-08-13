@@ -7,10 +7,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+// namespaced cache keys (fc_)
+
 class StripePrice {
   final String id;
   final int? unitAmount; // cents
-  final String currency; // 'usd'
+  final String currency; // 'USD'
   final String? interval; // 'month' | 'year' | null
   final int intervalCount;
 
@@ -36,13 +38,25 @@ class StripePrice {
         interval: j['interval'] as String?,
         intervalCount: (j['interval_count'] as int?) ?? 1,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'unit_amount': unitAmount,
+        'currency': currency,
+        'interval': interval,
+        'interval_count': intervalCount,
+      };
 }
 
 class StripePricingService {
   StripePricingService._();
   static final instance = StripePricingService._();
 
+  /// In-memory cache for this session. (Optionally persist using fc_ keys.)
   final Map<String, StripePrice> _cache = {};
+
+  // Optional in the future: persist a tiny JSON cache under fc_ key.
+// 'fc_stripe_prices'
 
   bool get _isDesktop =>
       !kIsWeb &&
@@ -60,16 +74,25 @@ class StripePricingService {
     return Uri.parse('https://us-central1-$proj.cloudfunctions.net/getStripePricesHttp');
   }
 
+  /// Fetches prices, using a small in-memory cache first.
+  /// (Hook points left in place to persist under the fc_ key if you want.)
   Future<Map<String, StripePrice>> fetchPrices(List<String> priceIds) async {
+    // preserve caller order
     final ordered = priceIds.toList();
+
+    // 1) (Optional) Hydrate in-memory cache from a persisted blob if you add it later.
+    // _hydrateCacheFromDiskIfAny();
+
+    // 2) Determine which are missing
     final missing = ordered.where((id) => !_cache.containsKey(id)).toList();
 
     if (missing.isNotEmpty) {
-      // Always ensure we have a user (callable also needs auth in your functions)
+      // Ensure an authenticated Firebase user (both callable and HTTP need auth)
       final user = await _ensureUser();
 
       Map<String, StripePrice> fetched;
       if (_isDesktop) {
+        // Desktop: plain HTTP with ID token
         final idToken = await user.getIdToken();
         final resp = await http.post(
           _httpEndpoint(),
@@ -86,6 +109,7 @@ class StripePricingService {
         final list = (data['prices'] as List).cast<Map<String, dynamic>>();
         fetched = {for (final p in list) p['id'] as String: StripePrice.fromJson(p)};
       } else {
+        // Mobile/Web: callable
         final callable =
             FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('getStripePrices');
         final res = await callable.call({'priceIds': missing});
@@ -94,8 +118,39 @@ class StripePricingService {
       }
 
       _cache.addAll(fetched);
+
+      // 3) (Optional) Persist small cache blob under fc_ key for web soft-reset friendliness.
+      // _persistCacheToDisk();
     }
 
     return {for (final id in ordered) id: _cache[id]!};
   }
+
+  /// Called by your soft-reset path if you want to drop this cache explicitly.
+  void clearLocalMirror() {
+    _cache.clear();
+    // If you later persist to web localStorage/shared_prefs, also clear that here.
+    // e.g., LocalKV.remove(_cacheKey);
+  }
+
+  // ===== Optional helpers if you later want to persist the tiny cache =====
+  // void _hydrateCacheFromDiskIfAny() {
+  //   final jsonStr = LocalKV.getString(_cacheKey);
+  //   if (jsonStr == null || jsonStr.isEmpty) return;
+  //   try {
+  //     final map = (jsonDecode(jsonStr) as Map<String, dynamic>).cast<String, dynamic>();
+  //     map.forEach((k, v) {
+  //       _cache[k] = StripePrice.fromJson((v as Map).cast<String, dynamic>());
+  //     });
+  //   } catch (_) {/* ignore */}
+  // }
+  //
+  // void _persistCacheToDisk() {
+  //   try {
+  //     final map = <String, dynamic>{
+  //       for (final e in _cache.entries) e.key: e.value.toJson(),
+  //     };
+  //     LocalKV.setString(_cacheKey, jsonEncode(map));
+  //   } catch (_) {/* ignore */}
+  // }
 }

@@ -1,3 +1,4 @@
+// lib/services/auth_service.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
@@ -11,33 +12,74 @@ class AuthService {
 
   /// GoogleSignIn is only used on mobile (Android/iOS).
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: <String>[
-      'email',
-      'https://www.googleapis.com/auth/userinfo.profile',
-    ],
+    scopes: const <String>['email'], // keep scopes minimal
   );
 
+  /// Call once after Firebase.initializeApp (e.g., in main()).
+  /// - Sets LOCAL persistence on web (prevents weird redirect loops/400s).
+  /// - Completes a pending redirect result if one exists.
+  Future<void> initForWebIfNeeded() async {
+    if (!kIsWeb) return;
+    try {
+      await _auth.setPersistence(Persistence.LOCAL);
+    } catch (e) {
+      // Non-fatal on native/mobile. Useful log for web.
+      // ignore: avoid_print
+      print('Auth persistence setup failed (non-fatal): $e');
+    }
+
+    try {
+      // If a previous signInWithRedirect just returned, this resolves it.
+      await _auth.getRedirectResult();
+    } catch (e) {
+      // ignore: avoid_print
+      print('No redirect result (or error resolving it): $e');
+    }
+  }
+
   /// Call on your “Sign in with Google” button.
-  /// - Web: tries popup; if blocked/closed/unauthorized-domain, falls back to redirect.
+  /// - Web: tries popup; on known errors, falls back to redirect.
   /// - Mobile: uses google_sign_in → Firebase credential.
   Future<UserCredential?> signInWithGoogle() async {
     if (kIsWeb) {
-      final provider = GoogleAuthProvider();
+      final provider = GoogleAuthProvider()
+        ..addScope('email')
+        ..setCustomParameters(<String, String>{
+          // Forces account chooser; can help when cached session conflicts
+          'prompt': 'select_account',
+        });
+
       try {
         return await _auth.signInWithPopup(provider);
       } on FirebaseAuthException catch (e) {
-        // If popup fails, try redirect (page will reload, result is handled by [completePendingRedirectIfAny]).
-        const fallbackCodes = {
+        // Log so you can see the REAL cause in DevTools
+        // ignore: avoid_print
+        print('Web Google sign-in failed: ${e.code} — ${e.message}');
+
+        // Common recoverable cases → try redirect (page will reload).
+        const fallbackCodes = <String>{
           'popup-blocked',
           'popup-closed-by-user',
-          'unauthorized-domain',
+          'unauthorized-domain', // domain not in Firebase Auth → add it!
           'operation-not-supported-in-this-environment',
         };
+
         if (fallbackCodes.contains(e.code)) {
           await _auth.signInWithRedirect(provider);
-          return null; // completes after redirect
+          return null; // flow continues after redirect
         }
-        rethrow;
+
+        // Helpful hints for common 400-ish root causes:
+        if (e.code == 'unauthorized-domain') {
+          // Make sure app.fermentacraft.com is in Firebase Auth → Authorized domains.
+          // Also ensure Google provider is enabled.
+        } else if (e.code == 'operation-not-allowed') {
+          // Enable the Google provider in Firebase Auth → Sign-in method.
+        } else if (e.code == 'account-exists-with-different-credential') {
+          // Handle linking flow if you support multiple providers for the same email.
+        }
+
+        rethrow; // Let caller surface a toast/snackbar if you want
       }
     }
 
@@ -51,19 +93,14 @@ class AuthService {
         accessToken: googleAuth.accessToken,
       );
       return await _auth.signInWithCredential(credential);
-    } catch (_) {
+    } on FirebaseAuthException catch (e) {
+      // ignore: avoid_print
+      print('Mobile Google sign-in failed: ${e.code} — ${e.message}');
+      rethrow;
+    } catch (e) {
+      // ignore: avoid_print
+      print('Mobile Google sign-in non-Firebase error: $e');
       return null;
-    }
-  }
-
-  /// Optional helper for web: call once on app startup (after Firebase.initializeApp)
-  /// to complete a pending redirect sign-in (if popup fallback was used).
-  Future<void> completePendingRedirectIfAny() async {
-    if (!kIsWeb) return;
-    try {
-      await _auth.getRedirectResult();
-    } catch (_) {
-      // You can log/telemetry here if desired.
     }
   }
 
@@ -82,9 +119,6 @@ class AuthService {
     }
   }
 
-  /// Convenience getter for current user.
   User? get currentUser => _auth.currentUser;
-
-  /// Stream for auth state changes (useful for top-level listeners).
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 }

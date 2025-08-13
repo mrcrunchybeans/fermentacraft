@@ -197,7 +197,7 @@ class MorePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                                 Text(
-                  'Built in La Crescent, MN. Apple Capital of Minnesota',
+                  'Built in La Crescent, MN. Apple Capital of Minnesota.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

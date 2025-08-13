@@ -1,18 +1,17 @@
 // lib/pages/paywall_page.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart'; // ⬅️ NEW
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/feature_gate.dart';
 import '../services/revenuecat_service.dart';
-import '../services/stripe_pricing_service.dart';
 import '../services/stripe_billing_service.dart';
+import '../services/stripe_pricing_service.dart';
 
 class PaywallPage extends StatelessWidget {
   const PaywallPage({super.key, this.asDialog = false});
@@ -70,9 +69,9 @@ class PaywallPage extends StatelessWidget {
               behavior: const _NoGlow(),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
+                child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     _SectionTitle('Remove Free Version Limitations'),
                     SizedBox(height: 12),
                     _BenefitTile(
@@ -125,7 +124,7 @@ class _CtaArea extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Stripe on web/desktop; RC on mobile only.
+    // Stripe on web/desktop; RevenueCat on Android/iOS.
     final bool useStripe = kIsWeb || !RevenueCatService.instance.isSupported;
 
     return Container(
@@ -226,6 +225,36 @@ class _RevenueCatPlans extends StatelessWidget {
               ),
 
             const SizedBox(height: 16),
+
+            // Android/iOS: Refresh RevenueCat entitlements (local RC state)
+            TextButton(
+              onPressed: () async {
+                final m = ScaffoldMessenger.of(context);
+                try {
+                  await RevenueCatService.instance.refreshCustomerInfo();
+                  final isPremium = FeatureGate.instance.isPremium;
+                  m.showSnackBar(SnackBar(content: Text(isPremium ? 'Premium active ✅' : 'No premium found')));
+                } catch (e) {
+                  m.showSnackBar(SnackBar(content: Text('Couldn’t refresh: $e')));
+                }
+              },
+              child: const Text('Refresh entitlement'),
+            ),
+
+            // NEW: Unified refresh via Cloud Function (checks RC + tester_allowlist, mirrors Firestore)
+            TextButton(
+              onPressed: () async {
+                final m = ScaffoldMessenger.of(context);
+                try {
+                  final active = await refreshPremiumStatusUnified(); // ⬅️ NEW
+                  m.showSnackBar(SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')));
+                } catch (e) {
+                  m.showSnackBar(SnackBar(content: Text('Couldn’t refresh: $e')));
+                }
+              },
+              child: const Text('Already upgraded? Refresh status'),
+            ),
+            const SizedBox(height: 8),
 
             // Restore for RC only
             TextButton(
@@ -385,15 +414,15 @@ class _StripePlans extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // Web/desktop: no “restore” (handled by backend). Offer manual refresh + portal.
+        // Web/desktop: unified refresh via callable (RC + allowlist + Firestore mirror)
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TextButton(
               onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context); // capture before awaits
+                final messenger = ScaffoldMessenger.of(context);
                 try {
-                  final active = await refreshPremiumStatus();
+                  final active = await refreshPremiumStatusUnified(); // ⬅️ NEW
                   messenger.showSnackBar(
                     SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')),
                   );
@@ -402,18 +431,6 @@ class _StripePlans extends StatelessWidget {
                 }
               },
               child: const Text('Already upgraded? Refresh status'),
-            ),
-            const SizedBox(width: 12),
-            TextButton(
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                try {
-                  await StripeBillingService.instance.openBillingPortal();
-                } catch (e) {
-                  messenger.showSnackBar(SnackBar(content: Text('Open portal failed: $e')));
-                }
-              },
-              child: const Text('Manage subscription'),
             ),
           ],
         ),
@@ -429,10 +446,18 @@ class _StripePlans extends StatelessWidget {
     Shared helpers / widgets
     ============================ */
 
-Future<bool> refreshPremiumStatus() async {
+/// Unified refresh:
+/// - Calls `syncPremiumFromRC` (checks RC; if allowlisted, grants promo; mirrors Firestore)
+/// - Reads Firestore mirror and updates FeatureGate
+Future<bool> refreshPremiumStatusUnified() async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) throw Exception('Not signed in');
 
+  // 1) Ask backend to sync with RevenueCat & tester_allowlist, and mirror Firestore
+  final fn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('syncPremiumFromRC');
+  await fn.call(<String, dynamic>{});
+
+  // 2) Read the mirrored doc the UI trusts
   final snap = await FirebaseFirestore.instance
       .collection('users')
       .doc(uid)

@@ -1,4 +1,3 @@
-// lib/services/revenuecat_service.dart
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -7,7 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'feature_gate.dart';
-import 'tester_premium_service.dart'; // ⬅️ NEW (calls the Cloud Function)
+import 'tester_premium_service.dart'; // your callable tester grant
 
 class RevenueCatService {
   RevenueCatService._();
@@ -15,7 +14,7 @@ class RevenueCatService {
 
   // ── Configure your keys ────────────────────────────────────────────────────
   static const _androidKey = 'goog_UtmkZanhtAfZZhUtNfrKGiBueUu';
-  static const _iosKey     = ''; // TODO: add when you ship iOS
+  static const _iosKey     = ''; // add when shipping iOS
   static const entitlementId = 'premium';
 
   // ── Internal state ─────────────────────────────────────────────────────────
@@ -24,10 +23,8 @@ class RevenueCatService {
   StreamSubscription<User?>? _authSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _premiumDocSub;
 
-  // Prevent spamming the CF: remember the last UID we attempted to claim for
   String? _lastClaimAttemptUid;
 
-  // RevenueCat only supports Android/iOS via purchases_flutter
   bool get _rcSupported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -40,7 +37,7 @@ class RevenueCatService {
   Future<void> init() async {
     if (_configured) return;
 
-    // Wait for a definitive initial auth state, then attach listener.
+    // Wait for initial auth state
     final firstUser = await FirebaseAuth.instance.authStateChanges().first;
 
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) async {
@@ -51,7 +48,7 @@ class RevenueCatService {
       }
     });
 
-    // Seed state once we know who is signed in
+    // Seed once
     if (_rcSupported) {
       await _syncRCWithFirebaseUser(firstUser);
     } else {
@@ -90,7 +87,7 @@ class RevenueCatService {
       FeatureGate.instance.refreshFromCustomerInfo(customerInfo);
     });
 
-    // Seed from current RC state (ignore if not available yet)
+    // Seed from current RC state if possible
     try {
       final info = await Purchases.getCustomerInfo();
       FeatureGate.instance.refreshFromCustomerInfo(info);
@@ -115,7 +112,7 @@ class RevenueCatService {
       // Log into RC with Firebase UID
       try { await Purchases.logIn(user.uid); } catch (_) {}
 
-      // First refresh: do we already have premium?
+      // First check current entitlements
       var info = await _safeGetCustomerInfo();
       final hasPremiumNow = info != null && _hasPremium(info);
 
@@ -126,20 +123,14 @@ class RevenueCatService {
           try {
             final claimed = await TesterPremiumService.instance.claim();
             if (claimed) {
-              // Pull fresh entitlements after claim
               info = await _safeGetCustomerInfo(forceSync: true);
             }
-          } catch (_) {
-            // ignore; fall back to whatever RC says
-          }
+          } catch (_) {}
         }
       }
 
-      // final mirror to FeatureGate from latest info (if we have it)
       if (info != null) {
         FeatureGate.instance.refreshFromCustomerInfo(info);
-      } else {
-        // as a fallback, keep previous state
       }
     } catch (_) {
       // keep last known state

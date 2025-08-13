@@ -1,201 +1,106 @@
 // lib/main.dart
 import 'dart:async';
+import 'dart:js_interop';                    // for .dartify()
+import 'package:web/web.dart' as web;        // modern web APIs
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-// Firebase
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
-// App
 import 'firebase_options.dart';
-import 'auth_gate.dart';
-
-// Services
-import 'services/feature_gate.dart';
-import 'services/revenuecat_service.dart';
-import 'services/firestore_sync_service.dart';
-import 'services/auth_service.dart';
-import 'services/tester_premium_service.dart';
-
-// Hive / Models
-import 'package:hive_flutter/hive_flutter.dart';
-import 'models/batch_model.dart';
-import 'models/fermentation_stage.dart';
-import 'models/inventory_item.dart';
-import 'models/inventory_transaction_model.dart';
-import 'models/measurement.dart';
-import 'models/measurement_log.dart';
-import 'models/planned_event.dart';
-import 'models/recipe_model.dart';
-import 'models/shopping_list_item.dart';
-import 'models/tag.dart';
-import 'models/purchase_transaction.dart';
-import 'models/unit_type.dart';
-import 'models/tag_manager.dart';
-import 'models/settings_model.dart';
-import 'utils/inventory_item_extensions.dart';
-import 'utils/migrations.dart';
-
-// Theme
-import 'theme/app_theme.dart';
-
-/// ---------------- Hive setup ----------------
-Future<void> setupHive() async {
-  await Hive.initFlutter();
-
-  // Register adapters BEFORE opening boxes
-  Hive
-    ..registerAdapter(MeasurementAdapter())
-    ..registerAdapter(FermentationStageAdapter())
-    ..registerAdapter(PlannedEventAdapter())
-    ..registerAdapter(TagAdapter())
-    ..registerAdapter(InventoryItemAdapter())
-    ..registerAdapter(InventoryTransactionAdapter())
-    ..registerAdapter(MeasurementLogAdapter())
-    ..registerAdapter(RecipeModelAdapter())
-    ..registerAdapter(ShoppingListItemAdapter())
-    ..registerAdapter(PurchaseTransactionAdapter())
-    ..registerAdapter(UnitTypeAdapter())
-    ..registerAdapter(BatchModelAdapter());
-
-  // Open boxes actually used
-  await Hive.openBox<BatchModel>('batches');
-  await Hive.openBox<FermentationStage>('fermentationStages');
-  await Hive.openBox<InventoryItem>('inventory');
-  await Hive.openBox<InventoryTransaction>('inventoryTransactions');
-  await Hive.openBox<MeasurementLog>('measurementLogs');
-  await Hive.openBox<RecipeModel>('recipes');
-  await InventoryArchiveStore.ensureOpen(); // sidecar archive box
-  await Hive.openBox('settings');
-  await Hive.openBox<ShoppingListItem>('shopping_list');
-  await Hive.openBox<Tag>('tags');
-
-  // ✅ Run migrations AFTER boxes are open
-  await migrateTagIconsIfNeeded();
-  await migrateEmbeddedTagsIfNeeded();
-}
-
-/// Coordinates a single “claim tester premium” call per sign-in.
-class _PremiumClaimCoordinator {
-  String? _lastClaimedUid;
-  StreamSubscription<User?>? _sub;
-
-  void start() {
-    _sub ??= FirebaseAuth.instance.authStateChanges().listen((user) async {
-      if (user == null) return;
-      if (_lastClaimedUid == user.uid) return; // already claimed this session
-      _lastClaimedUid = user.uid;
-      try {
-        await TesterPremiumService.instance.claim(); // callable + refresh RC
-      } catch (e) {
-        debugPrint('Premium claim failed: $e');
-      }
-    });
-  }
-
-  void dispose() {
-    _sub?.cancel();
-    _sub = null;
-  }
-}
-
-final _premiumClaimCoordinator = _PremiumClaimCoordinator();
-
-Future<void> _initFirebase() async {
-  // Avoid double init (especially on web when hot-reloading)
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
-
-  // Firestore: enable local persistence & logging (wrap to be safe on any platform)
-  try {
-    FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
-  } catch (e) {
-    debugPrint('Firestore settings warning: $e');
-  }
-  try {
-    FirebaseFirestore.setLoggingEnabled(true);
-  } catch (e) {
-    debugPrint('Firestore logging warning: $e');
-  }
-}
+import 'utils/cache_keys.dart';
+import 'pages/splash_page.dart';
+import 'home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Firebase
-  try {
-    await _initFirebase();
-  } catch (e, st) {
-    debugPrint('Firebase init failed: $e\n$st');
-  }
+  // Firestore settings (safe across platforms)
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
 
-  // ✅ WEB-ONLY: finish Google redirect sign-in if popup was blocked
   if (kIsWeb) {
-    try {
-      await AuthService.instance.completePendingRedirectIfAny();
-    } catch (e) {
-      debugPrint('Auth redirect completion failed: $e');
-    }
+    // Start watchdog BEFORE runApp so the splash page hang is recoverable.
+    _startSplashWatchdog();
   }
 
-  // Local storage
-  await setupHive();
+  runApp(const MyApp());
+}
 
-  // App services
-  await FirestoreSyncService.instance.init();
-  await RevenueCatService.instance.init();
-  await FeatureGate.instance.bootstrap();
+/// Splash watchdog: if we don't see a 'splash_complete' message within N seconds,
+/// wipe ONLY our fc_-scoped keys and reload the page.
+void _startSplashWatchdog() {
+  const splashTimeout = Duration(seconds: 8);
 
-  // Begin auto-claim flow (safe no-op if not allowlisted)
-  _premiumClaimCoordinator.start();
+  var splashLoaded = false;
 
-  // Global error handling
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.dumpErrorToConsole(details);
-  };
+  // Listen for the completion signal from your SplashPage.
+  // Make sure SplashPage posts: window.postMessage('splash_complete', '*');
+  web.window.onMessage.listen((evt) {
+    // evt is web.MessageEvent; evt.data is a JS value (JSAny).
+    final jsAny = evt.data;
+    final dartData = jsAny?.dartify(); // -> dart String/num/bool/map/list/etc
+    if (dartData == 'splash_complete') {
+      splashLoaded = true;
+    }
+  });
 
-  runZonedGuarded(() {
-    runApp(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (_) => SettingsModel()),
-          ChangeNotifierProvider(create: (_) => TagManager()),
-        ],
-        child: const FermentaCraftApp(),
-      ),
-    );
-  }, (error, stack) {
-    debugPrint('Uncaught zone error: $error\n$stack');
+  // After a timeout, if still not loaded, nuke fc_-scoped caches & hard reload.
+  Future.delayed(splashTimeout, () {
+    if (!splashLoaded) {
+      _clearAppScopedCache();
+      web.window.location.reload();
+    }
   });
 }
 
-class FermentaCraftApp extends StatelessWidget {
-  const FermentaCraftApp({super.key});
+void _clearAppScopedCache() {
+  try {
+    // localStorage
+    final ls = web.window.localStorage;
+    final toRemove = <String>[];
+    for (var i = 0; i < ls.length; i++) {
+      final key = ls.key(i);
+      if (key != null && CacheKeys.hasPrefix(key)) {
+        toRemove.add(key);
+      }
+    }
+    for (final k in toRemove) {
+      ls.removeItem(k);
+    }
+
+    // sessionStorage (optional)
+    final ss = web.window.sessionStorage;
+    final sRemove = <String>[];
+    for (var i = 0; i < ss.length; i++) {
+      final key = ss.key(i);
+      if (key != null && CacheKeys.hasPrefix(key)) {
+        sRemove.add(key);
+      }
+    }
+    for (final k in sRemove) {
+      ss.removeItem(k);
+    }
+  } catch (e) {
+    // Non-fatal: worst case we just fail to clean and the user can hard-refresh.
+    // Avoid spamming logs; this only runs when something is already broken.
+    // ignore: avoid_print
+    print('App-scoped cache wipe failed: $e');
+  }
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsModel>();
     return MaterialApp(
       title: 'FermentaCraft',
       debugShowCheckedModeBanner: false,
-      themeMode: settings.themeMode,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      home: const AuthGate(),
-      builder: (context, child) => SafeArea(
-        top: false,
-        left: false,
-        right: false,
-        bottom: true,
-        maintainBottomViewPadding: true,
-        child: child ?? const SizedBox.shrink(),
-      ),
+      theme: ThemeData(primarySwatch: Colors.green),
+      home: const SplashPage(nextPage: HomePage()),
     );
   }
 }
