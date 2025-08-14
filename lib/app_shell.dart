@@ -1,4 +1,3 @@
-import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,10 +12,8 @@ import 'shopping_list_page.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'widgets/plan_badge.dart';
 
-// Feature gate + pro badge + paywall
-import 'package:fermentacraft/services/feature_gate.dart';
-import 'package:fermentacraft/widgets/pro_badge.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -42,8 +39,6 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final isPremium = FeatureGate.instance.isPremium;
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -56,23 +51,14 @@ class _AppShellState extends State<AppShell> {
           semanticsLabel: 'FermentaCraft Logo',
           placeholderBuilder: (context) => const Text('FermentaCraft'),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(28),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: isPremium
-                ? const ProBadge(unlocked: true, compact: true)
-                : InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () {
-                      showPaywall(context);
-
-                      
-                    },
-                    child: const ProBadge(unlocked: false, compact: true),
-                  ),
-          ),
-        ),
+          // ⬇️ Badge under the logo
+  bottom: const PreferredSize(
+    preferredSize: Size.fromHeight(32),
+    child: Padding(
+      padding: EdgeInsets.only(bottom: 8),
+      child: PlanBadge(), // Free → opens paywall; Premium → verified chip
+    ),
+  ),
       ),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
@@ -116,8 +102,7 @@ class MorePage extends StatelessWidget {
 
   void _showAboutAppDialog(BuildContext context) async {
     final packageInfo = await PackageInfo.fromPlatform();
-    final Uri bookUrl = Uri.parse(
-        'https://www.amazon.com/New-Cider-Makers-Handbook-Comprehensive/dp/1603584730');
+    final Uri bookUrl = Uri.parse('https://www.amazon.com/New-Cider-Makers-Handbook-Comprehensive/dp/1603584730');
 
     if (!context.mounted) return;
 
@@ -126,9 +111,7 @@ class MorePage extends StatelessWidget {
       builder: (context) {
         final theme = Theme.of(context);
         return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -138,32 +121,23 @@ class MorePage extends StatelessWidget {
                   'assets/images/carboy.svg',
                   height: 100,
                   semanticsLabel: 'FermentaCraft Carboy Logo',
-                  placeholderBuilder: (context) =>
-                      const CircularProgressIndicator(),
+                  placeholderBuilder: (context) => const CircularProgressIndicator(),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'FermentaCraft',
-                  style: theme.textTheme.headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('FermentaCraft', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 const Text(
-                  'Your Craft, Perfected.',
+                  "Your Craft, Perfected.",
                   textAlign: TextAlign.center,
                   style: TextStyle(fontStyle: FontStyle.italic),
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'FermentaCraft helps you design, track, and manage your homebrewing projects with precision and ease.',
+                  "FermentaCraft helps you design, track, and manage your homebrewing projects with precision and ease.",
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'Version ${packageInfo.version}',
-                  style: theme.textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                ),
+                Text('Version ${packageInfo.version}', style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 12),
@@ -172,10 +146,7 @@ class MorePage extends StatelessWidget {
                   text: TextSpan(
                     style: theme.textTheme.bodyMedium,
                     children: [
-                      const TextSpan(
-                        text:
-                            'Much of the inspiration and technical information in this app comes from ',
-                      ),
+                      const TextSpan(text: "Much of the inspiration and technical information in this app comes from "),
                       TextSpan(
                         text: "The New Cider Maker's Handbook",
                         style: TextStyle(
@@ -183,25 +154,11 @@ class MorePage extends StatelessWidget {
                           decoration: TextDecoration.underline,
                         ),
                         recognizer: TapGestureRecognizer()
-                          ..onTap = () => launchUrl(
-                                bookUrl,
-                                mode: LaunchMode.externalApplication,
-                              ),
+                          ..onTap = () => launchUrl(bookUrl, mode: LaunchMode.externalApplication),
                       ),
-                      const TextSpan(
-                        text:
-                            ' by Claude Jolicoeur. It is an indispensable resource for any aspiring cider maker.',
-                      ),
+                      const TextSpan(text: " by Claude Jolicoeur. It is an indispensable resource for any aspiring cider maker."),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                                Text(
-                  'Built in La Crescent, MN. Apple Capital of Minnesota.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -221,10 +178,7 @@ class MorePage extends StatelessWidget {
                         );
                       },
                     ),
-                    TextButton(
-                      child: const Text('Close'),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+                    TextButton(child: const Text('Close'), onPressed: () => Navigator.of(context).pop()),
                   ],
                 )
               ],
@@ -238,9 +192,7 @@ class MorePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final name = (user?.displayName?.trim().isNotEmpty == true)
-        ? user!.displayName!
-        : user?.email ?? 'User';
+    final name = user?.displayName?.trim().isNotEmpty == true ? user!.displayName! : user?.email ?? 'User';
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return ListView(
@@ -250,10 +202,7 @@ class MorePage extends StatelessWidget {
           leading: CircleAvatar(
             radius: 20,
             backgroundColor: Theme.of(context).colorScheme.secondary,
-            child: Text(
-              initials,
-              style: const TextStyle(color: Colors.white),
-            ),
+            child: Text(initials, style: const TextStyle(color: Colors.white)),
           ),
           title: Text(name),
           subtitle: const Text('Tap to log out'),
@@ -264,14 +213,8 @@ class MorePage extends StatelessWidget {
                 title: const Text('Log out?'),
                 content: const Text('Are you sure you want to sign out?'),
                 actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Logout'),
-                  ),
+                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Logout')),
                 ],
               ),
             );
@@ -283,29 +226,20 @@ class MorePage extends StatelessWidget {
           leading: const Icon(Icons.shopping_cart_outlined),
           title: const Text('Shopping List'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ShoppingListPage()),
-          ),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShoppingListPage())),
         ),
         ListTile(
           leading: const Icon(Icons.construction_outlined),
           title: const Text('Tools'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ToolsPage()),
-          ),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ToolsPage())),
         ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.settings_outlined),
           title: const Text('Settings'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SettingsPage()),
-          ),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
         ),
         ListTile(
           leading: const Icon(Icons.info_outline),

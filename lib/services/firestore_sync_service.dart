@@ -8,8 +8,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../utils/boxes.dart';
 
+
+import '../models/batch_model.dart';
+import '../models/inventory_item.dart';
+import '../models/recipe_model.dart';
+import '../models/shopping_list_item.dart';
+import '../models/tag.dart';
 import '../utils/data_management.dart';
 import 'firestore_paths.dart';
 import 'sync_meta.dart';
@@ -20,14 +27,13 @@ class FirestoreSyncService {
   FirestoreSyncService._();
   static final FirestoreSyncService instance = FirestoreSyncService._();
 
-  // Hive boxes that represent user-scoped data
+  // Use canonical names from Boxes.* so everything matches setup().
   final _userBoxNames = const [
-    'recipes',
-    'batches',
-    'inventory',
-    'shopping_list',
-    'tags',
-    // NOTE: 'settings' is handled separately
+    Boxes.recipes,
+    Boxes.batches,
+    Boxes.inventory,
+    Boxes.shoppingList,
+    Boxes.tags,
   ];
 
   StreamSubscription? _authSub;
@@ -415,6 +421,29 @@ class FirestoreSyncService {
   // Helpers
   // -----------------------------
 
+  Future<Box> _ensureTypedOpen(String name) {
+    if (Hive.isBoxOpen(name)) {
+      // Return the already-open *typed* box
+      return Future.value(DataManagementService.getTypedBox(name));
+    }
+    // Open with the correct generic type
+    switch (name) {
+      case Boxes.recipes:
+        return Hive.openBox<RecipeModel>(Boxes.recipes);
+      case Boxes.batches:
+        return Hive.openBox<BatchModel>(Boxes.batches);
+      case Boxes.inventory:
+        return Hive.openBox<InventoryItem>(Boxes.inventory);
+      case Boxes.shoppingList:
+        return Hive.openBox<ShoppingListItem>(Boxes.shoppingList);
+      case Boxes.tags:
+        return Hive.openBox<Tag>(Boxes.tags);
+      default:
+        // Fallback if you ever extend _userBoxNames
+        return Hive.openBox(name);
+    }
+  }
+
   Future<void> _pushLocalDocWithId(
     String uid,
     String boxName,
@@ -453,6 +482,7 @@ class FirestoreSyncService {
 
     final now = DateTime.now().millisecondsSinceEpoch;
     await FirestorePaths.doc(uid, boxName, cleanId).set({
+      'id': cleanId,
       '_meta': {
         'updatedAt': FieldValue.serverTimestamp(),
         'deviceUpdatedAt': now,
@@ -491,8 +521,6 @@ class FirestoreSyncService {
       }
 
       final clean = Map<String, dynamic>.from(data)..remove('_meta');
-
-      // Defensive: ensure required fields exist for your models if needed.
 
       final ctor = DataManagementService.fromJsonFor(boxName);
       final obj = ctor(clean);
@@ -539,7 +567,7 @@ class FirestoreSyncService {
 
   /// Clear all user-scoped local boxes when logging out or switching users.
   Future<void> _clearLocalUserData() async {
-    // Close watchers first just in case
+    // Stop watchers first
     for (final s in _hiveSubs.values) {
       await s.cancel();
     }
@@ -547,18 +575,20 @@ class FirestoreSyncService {
 
     try {
       for (final boxName in _userBoxNames) {
-        if (Hive.isBoxOpen(boxName)) {
-          await Hive.box(boxName).clear();
-        } else {
-          final box = await Hive.openBox(boxName);
-          await box.clear();
+        final wasOpen = Hive.isBoxOpen(boxName);
+        final box = await _ensureTypedOpen(boxName);
+        await box.clear();
+        if (!wasOpen) {
+          await box.close(); // restore original state
         }
       }
-      // Clear sync_meta timestamps so new user's remote wins
+
+      // Clear sync_meta timestamps so the next user’s remote wins
       if (Hive.isBoxOpen('sync_meta')) {
         await Hive.box('sync_meta').clear();
       }
-      // Clear caches
+
+      // Reset caches/debouncers
       _suppressLocalEcho.clear();
       _lastSentJson.clear();
       for (final t in _debouncers.values) {
@@ -575,5 +605,47 @@ class FirestoreSyncService {
     final uid = _uid;
     if (uid == null || !_enabled) return;
     await _bootstrapMerge(uid);
+  }
+
+  // ------------------------------------------------------------------
+  // ✅ Public helpers used by UI (BatchLogPage): markDeleted / restoreBatch
+  // ------------------------------------------------------------------
+
+  /// Mark a document as deleted (sets `_meta.deleted = true`) so it won't
+  /// resurrect on other devices. This is a best-effort remote write and also
+  /// updates local sync metadata caches.
+  Future<void> markDeleted({
+    required String collection,
+    required String id,
+  }) async {
+    final uid = _uid;
+    if (uid == null || id.trim().isEmpty) return;
+    await _markRemoteDeleted(uid, collection, id);
+  }
+
+  /// Remove a tombstone and re-upload the Batch document (used by UNDO).
+  Future<void> restoreBatch(BatchModel batch) async {
+    final uid = _uid;
+    if (uid == null) return;
+
+    final id = batch.id.trim();
+    if (id.isEmpty) return;
+
+    final json = batch.toJson();
+
+    // Push as non-deleted
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await FirestorePaths.doc(uid, 'batches', id).set({
+      ...json,
+      'id': id,
+      '_meta': {
+        'updatedAt': FieldValue.serverTimestamp(),
+        'deviceUpdatedAt': now,
+        'deleted': false,
+      }
+    }, SetOptions(merge: true));
+
+    _lastSentJson[_keyOf('batches', id)] = jsonEncode(json);
+    await SyncMetaStore.setLastSyncedNow('batches', id, now);
   }
 }

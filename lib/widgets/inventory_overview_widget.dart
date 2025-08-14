@@ -1,7 +1,7 @@
 // widgets/inventory_overview_widget.dart
 
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../models/inventory_item.dart';
 import '../models/inventory_action.dart';
 

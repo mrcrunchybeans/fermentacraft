@@ -30,7 +30,7 @@ class _GravityAdjustToolState extends State<GravityAdjustTool> {
         // 👇 Soft-lock the entire tool for Free users
         body: SoftLockOverlay(
           allow: FeatureGate.instance.allowGravityAdjust,
-          message: 'Gravity Adjustment is a Pro feature',
+          message: 'Gravity Adjustment is a Premium feature',
           child: const TabBarView(
             children: [
               PreFermentationAdjustTab(),

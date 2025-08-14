@@ -4,6 +4,8 @@ import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../utils/boxes.dart';
+
 class AddBatchDialog extends StatefulWidget {
   const AddBatchDialog({super.key});
 
@@ -87,7 +89,7 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
         deductedIngredients: {},
       );
 
-      final box = Hive.box<BatchModel>('batches');
+    final box = Hive.box<BatchModel>(Boxes.batches); // ✅ opened in setup
       box.put(newBatch.id, newBatch);
       Navigator.of(context).pop();
     }

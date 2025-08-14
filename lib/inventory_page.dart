@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../models/inventory_item.dart';
 import '../widgets/add_inventory_dialog.dart';
@@ -13,6 +14,8 @@ import '../models/inventory_item_detail_model.dart';
 
 // NEW: gating
 import 'package:fermentacraft/services/feature_gate.dart';
+
+import 'utils/boxes.dart';
 
 // Sort options
 enum SortOption { name, stock, expiration }
@@ -136,7 +139,7 @@ showPaywall(context);
     );
     if (confirmed != true) return;
 
-    final box = Hive.box<InventoryItem>('inventory');
+  final box = Hive.box<InventoryItem>(Boxes.inventory); // ✅ opened in setup
     final key = item.key;
     final backup = item;
 
@@ -226,7 +229,7 @@ showPaywall(context);
   @override
   Widget build(BuildContext context) {
     final inventoryBox = Hive.box<InventoryItem>('inventory');
-    final fg = FeatureGate.instance;
+    final fg = context.watch<FeatureGate>();
 
     return Scaffold(
       appBar: AppBar(
@@ -322,7 +325,7 @@ showPaywall(context);
 floatingActionButton: ValueListenableBuilder<Box<InventoryItem>>(
   valueListenable: Hive.box<InventoryItem>('inventory').listenable(),
   builder: (context, box, _) {
-    final fg = FeatureGate.instance;
+    final fg = context.watch<FeatureGate>();
     final activeCount = box.values.where((i) => !i.isArchived).length;
     final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 

@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:fermentacraft/utils/temp_display.dart';
 import '../models/settings_model.dart';
 
+// ── Small helpers ──────────────────────────────────────────────────────────────
+double? cToF(double? c) => (c == null) ? null : (c * 9.0 / 5.0) + 32.0;
+double? fToC(double? f) => (f == null) ? null : (f - 32.0) * 5.0 / 9.0;
+
+String _yyyyMmDd(DateTime d) => d.toLocal().toString().split(' ').first;
+
+// ── Dialog ────────────────────────────────────────────────────────────────────
 class ManageStagesDialog extends StatefulWidget {
   final List<FermentationStage> initialStages;
 
-  /// Optional: anchor the first stage to a specific date (e.g., the batch startDate).
+  /// Optional: anchor the first stage to a specific date (e.g., batch.startDate).
   final DateTime? anchorStartDate;
 
   const ManageStagesDialog({
@@ -22,69 +30,66 @@ class ManageStagesDialog extends StatefulWidget {
 }
 
 class _ManageStagesDialogState extends State<ManageStagesDialog> {
-  late List<FermentationStage> stages;
+  late List<FermentationStage> _stages;
 
   @override
   void initState() {
     super.initState();
-    // Make a mutable copy so edits don't mutate the original list until Save.
-    stages = widget.initialStages.map((s) => s.copy()).toList();
-    _normalizeStageDates(); // ensure contiguity on open
+    // Work on a copy so we don’t mutate the caller’s list until Save.
+    _stages = widget.initialStages.map((s) => s.copy()).toList();
+    _normalizeStageDates();
   }
 
-  /// Ensures stages have contiguous dates in current order.
+  /// Ensure contiguous dates in current order.
   /// - First stage uses `anchorStartDate` (if provided) else existing startDate or today.
-  /// - Each subsequent stage starts right after the previous stage ends.
+  /// - Each subsequent stage starts the day the previous one ends.
   void _normalizeStageDates() {
-    if (stages.isEmpty) return;
+    if (_stages.isEmpty) return;
 
-    // First stage anchor
     final firstAnchor =
-        widget.anchorStartDate ?? stages.first.startDate ?? DateTime.now();
-    stages.first.startDate = DateTime(
-      firstAnchor.year,
-      firstAnchor.month,
-      firstAnchor.day,
-    );
+        widget.anchorStartDate ?? _stages.first.startDate ?? DateTime.now();
+    _stages.first.startDate =
+        DateTime(firstAnchor.year, firstAnchor.month, firstAnchor.day);
 
-    // Chain subsequent stages
-    for (int i = 1; i < stages.length; i++) {
-      final prev = stages[i - 1];
+    for (int i = 1; i < _stages.length; i++) {
+      final prev = _stages[i - 1];
       final prevStart = prev.startDate!;
       final prevEnd = prevStart.add(Duration(days: prev.durationDays));
-      stages[i].startDate = DateTime(prevEnd.year, prevEnd.month, prevEnd.day);
+      _stages[i].startDate =
+          DateTime(prevEnd.year, prevEnd.month, prevEnd.day);
     }
-
-    setState(() {});
   }
 
   Future<void> _addStage() async {
+    // Default start date for the new stage = day after last stage ends (or anchor/today).
     final DateTime startForNew;
-    if (stages.isEmpty) {
+    if (_stages.isEmpty) {
       startForNew = widget.anchorStartDate ?? DateTime.now();
     } else {
-      final last = stages.last;
-      final lastStart = last.startDate ?? (widget.anchorStartDate ?? DateTime.now());
+      final last = _stages.last;
+      final lastStart =
+          last.startDate ?? (widget.anchorStartDate ?? DateTime.now());
       final lastEnd = lastStart.add(Duration(days: last.durationDays));
       startForNew = DateTime(lastEnd.year, lastEnd.month, lastEnd.day);
     }
 
-    final newStage = await showDialog<FermentationStage>(
-      context: context,
-      builder: (_) => _StageEditorDialog(
-        stage: FermentationStage(
-          name: 'New Stage',
-          startDate: startForNew,
-          durationDays: 7,
-          targetTempC: 18.0,
-        ),
-      ),
+    // Default temp: 18°C (≈64°F). Shown in user’s unit in the editor.
+    final draft = FermentationStage(
+      name: 'New Stage',
+      startDate: startForNew,
+      durationDays: 7,
+      targetTempC: 18.0,
     );
 
-    if (newStage != null) {
+    final edited = await showDialog<FermentationStage>(
+      context: context,
+      builder: (_) => _StageEditorDialog(stage: draft),
+    );
+
+    if (edited != null) {
       setState(() {
-        stages.add(newStage);
-        _normalizeStageDates(); // keep everything contiguous
+        _stages.add(edited);
+        _normalizeStageDates();
       });
     }
   }
@@ -92,20 +97,20 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
   Future<void> _editStage(int index) async {
     final edited = await showDialog<FermentationStage>(
       context: context,
-      builder: (_) => _StageEditorDialog(stage: stages[index]),
+      builder: (_) => _StageEditorDialog(stage: _stages[index]),
     );
 
     if (edited != null) {
       setState(() {
-        stages[index] = edited;
-        _normalizeStageDates(); // recalc dates after duration/name/temp changes
+        _stages[index] = edited;
+        _normalizeStageDates();
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsModel>();
+    final settings = context.watch<SettingsModel>(); // for subtitle unit display
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -122,27 +127,28 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
               const SizedBox(height: 8),
               Expanded(
                 child: ReorderableListView.builder(
-                  itemCount: stages.length,
+                  itemCount: _stages.length,
                   onReorder: (oldIndex, newIndex) {
                     setState(() {
                       if (newIndex > oldIndex) newIndex -= 1;
-                      final item = stages.removeAt(oldIndex);
-                      stages.insert(newIndex, item);
-                      _normalizeStageDates(); // keep dates contiguous after reorder
+                      final moved = _stages.removeAt(oldIndex);
+                      _stages.insert(newIndex, moved);
+                      _normalizeStageDates();
                     });
                   },
                   itemBuilder: (context, index) {
-                    final stage = stages[index];
-                    final startDateString =
-                        stage.startDate?.toLocal().toString().split(' ').first ?? 'Not set';
+                    final stage = _stages[index];
+                    final start = stage.startDate;
+                    final startString =
+                        (start == null) ? 'Not set' : _yyyyMmDd(start);
 
                     return ListTile(
                       key: ValueKey(
-                        '${stage.name}_${stage.startDate?.millisecondsSinceEpoch ?? 0}_$index',
+                        'stage_${stage.name}_${stage.startDate?.millisecondsSinceEpoch ?? 0}_$index',
                       ),
                       title: Text(stage.name),
                       subtitle: Text(
-                        'Start: $startDateString, '
+                        'Start: $startString, '
                         'Duration: ${stage.durationDays}d, '
                         'Temp: ${stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? 'N/A'}',
                       ),
@@ -150,18 +156,22 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
+                            tooltip: 'Edit',
                             icon: const Icon(Icons.edit),
                             onPressed: () => _editStage(index),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete),
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete, color: Colors.red),
                             onPressed: () {
                               setState(() {
-                                stages.removeAt(index);
+                                _stages.removeAt(index);
                                 _normalizeStageDates();
                               });
                             },
                           ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.drag_handle),
                         ],
                       ),
                     );
@@ -184,7 +194,7 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
                       _normalizeStageDates(); // final pass
                       Navigator.pop(
                         context,
-                        List<FermentationStage>.from(stages),
+                        List<FermentationStage>.from(_stages),
                       );
                     },
                   ),
@@ -198,6 +208,7 @@ class _ManageStagesDialogState extends State<ManageStagesDialog> {
   }
 }
 
+// ── Editor ────────────────────────────────────────────────────────────────────
 class _StageEditorDialog extends StatefulWidget {
   final FermentationStage stage;
 
@@ -208,35 +219,57 @@ class _StageEditorDialog extends StatefulWidget {
 }
 
 class _StageEditorDialogState extends State<_StageEditorDialog> {
-  late TextEditingController nameController;
-  late TextEditingController durationController;
-  late TextEditingController tempController;
-  late DateTime startDate;
+  late final TextEditingController _nameC;
+  late final TextEditingController _durationC;
+  late final TextEditingController _tempC; // holds UI-unit value as text
+  late DateTime _startDate;
+
+  bool get _useCelsius => context.read<SettingsModel>().useCelsius;
 
   @override
   void initState() {
     super.initState();
-    nameController = TextEditingController(text: widget.stage.name);
-    durationController = TextEditingController(text: widget.stage.durationDays.toString());
-    tempController = TextEditingController(text: widget.stage.targetTempC?.toString() ?? '');
-    startDate = widget.stage.startDate ?? DateTime.now();
+    _nameC = TextEditingController(text: widget.stage.name);
+    _durationC =
+        TextEditingController(text: widget.stage.durationDays.toString());
+    _startDate = widget.stage.startDate ?? DateTime.now();
+
+    // Seed temp field in user's preferred unit
+    final uiTemp =
+        _useCelsius ? widget.stage.targetTempC : cToF(widget.stage.targetTempC);
+    _tempC = TextEditingController(
+      text: (uiTemp == null) ? '' : uiTemp.toStringAsFixed(1),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameC.dispose();
+    _durationC.dispose();
+    _tempC.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final useC = context.watch<SettingsModel>().useCelsius;
+    final unitLabel = useC ? '°C' : '°F';
+
     return AlertDialog(
       title: const Text('Edit Stage'),
       content: SingleChildScrollView(
         child: Column(
           children: [
             TextField(
-              controller: nameController,
+              controller: _nameC,
               decoration: const InputDecoration(labelText: 'Stage Name'),
+              textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: 8),
             TextField(
-              controller: durationController,
+              controller: _durationC,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(labelText: 'Duration (days)'),
             ),
             const SizedBox(height: 8),
@@ -248,36 +281,54 @@ class _StageEditorDialogState extends State<_StageEditorDialog> {
                   onPressed: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: startDate,
+                      initialDate: _startDate,
                       firstDate: DateTime(2000),
                       lastDate: DateTime(2100),
                     );
-                    if (picked != null) setState(() => startDate = picked);
+                    if (picked != null) setState(() => _startDate = picked);
                   },
-                  child: Text(startDate.toLocal().toString().split(' ').first),
+                  child: Text(_yyyyMmDd(_startDate)),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             TextField(
-              controller: tempController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Target Temp (°C)'),
+              controller: _tempC,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d*'))
+              ],
+              decoration: InputDecoration(
+                labelText: 'Target Temp ($unitLabel)',
+                suffixText: unitLabel,
+              ),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
-            final newStage = FermentationStage(
-              name: nameController.text.trim().isEmpty ? 'Stage' : nameController.text.trim(),
-              startDate: startDate,
-              durationDays: int.tryParse(durationController.text) ?? 7,
-              targetTempC: double.tryParse(tempController.text),
+            final name =
+                _nameC.text.trim().isEmpty ? 'Stage' : _nameC.text.trim();
+            final duration = int.tryParse(_durationC.text) ?? 7;
+
+            // Convert UI value (°C or °F) back to °C for storage.
+            final uiVal = double.tryParse(_tempC.text);
+            final targetTempC = useC ? uiVal : fToC(uiVal);
+
+            final updated = FermentationStage(
+              name: name,
+              startDate: _startDate,
+              durationDays: duration,
+              targetTempC: targetTempC,
             );
-            Navigator.pop(context, newStage);
+            Navigator.pop(context, updated);
           },
           child: const Text('Save'),
         ),

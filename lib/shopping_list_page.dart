@@ -6,7 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:collection/collection.dart'; // groupBy
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
-import 'package:fermentacraft/widgets/pro_badge.dart';
+import 'package:provider/provider.dart';
 
 import 'utils/id.dart';
 import 'models/shopping_list_item.dart';
@@ -30,7 +30,7 @@ showPaywall(context);
   // Toggles the checked state of an item
   void _toggleItem(ShoppingListItem item) {
     if (!FeatureGate.instance.allowShoppingList) {
-      _upsell(context, 'Shopping List is a Pro feature');
+      _upsell(context, 'Shopping List is a Premium feature');
       return;
     }
     item.isChecked = !item.isChecked;
@@ -40,7 +40,7 @@ showPaywall(context);
   /// Deletes a single item after confirmation, providing an undo option.
   Future<void> _deleteItemWithConfirmation(ShoppingListItem item) async {
     if (!FeatureGate.instance.allowShoppingList) {
-      _upsell(context, 'Shopping List is a Pro feature');
+      _upsell(context, 'Shopping List is a Premium feature');
       return;
     }
 
@@ -98,7 +98,7 @@ showPaywall(context);
   // Shows a dialog to add an item manually
   Future<void> _showAddItemDialog() async {
     if (!FeatureGate.instance.allowShoppingList) {
-      _upsell(context, 'Shopping List is a Pro feature');
+      _upsell(context, 'Shopping List is a Premium feature');
       return;
     }
 
@@ -166,7 +166,7 @@ showPaywall(context);
   // Deletes all items that are currently checked
   void _clearCheckedItems() {
     if (!FeatureGate.instance.allowShoppingList) {
-      _upsell(context, 'Shopping List is a Pro feature');
+      _upsell(context, 'Shopping List is a Premium feature');
       return;
     }
 
@@ -182,7 +182,7 @@ showPaywall(context);
 
   @override
   Widget build(BuildContext context) {
-    final fg = FeatureGate.instance;
+    final fg = context.watch<FeatureGate>();
 
     return Scaffold(
 appBar: AppBar(
@@ -190,10 +190,7 @@ appBar: AppBar(
     children: [
       const Text('🛒 Shopping List'),
       const SizedBox(width: 8),
-      ProBadge(
-        label: 'Premium', // always say "Premium"
-        unlocked: FeatureGate.instance.allowShoppingList, // tint if user has it
-      ),
+      
     ],
   ),
         actions: [
@@ -202,7 +199,7 @@ appBar: AppBar(
             tooltip: 'Clear Checked Items',
             onPressed: () {
               if (!fg.allowShoppingList) {
-                _upsell(context, 'Shopping List is a Pro feature');
+                _upsell(context, 'Shopping List is a Premium feature');
                 return;
               }
               showDialog(
@@ -233,7 +230,7 @@ appBar: AppBar(
       // Keep the list visible but non-interactive for Free
       body: SoftLockOverlay(
         allow: fg.allowShoppingList,
-        message: 'Shopping List is a Pro feature',
+        message: 'Shopping List is a Premium feature',
         child: ValueListenableBuilder(
           valueListenable: _shoppingBox.listenable(),
           builder: (context, Box<ShoppingListItem> box, _) {
@@ -307,7 +304,7 @@ appBar: AppBar(
         heroTag: 'addManualItemFab',
         onPressed: () {
           if (!fg.allowShoppingList) {
-            _upsell(context, 'Shopping List is a Pro feature');
+            _upsell(context, 'Shopping List is a Premium feature');
             return;
           }
           _showAddItemDialog();

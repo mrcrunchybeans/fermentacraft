@@ -1,5 +1,6 @@
 // lib/acid_tools/acid_tools.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'ta_acid_calculator_tab.dart';
 import 'ph_acid_calculator_tab.dart';
@@ -13,7 +14,7 @@ class AcidToolsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = FeatureGate.instance;
+    final fg = context.watch<FeatureGate>();
 
     return DefaultTabController(
       length: 3,
@@ -36,14 +37,14 @@ class AcidToolsPage extends StatelessWidget {
             // TA tab is visible but soft-locked when not Pro
             SoftLockOverlay(
               allow: fg.allowAcidTA,
-              message: 'TA Calculator is a Pro feature',
+              message: 'TA Calculator is a Premium feature',
               child: const TaAcidCalculatorTab(),
             ),
 
             // Strip Reader tab is visible but soft-locked when not Pro
             SoftLockOverlay(
               allow: fg.allowStripReader,
-              message: 'Strip Reader is a Pro feature',
+              message: 'Strip Reader is a Premium feature',
               child: const StripReaderTab(),
             ),
           ],

@@ -1,6 +1,6 @@
 // models/inventory_action.dart
 
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 part 'inventory_action.g.dart';
 

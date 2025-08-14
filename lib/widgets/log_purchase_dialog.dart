@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
 import '../models/inventory_item.dart';
 import '../models/purchase_transaction.dart';
+import '../models/settings_model.dart';
+import '../utils/boxes.dart';
+import 'package:fermentacraft/utils/money.dart'; // moneyText / moneyWithSymbol
+import 'package:fermentacraft/utils/inventory_item_extensions.dart'; // <- for addPurchaseTx
 
 class LogPurchaseDialog extends StatefulWidget {
   final InventoryItem item;
@@ -15,34 +22,72 @@ class LogPurchaseDialog extends StatefulWidget {
 class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
   final _formKey = GlobalKey<FormState>();
   DateTime _date = DateTime.now();
-  DateTime? _expirationDate; // Added for expiration date logging
+  DateTime? _expirationDate;
   double _amount = 0;
   double _cost = 0;
 
   final _amountController = TextEditingController();
   final _costController = TextEditingController();
 
-  void _saveTransaction() {
-    if (_formKey.currentState?.validate() ?? false) {
-      _formKey.currentState?.save();
+  @override
+  void initState() {
+    super.initState();
+    // live preview of unit cost as user types
+    _amountController.addListener(_recalc);
+    _costController.addListener(_recalc);
+  }
 
-      // FIX: The logic is now much simpler.
-      
-      // 1. Create the new transaction.
-      final transaction = PurchaseTransaction(
-        amount: _amount,
-        cost: _cost,
-        date: _date,
-        expirationDate: _expirationDate,
-      );
+  @override
+  void dispose() {
+    _amountController.removeListener(_recalc);
+    _costController.removeListener(_recalc);
+    _amountController.dispose();
+    _costController.dispose();
+    super.dispose();
+  }
 
-      // 2. Add it to the item's history using the helper method.
-      //    This automatically saves the parent item.
-      widget.item.addPurchase(transaction);
+  void _recalc() => setState(() {});
 
-      // 3. Close the dialog.
-      Navigator.of(context).pop(true);
+  Future<void> _saveTransaction() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    _formKey.currentState?.save();
+
+    final tx = PurchaseTransaction(
+      amount: _amount,
+      cost: _cost, // TOTAL cost of this purchase
+      date: _date,
+      expirationDate: _expirationDate,
+    );
+
+    // Append the transaction
+    widget.item.addPurchaseTx(tx);
+
+    // Persist back to Hive (handles either string-id or auto keys)
+    final box = Hive.box<InventoryItem>(Boxes.inventory);
+    dynamic foundKey;
+
+    // Try to find by identity or by id
+    for (final k in box.keys) {
+      final v = box.get(k);
+      if (identical(v, widget.item)) {
+        foundKey = k;
+        break;
+      }
+      if (v is InventoryItem && v.id == widget.item.id) {
+        foundKey = k;
+        break;
+      }
     }
+
+    if (foundKey != null) {
+      await box.put(foundKey, widget.item);
+    } else {
+      // Fallback: put by stable id (works if box uses string keys)
+      await box.put(widget.item.id, widget.item);
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _pickDate(bool isExpiration) async {
@@ -64,14 +109,9 @@ class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
   }
 
   @override
-  void dispose() {
-    _amountController.dispose();
-    _costController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final symbol = context.watch<SettingsModel>().currencySymbol;
+
     double? unitCost;
     final currentAmount = double.tryParse(_amountController.text) ?? 0;
     final currentCost = double.tryParse(_costController.text) ?? 0;
@@ -89,7 +129,9 @@ class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
             children: [
               TextFormField(
                 controller: _amountController,
-                decoration: InputDecoration(labelText: "Amount Purchased (${widget.item.unit})"),
+                decoration: InputDecoration(
+                  labelText: "Amount Purchased (${widget.item.unit})",
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onSaved: (val) => _amount = double.tryParse(val ?? '0') ?? 0,
                 validator: (val) {
@@ -100,19 +142,22 @@ class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
               ),
               TextFormField(
                 controller: _costController,
-                decoration: const InputDecoration(labelText: "Total Cost (\$)"),
+                decoration: InputDecoration(
+                  labelText: "Total Cost",
+                  prefixText: '$symbol ',
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onSaved: (val) => _cost = double.tryParse(val ?? '0') ?? 0,
                 validator: (val) {
                   if (val == null || val.isEmpty) return "Required";
-                   if ((double.tryParse(val) ?? 0) <= 0) return "Must be positive";
+                  if ((double.tryParse(val) ?? 0) <= 0) return "Must be positive";
                   return null;
                 },
               ),
               const SizedBox(height: 8),
               if (unitCost != null)
                 Text(
-                  "Cost per ${widget.item.unit}: \$${unitCost.toStringAsFixed(2)}",
+                  "Cost per ${widget.item.unit}: ${moneyText(context, unitCost)}",
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               const SizedBox(height: 12),
@@ -120,14 +165,22 @@ class _LogPurchaseDialogState extends State<LogPurchaseDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text("Purchased: ${DateFormat.yMMMd().format(_date)}"),
-                  TextButton(child: const Text('Change'), onPressed: () => _pickDate(false)),
+                  TextButton(
+                    child: const Text('Change'),
+                    onPressed: () => _pickDate(false),
+                  ),
                 ],
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                   Text("Expires: ${_expirationDate != null ? DateFormat.yMMMd().format(_expirationDate!) : 'Not set'}"),
-                  TextButton(child: const Text('Set'), onPressed: () => _pickDate(true)),
+                  Text(
+                    "Expires: ${_expirationDate != null ? DateFormat.yMMMd().format(_expirationDate!) : 'Not set'}",
+                  ),
+                  TextButton(
+                    child: Text(_expirationDate == null ? 'Set' : 'Change'),
+                    onPressed: () => _pickDate(true),
+                  ),
                 ],
               ),
             ],

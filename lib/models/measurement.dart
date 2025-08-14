@@ -1,5 +1,5 @@
 // lib/models/measurement.dart
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 part 'measurement.g.dart';

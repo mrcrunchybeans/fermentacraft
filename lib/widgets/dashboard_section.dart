@@ -2,7 +2,7 @@
 
 import 'package:flutter/foundation.dart'; // Provides ValueListenable
 import 'package:flutter/material.dart'; // Provides general UI widgets
-import 'package:hive/hive.dart';         // Provides the 'Box' class
+import 'package:hive_flutter/hive_flutter.dart';         // Provides the 'Box' class
 
 // NEW: A generic, reusable dashboard section widget.
 class DashboardSection<T> extends StatelessWidget {

@@ -11,7 +11,6 @@ class EditPurchaseDialog extends StatefulWidget {
     super.key,
     required this.entry,
     required this.item,
-    // The 'index' is no longer needed
   });
 
   @override
@@ -20,8 +19,7 @@ class EditPurchaseDialog extends StatefulWidget {
 
 class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
   final _formKey = GlobalKey<FormState>();
-  
-  // Local state for the form fields
+
   late TextEditingController _amountController;
   late TextEditingController _costController;
   late DateTime _date;
@@ -30,8 +28,10 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
   @override
   void initState() {
     super.initState();
-    _amountController = TextEditingController(text: widget.entry.amount.toString());
-    _costController = TextEditingController(text: widget.entry.cost.toStringAsFixed(2));
+    _amountController =
+        TextEditingController(text: widget.entry.amount.toString());
+    _costController =
+        TextEditingController(text: widget.entry.cost.toStringAsFixed(2));
     _date = widget.entry.date;
     _expirationDate = widget.entry.expirationDate;
   }
@@ -44,46 +44,48 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
   }
 
   void _saveChanges() {
-    if (_formKey.currentState?.validate() ?? false) {
-      _formKey.currentState?.save();
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    _formKey.currentState?.save();
 
-      // Update the properties of the specific transaction being edited
-      widget.entry.amount = double.tryParse(_amountController.text) ?? 0;
-      widget.entry.cost = double.tryParse(_costController.text) ?? 0;
-      widget.entry.date = _date;
-      widget.entry.expirationDate = _expirationDate;
+    widget.entry.amount =
+        double.tryParse(_amountController.text.trim()) ?? 0.0;
+    widget.entry.cost = double.tryParse(_costController.text.trim()) ?? 0.0;
+    widget.entry.date = _date;
+    widget.entry.expirationDate = _expirationDate;
 
-      // Important: Ensure the used amount doesn't exceed the new total amount
-      if (widget.entry.usedAmount > widget.entry.amount) {
-        widget.entry.usedAmount = widget.entry.amount;
-      }
-
-      // Simply save the parent item. The getters will recalculate everything automatically.
-      widget.item.save();
-      
-      Navigator.of(context).pop(widget.entry);
+    // Ensure usedAmount is not greater than new amount
+    if (widget.entry.usedAmount > widget.entry.amount) {
+      widget.entry.usedAmount = widget.entry.amount;
     }
+
+    // Persist via parent (common pattern with embedded objects in Hive)
+    widget.item.save();
+    Navigator.of(context).pop(widget.entry);
   }
 
   void _deletePurchase() {
-    // Show a confirmation dialog before deleting
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Purchase?'),
-        content: const Text('Are you sure you want to delete this purchase entry? This action cannot be undone.'),
+        content: const Text(
+          'Are you sure you want to delete this purchase entry? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () {
               widget.item.purchaseHistory.remove(widget.entry);
               widget.item.save();
-              Navigator.pop(dialogContext); // Close confirmation dialog
-              Navigator.pop(context); // Close edit dialog
+              Navigator.pop(dialogContext); // close confirm
+              Navigator.pop(context); // close edit dialog
             },
             child: const Text('Delete'),
           ),
@@ -92,8 +94,18 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
     );
   }
 
+  // Guard: clamp an initial date to [first, last] to avoid showDatePicker assertion
+  DateTime _clampDate(DateTime d, DateTime first, DateTime last) {
+    if (d.isBefore(first)) return first;
+    if (d.isAfter(last)) return last;
+    return d;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final expirationFirst = DateTime.now().subtract(const Duration(days: 30));
+    final expirationLast = DateTime(2040);
+
     return AlertDialog(
       title: const Text('Edit Purchase'),
       content: Form(
@@ -104,18 +116,24 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
             children: [
               TextFormField(
                 controller: _amountController,
-                decoration: InputDecoration(labelText: 'Amount (${widget.item.unit})'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (val) => val == null || val.isEmpty ? "Required" : null,
+                decoration:
+                    InputDecoration(labelText: 'Amount (${widget.item.unit})'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                validator: (val) =>
+                    (val == null || val.trim().isEmpty) ? 'Required' : null,
               ),
               TextFormField(
                 controller: _costController,
                 decoration: const InputDecoration(labelText: 'Total Cost'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (val) => val == null || val.isEmpty ? "Required" : null,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                validator: (val) =>
+                    (val == null || val.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: 16),
-              // Date Pickers
+
+              // Purchase date
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -125,31 +143,42 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: _date,
+                        initialDate: _clampDate(
+                          _date,
+                          DateTime(2000),
+                          DateTime.now(),
+                        ),
                         firstDate: DateTime(2000),
                         lastDate: DateTime.now(),
                       );
-                      if (picked != null) {
+                      if (picked != null && mounted) {
                         setState(() => _date = picked);
                       }
                     },
                   ),
                 ],
               ),
+
+              // Expiration date
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("Expires: ${_expirationDate != null ? DateFormat.yMMMd().format(_expirationDate!) : 'Not set'}"),
+                  Text(
+                    "Expires: ${_expirationDate != null ? DateFormat.yMMMd().format(_expirationDate!) : 'Not set'}",
+                  ),
                   TextButton(
-                    child: const Text('Set'),
+                    child: Text(_expirationDate == null ? 'Set' : 'Change'),
                     onPressed: () async {
+                      final init = _expirationDate ??
+                          DateTime.now().add(const Duration(days: 365));
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: _expirationDate ?? DateTime.now().add(const Duration(days: 365)),
-                        firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                        lastDate: DateTime(2040),
+                        initialDate:
+                            _clampDate(init, expirationFirst, expirationLast),
+                        firstDate: expirationFirst,
+                        lastDate: expirationLast,
                       );
-                      if (picked != null) {
+                      if (picked != null && mounted) {
                         setState(() => _expirationDate = picked);
                       }
                     },
@@ -160,20 +189,28 @@ class _EditPurchaseDialogState extends State<EditPurchaseDialog> {
           ),
         ),
       ),
+
+      // ❗ No Spacer here — use actionsAlignment instead
+      actionsAlignment: MainAxisAlignment.spaceBetween,
       actions: [
         TextButton(
           style: TextButton.styleFrom(foregroundColor: Colors.red),
           onPressed: _deletePurchase,
           child: const Text('Delete'),
         ),
-        const Spacer(),
-        TextButton(
-          child: const Text('Cancel'),
-          onPressed: () => Navigator.pop(context),
-        ),
-        ElevatedButton(
-          onPressed: _saveChanges,
-          child: const Text('Save'),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _saveChanges,
+              child: const Text('Save'),
+            ),
+          ],
         ),
       ],
     );

@@ -6,12 +6,15 @@ import 'package:fermentacraft/recipe_detail_page.dart';
 import 'package:fermentacraft/recipe_builder_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import 'models/recipe_model.dart';
 
 // NEW: imports for gating
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
+
+import 'utils/boxes.dart';
 
 enum SortMode { dateCreated, aToZ, zToA, recentlyOpened }
 enum _RecipeAction { archiveToggle, delete }
@@ -171,7 +174,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
         action: SnackBarAction(
           label: 'UNDO',
           onPressed: () async {
-            final box = Hive.box<RecipeModel>('recipes');
+              final box = Hive.box<RecipeModel>(Boxes.recipes);
             try {
               await box.put(key, backup);
             } catch (_) {
@@ -253,19 +256,26 @@ class _RecipeListPageState extends State<RecipeListPage> {
   // --- UI --------------------------------------------------------------------
 
   void _onAddRecipePressed() {
-    final fg = FeatureGate.instance;
-    final current = CountsService.instance.recipeCount();
-    if (!fg.canAddRecipe(current)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Free allows ${fg.recipeLimitFree} recipes')),
-      );
-showPaywall(context);
+    final fg = context.read<FeatureGate>();
+    final recipeCount = CountsService.instance.recipeCount();
 
+    if (!fg.canAddRecipe(recipeCount)) {
+      // The user has reached the free limit.
+      // Show a snackbar and the paywall, then return without navigating.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Free allows ${fg.recipeLimitFree} recipes. Upgrade to add more.'),
+        ),
+      );
+      showPaywall(context);
       return;
     }
 
-    // Clear any lingering snackbars before route push
+    // The user has not reached the limit.
+    // Clear any lingering snackbars before pushing a new route.
     ScaffoldMessenger.of(context).clearSnackBars();
+
+    // Navigate to the RecipeBuilderPage to create a new recipe.
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RecipeBuilderPage()),
@@ -274,7 +284,7 @@ showPaywall(context);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+return Scaffold(
       appBar: AppBar(
         title: Text(_showArchived ? 'Archived Recipes' : 'Saved Recipes'),
         actions: [

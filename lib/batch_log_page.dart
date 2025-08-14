@@ -1,15 +1,20 @@
 // lib/batch_log_page.dart
-import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:fermentacraft/batch_detail_page.dart';
 import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/widgets/add_batch_dialog.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:intl/intl.dart';
 
-// gating + counts + paywall
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
+// ❌ no direct sync-service calls needed
+// import 'package:fermentacraft/services/firestore_sync_service.dart';
+
+import 'utils/boxes.dart';
 
 class BatchLogPage extends StatefulWidget {
   const BatchLogPage({super.key});
@@ -22,18 +27,44 @@ class _BatchLogPageState extends State<BatchLogPage> {
   final DateFormat _dateFormat = DateFormat('MMM d, yyyy');
   bool _showArchived = false;
 
+  String _safeName(BatchModel b) {
+    final t = b.name.trim();
+    return t.isNotEmpty ? t : 'Untitled batch';
+  }
+
+  String _safeStatus(BatchModel b) {
+    final t = b.status.trim();
+    return t.isNotEmpty ? t : 'Unknown';
+  }
+
+  String _safeStartDate(BatchModel b) => _dateFormat.format(b.startDate);
+
+  String _safeCurrentSg(BatchModel b) {
+    try {
+      final ms = b.safeMeasurements;
+      if (ms.isNotEmpty) {
+        final g = ms.last.gravity;
+        if (g != null) return g.toStringAsFixed(3);
+      }
+    } catch (_) {}
+    return '—';
+  }
+
+  bool _isCompleted(BatchModel b) => b.status.toLowerCase() == 'completed';
+
   Future<void> _toggleArchiveStatus(BatchModel batch) async {
     final isArchiving = !batch.isArchived;
 
-    // Enforce archived cap for Free
-    if (isArchiving && !FeatureGate.instance.isPremium) {
+    final gate = context.read<FeatureGate>();
+    if (isArchiving && !gate.isPremium) {
       final archived = CountsService.instance.archivedBatchCount();
-      if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Free allows ${FeatureGate.instance.archivedBatchLimitFree} archived batches')),
+      if (archived >= gate.archivedBatchLimitFree) {
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          SnackBar(content: Text('Free allows ${gate.archivedBatchLimitFree} archived batches')),
         );
-showPaywall(context);
-
+        await showPaywall(context);
         return;
       }
     }
@@ -42,9 +73,7 @@ showPaywall(context);
       context: context,
       builder: (context) => AlertDialog(
         title: Text(isArchiving ? "Archive Batch?" : "Unarchive Batch?"),
-        content: Text(
-          'Are you sure you want to ${isArchiving ? 'archive' : 'unarchive'} "${batch.name}"?',
-        ),
+        content: Text('Are you sure you want to ${isArchiving ? 'archive' : 'unarchive'} "${_safeName(batch)}"?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
           ElevatedButton(
@@ -56,65 +85,101 @@ showPaywall(context);
     );
 
     if (confirmed == true) {
-      batch.isArchived = isArchiving;
-      await batch.save();
+      batch.isArchived = isArchiving;   // set first
+      await batch.save();               // then persist
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isArchiving ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            isArchiving ? 'Archived "${_safeName(batch)}"' : 'Unarchived "${_safeName(batch)}"',
+          ),
+        ),
       );
       setState(() {});
     }
   }
 
+  // Robust local delete for both key styles (stable string id or auto-int)
+  Future<bool> _deleteBatchLocally(BatchModel batch) async {
+    final box = Hive.box<BatchModel>(Boxes.batches);
+
+    final dynamic k = batch.key;
+    if (k != null && box.containsKey(k)) {
+      await box.delete(k);        // 🔁 FirestoreSyncService sees this and writes tombstone
+      return true;
+    }
+
+    final id = batch.id;
+    if (box.containsKey(id)) {
+      await box.delete(id);       // 🔁 watcher handles remote tombstone
+      return true;
+    }
+
+    for (final key in box.keys) {
+      final v = box.get(key);
+      if (v is BatchModel && v.id == id) {
+        await box.delete(key);    // 🔁 watcher handles remote tombstone
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _deleteBatchWithUndo(BatchModel batch) async {
+    final messenger = ScaffoldMessenger.of(context);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Delete Batch?"),
-        content: Text('This will permanently delete "${batch.name}" and its data.'),
+        content: Text('This will permanently delete "${_safeName(batch)}" and its data.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
             onPressed: () => Navigator.pop(context, true),
             child: const Text("Delete"),
           ),
         ],
       ),
     );
-
     if (confirmed != true) return;
 
-    final backup = batch; // keep in memory
-    final key = batch.key;
-    final name = batch.name;
+    final backup = batch;
+    final id = batch.id;
+    final name = _safeName(batch);
 
-    await batch.delete();
+    final deleted = await _deleteBatchLocally(batch);
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Deleted "$name"'),
-        duration: const Duration(seconds: 6),
-        action: SnackBarAction(
-          label: 'UNDO',
-          onPressed: () async {
-            final box = Hive.box<BatchModel>('batches');
-            try {
-              await box.put(key, backup);
-            } catch (_) {
-              await box.add(backup);
-            }
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Batch restored')),
-            );
-          },
+    if (deleted) {
+      // 👍 No direct sync calls: watchers will write tombstone remotely.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Deleted "$name"'),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'UNDO',
+            onPressed: () async {
+              final box = Hive.box<BatchModel>(Boxes.batches);
+              final usesStringKeys = box.isEmpty ? true : box.keys.first is String;
+              if (usesStringKeys) {
+                await box.put(id, backup); // 🔁 watcher pushes non-deleted doc
+              } else {
+                await box.add(backup);
+              }
+              if (!mounted) return;
+              messenger.showSnackBar(const SnackBar(content: Text('Batch restored')));
+            },
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Delete failed. Item not found locally.')),
+      );
+    }
   }
 
   PopupMenuButton<_BatchAction> _moreMenu(BatchModel batch) {
@@ -135,10 +200,10 @@ showPaywall(context);
           child: Text(batch.isArchived ? 'Unarchive' : 'Archive'),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: _BatchAction.delete,
           child: Row(
-            children: const [
+            children: [
               Icon(Icons.delete_outline),
               SizedBox(width: 8),
               Text('Delete'),
@@ -149,16 +214,16 @@ showPaywall(context);
     );
   }
 
-  void _onAddBatchPressed() async {
-    // Enforce Free limit: max 1 active batch
-    final fg = FeatureGate.instance;
+  Future<void> _onAddBatchPressed() async {
+    final fg = context.read<FeatureGate>();
     final currentActive = CountsService.instance.activeBatchCount();
     if (!fg.canAddActiveBatch(currentActive)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batch')),
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batch${fg.activeBatchLimitFree == 1 ? '' : 'es'}')),
       );
-showPaywall(context);
-
+      await showPaywall(context);
       return;
     }
 
@@ -179,20 +244,19 @@ showPaywall(context);
         ],
       ),
       body: ValueListenableBuilder<Box<BatchModel>>(
-        valueListenable: Hive.box<BatchModel>('batches').listenable(),
+        valueListenable: Hive.box<BatchModel>(Boxes.batches).listenable(),
         builder: (context, box, _) {
-          final batches = box.values.where((b) => b.isArchived == _showArchived).toList();
+          final list = box.values.toList();
+          final batches = list.where((b) => b.isArchived == _showArchived).toList();
 
           if (batches.isEmpty) {
             return Center(
-              child: Text(
-                _showArchived ? 'No archived batches.' : 'No batches yet. Tap + to create one.',
-              ),
+              child: Text(_showArchived ? 'No archived batches.' : 'No batches yet. Tap + to create one.'),
             );
           }
 
-          final active = batches.where((b) => b.status != 'Completed').toList();
-          final completed = batches.where((b) => b.status == 'Completed').toList();
+          final active = batches.where((b) => !_isCompleted(b)).toList();
+          final completed = batches.where(_isCompleted).toList();
 
           return ListView(
             children: [
@@ -220,10 +284,7 @@ showPaywall(context);
         ),
         initiallyExpanded: true,
         children: batches.map((batch) {
-          final sg = batch.safeMeasurements.isNotEmpty
-              ? batch.safeMeasurements.last.gravity?.toStringAsFixed(3)
-              : '—';
-
+          final sg = _safeCurrentSg(batch);
           return Dismissible(
             key: ValueKey(batch.key),
             background: _swipeBg(
@@ -242,17 +303,17 @@ showPaywall(context);
             confirmDismiss: (direction) async {
               if (direction == DismissDirection.startToEnd) {
                 await _toggleArchiveStatus(batch);
-                return false; // keep in place; list will rebuild
+                return false;
               } else {
                 await _deleteBatchWithUndo(batch);
                 return false;
               }
             },
             child: ListTile(
-              title: Text(batch.name),
+              title: Text(_safeName(batch)),
               subtitle: Text(
-                'Started: ${_dateFormat.format(batch.startDate)}\n'
-                'Status: ${batch.status}\n'
+                'Started: ${_safeStartDate(batch)}\n'
+                'Status: ${_safeStatus(batch)}\n'
                 'Current SG: $sg',
               ),
               isThreeLine: true,
@@ -278,11 +339,11 @@ showPaywall(context);
     bool danger = false,
   }) {
     final cs = Theme.of(context).colorScheme;
-    final color = danger ? cs.error : cs.primary;
+    final base = danger ? cs.error : cs.primary;
     final onColor = danger ? cs.onError : cs.onPrimary;
 
     return Container(
-      color: color.withValues(alpha:0.90), // safer across SDKs
+      color: base.withValues(alpha: 0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(

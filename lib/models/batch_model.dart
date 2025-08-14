@@ -1,5 +1,5 @@
 // ignore_for_file: invalid_null_aware_operator
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'fermentation_stage.dart';
 import 'measurement.dart';
 import 'planned_event.dart';

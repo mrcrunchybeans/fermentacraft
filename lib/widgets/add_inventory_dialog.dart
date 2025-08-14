@@ -1,21 +1,23 @@
+// lib/widgets/add_inventory_dialog.dart
+import 'package:collection/collection.dart';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
-import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:collection/collection.dart';
+import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
-import 'package:fermentacraft/utils/units.dart'; // <- shared units
-import '../models/inventory_item.dart';
-import '../models/unit_type.dart';
-import '../utils/unit_conversion.dart';
-import '../models/purchase_transaction.dart';
 
-// NEW: gating imports
-import 'package:fermentacraft/services/feature_gate.dart';
+import '../models/inventory_item.dart';
+import '../models/purchase_transaction.dart';
+import '../models/unit_type.dart';
+import '../models/settings_model.dart';
+import '../services/feature_gate.dart';
+import '../utils/boxes.dart';
+import '../utils/unit_conversion.dart';
+import '../utils/units.dart';
+import '../widgets/show_paywall.dart';
 
 class AddInventoryDialog extends StatefulWidget {
   final Map<String, dynamic>? initialData;
-
   const AddInventoryDialog({super.key, this.initialData});
 
   @override
@@ -25,30 +27,28 @@ class AddInventoryDialog extends StatefulWidget {
 class _AddInventoryDialogState extends State<AddInventoryDialog> {
   final _formKey = GlobalKey<FormState>();
   final _uuid = const Uuid();
+  bool _saving = false;
 
   String _name = '';
   String _category = 'Juice';
   double _amount = 0;
-  String _unit = 'g'; // <- default to canonical
+  String _unit = 'g'; // canonical default
   double _cost = 0;
   String? _notes;
   UnitType _unitType = UnitType.mass;
   DateTime? _expirationDate;
 
-  final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
+  static const List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
 
   @override
   void initState() {
     super.initState();
 
-    // Normalize incoming unit (if any) to our canonical set
     _unit = normalizeUnit(widget.initialData?['unit'] as String?);
     _unitType = inferUnitType(_unit);
 
     if (widget.initialData != null) {
       _name = (widget.initialData!['name'] ?? '').toString();
-
-      // DO NOT overwrite with the raw string; keep normalized (_unit already set)
       final inputCategory = widget.initialData!['category'];
       if (inputCategory != null && _categories.contains(inputCategory)) {
         _category = inputCategory;
@@ -56,63 +56,118 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
     }
   }
 
+  /// Find the Hive key for an InventoryItem we already pulled from the box.
+  dynamic _findKeyForItem(Box<InventoryItem> box, InventoryItem item) {
+    // 1) Prefer stable id key
+    if (box.containsKey(item.id)) return item.id;
+
+    // 2) Identity match (same instance)
+    final kByIdentity = box.keys.firstWhereOrNull((k) => identical(box.get(k), item));
+    if (kByIdentity != null) return kByIdentity;
+
+    // 3) Match by id on stored values
+    final kById = box.keys.firstWhereOrNull((k) {
+      final v = box.get(k);
+      return v is InventoryItem && v.id == item.id;
+    });
+    return kById; // may be null
+  }
+
   Future<void> _saveInventoryItem() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    _formKey.currentState?.save();
+    if (_saving) return;
+    setState(() => _saving = true);
 
-    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    try {
+      // Validate form
+      if (!(_formKey.currentState?.validate() ?? false)) {
+        setState(() => _saving = false);
+        return;
+      }
+      _formKey.currentState?.save();
 
-    final transaction = PurchaseTransaction(
-      date: DateTime.now(),
-      amount: _amount,
-      cost: _cost,
-      expirationDate: _expirationDate,
-    );
+      final box = Hive.box<InventoryItem>(Boxes.inventory);
 
-    // Try to merge with an existing item by name (case-insensitive)
-    final existingItem = inventoryBox.values.firstWhereOrNull(
-      (item) => item.name.toLowerCase() == _name.toLowerCase(),
-    );
+      final transaction = PurchaseTransaction(
+        date: DateTime.now(),
+        amount: _amount,
+        cost: _cost, // total cost for this purchase
+        expirationDate: _expirationDate,
+      );
 
-    // Gate only when creating a brand-new item (merges are allowed)
-    if (existingItem == null) {
-      final fg = FeatureGate.instance;
-      final activeCount = inventoryBox.values.where((i) => !i.isArchived).length;
-      final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+      // Merge by case-insensitive name
+      final existingItem = box.values.firstWhereOrNull(
+        (i) => i.name.toLowerCase() == _name.toLowerCase(),
+      );
 
-      if (atLimit) {
-        // Tell the user and offer upgrade. Keep the dialog open.
-        if (mounted) {
+      // Gate only on *new* items (merges allowed on Free)
+      if (existingItem == null) {
+        final fg = FeatureGate.instance; // ✅ singleton, not Provider
+        final activeCount = box.values.where((i) => !i.isArchived).length;
+        final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+
+        if (atLimit) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
-              duration: const Duration(seconds: 2),
+              duration: const Duration(seconds: 3),
             ),
           );
-showPaywall(context);
+          await showPaywall(context);
+          if (!mounted) return;
 
+          // If still not premium after paywall, stop
+          if (!FeatureGate.instance.isPremium) {
+            setState(() => _saving = false);
+            return;
+          }
         }
-        return;
       }
-    }
 
-    if (existingItem != null) {
-      existingItem.addPurchase(transaction); // merge path
-    } else {
-      final newItem = InventoryItem(
-        id: _uuid.v4(),
-        name: _name.trim(),
-        unit: _unit,            // <- canonical unit
-        unitType: _unitType,
-        notes: _notes,
-        category: _category,
-        purchaseHistory: [transaction],
+      if (existingItem != null) {
+        // ---- MERGE PATH ----
+        existingItem.addPurchase(transaction);
+
+        final key = _findKeyForItem(box, existingItem);
+        if (key != null) {
+          await box.put(key, existingItem);
+        } else {
+          // Fallback: add if we truly can't locate the original key
+          await box.add(existingItem);
+        }
+      } else {
+        // ---- CREATE PATH ----
+        final item = InventoryItem(
+          id: _uuid.v4(),
+          name: _name.trim(),
+          unit: _unit,
+          unitType: _unitType,
+          notes: _notes,
+          category: _category,
+          purchaseHistory: [transaction],
+        );
+
+        // Support both key modes: string (stable id) or auto-int
+        final usesStringKeys = box.isEmpty ? true : box.keys.first is String;
+        if (usesStringKeys) {
+          await box.put(item.id, item); // stable id key
+        } else {
+          await box.add(item); // auto-increment key
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inventory saved')),
       );
-      await inventoryBox.put(newItem.id, newItem); // stable key
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+      setState(() => _saving = false);
     }
-
-    if (!mounted) return;
-    Navigator.of(context).pop();
   }
 
   Future<void> _pickExpirationDate() async {
@@ -129,6 +184,15 @@ showPaywall(context);
 
   @override
   Widget build(BuildContext context) {
+    // currency symbol for labels & prefixes
+    final symbol = context.watch<SettingsModel>().currencySymbol;
+
+    // live preview of unit cost if the user entered both amount & cost
+    double? unitCostPreview;
+    if (_amount > 0 && _cost > 0) {
+      unitCostPreview = _cost / _amount;
+    }
+
     return AlertDialog(
       title: const Text('Add Inventory Item'),
       content: SingleChildScrollView(
@@ -174,25 +238,29 @@ showPaywall(context);
                         contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (v) {
+                        final parsed = double.tryParse((v).trim());
+                        setState(() => _amount = parsed ?? 0);
+                      },
                       onSaved: (val) => _amount = double.tryParse((val ?? '').trim()) ?? 0,
-                      validator: (val) => (val == null || val.trim().isEmpty)
-                          ? 'Required'
-                          : (double.tryParse(val.trim()) == null ? 'Invalid number' : null),
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        return double.tryParse(val.trim()) == null ? 'Invalid number' : null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: kCanonicalUnits.contains(_unit) ? _unit : kCanonicalUnits.first, // <- guard
+                      value: kCanonicalUnits.contains(_unit) ? _unit : kCanonicalUnits.first,
                       items: kCanonicalUnits
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) {
-                          final inferred = inferUnitType(val);
                           setState(() {
                             _unit = val;
-                            _unitType = inferred;
+                            _unitType = inferUnitType(val);
                           });
                         }
                       },
@@ -206,23 +274,35 @@ showPaywall(context);
               ),
               const SizedBox(height: 10),
 
-              // Total Cost
+              // Total Cost (with currency symbol)
               TextFormField(
-  decoration: const InputDecoration(
-    labelText: 'Total Cost (\$) — optional',
-    contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-  ),
-  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-  onSaved: (val) {
-    final v = double.tryParse((val ?? '').trim());
-    _cost = (v != null && v >= 0) ? v : 0; // blank/invalid -> 0
-  },
-  validator: (val) {
-    if (val == null || val.trim().isEmpty) return null; // optional
-    return double.tryParse(val.trim()) == null ? 'Invalid number' : null;
-  },
-),
-
+                decoration: InputDecoration(
+                  labelText: 'Total Cost ($symbol) — optional',
+                  prefixText: '$symbol ',
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (v) {
+                  final parsed = double.tryParse((v).trim());
+                  setState(() => _cost = parsed ?? 0);
+                },
+                onSaved: (val) {
+                  final v = double.tryParse((val ?? '').trim());
+                  _cost = (v != null && v >= 0) ? v : 0;
+                },
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) return null; // optional
+                  return double.tryParse(val.trim()) == null ? 'Invalid number' : null;
+                },
+              ),
+              if (unitCostPreview != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '≈ $symbol${unitCostPreview.toStringAsFixed(2)} per $_unit',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
               const SizedBox(height: 10),
 
               // Notes
@@ -258,12 +338,14 @@ showPaywall(context);
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
         ElevatedButton(
-          onPressed: _saveInventoryItem,
-          child: const Text('Save'),
+          onPressed: _saving ? null : _saveInventoryItem,
+          child: _saving
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Save'),
         ),
       ],
     );

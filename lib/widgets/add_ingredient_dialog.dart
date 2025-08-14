@@ -1,6 +1,10 @@
+// lib/widgets/add_ingredient_dialog.dart
 import 'package:flutter/material.dart';
-import 'package:fermentacraft/models/unit_type.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import 'package:fermentacraft/models/unit_type.dart';
+import 'package:fermentacraft/models/settings_model.dart';
 
 // Unified units helpers (same ones used by Inventory)
 import 'package:fermentacraft/utils/units.dart';
@@ -11,7 +15,7 @@ class AddIngredientDialog extends StatefulWidget {
   final Function(Map<String, dynamic>) onAddToRecipe;
   final Function(Map<String, dynamic>)? onAddToInventory;
   final Map<String, dynamic>? existing;
-  final UnitType unitType; // <-- keep and use it
+  final UnitType unitType; // keep and use it
 
   const AddIngredientDialog({
     super.key,
@@ -83,6 +87,16 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
     }
   }
 
+  @override
+  void dispose() {
+    nameController.dispose();
+    amountController.dispose();
+    ogController.dispose();
+    phController.dispose();
+    costController.dispose();
+    super.dispose();
+  }
+
   Map<String, dynamic> buildIngredientEntry() {
     final og = double.tryParse(ogController.text);
     final ph = double.tryParse(phController.text);
@@ -102,9 +116,16 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
     };
   }
 
-  InputDecoration _dec(String label) => InputDecoration(
+  InputDecoration _dec(
+    String label, {
+    String? prefixText,
+    Widget? suffixIcon,
+  }) =>
+      InputDecoration(
         labelText: label,
         isDense: true,
+        prefixText: prefixText,
+        suffixIcon: suffixIcon,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -116,6 +137,17 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existing != null;
+
+    // 👇 Selected currency symbol from settings
+    final symbol = context.watch<SettingsModel>().currencySymbol;
+
+    // live unit-cost preview
+    double? unitCost;
+    final amt = double.tryParse(amountController.text);
+    final total = double.tryParse(costController.text);
+    if ((amt ?? 0) > 0 && (total ?? 0) > 0) {
+      unitCost = (total! / amt!);
+    }
 
     return AlertDialog(
       title: Text(isEditing ? "Edit Ingredient" : "Add Ingredient"),
@@ -139,6 +171,7 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                         decoration: _dec('Amount'),
                         keyboardType:
                             const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (_) => setState(() {}), // refresh unit-cost preview
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -171,7 +204,7 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                   isDense: true,
                   onChanged: (val) => setState(() => type = val ?? type),
                   items: const [
-                    'Juice','Fruit','Sugar','Concentrate','Additive','Other'
+                    'Juice', 'Fruit', 'Sugar', 'Concentrate', 'Additive', 'Other'
                   ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 ),
                 const SizedBox(height: 8),
@@ -195,12 +228,22 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                 const Divider(),
                 const SizedBox(height: 10),
 
+                // 💸 Currency-aware cost input
                 TextFormField(
                   controller: costController,
-                  decoration: _dec('Total Cost (\$)'),
+                  decoration: _dec('Total Cost', prefixText: '$symbol '),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}), // refresh unit-cost preview
                 ),
+                if (unitCost != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '≈ $symbol${unitCost.toStringAsFixed(2)} per $amountUnit',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
                 const SizedBox(height: 8),
 
                 Row(

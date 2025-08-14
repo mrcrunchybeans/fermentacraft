@@ -1,5 +1,5 @@
 // lib/models/shopping_list_item.dart
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 part 'shopping_list_item.g.dart';

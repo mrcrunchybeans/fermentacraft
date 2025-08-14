@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
+import 'package:provider/provider.dart';
 
 // adjust this import to wherever CiderUtils lives
 import '../utils/utils.dart'; // CiderUtils.recommendedFreeSO2ppm
@@ -14,12 +15,12 @@ class So2CalculatorPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = FeatureGate.instance;
+    final fg = context.watch<FeatureGate>();
     return Scaffold(
       appBar: AppBar(title: const Text('SO₂ Estimator')),
       body: SoftLockOverlay(
         allow: fg.allowSO2,
-        message: 'SO₂ Estimator is a Pro feature',
+        message: 'SO₂ Estimator is a Premium feature',
         child: const So2CalculatorBody(),
       ),
     );

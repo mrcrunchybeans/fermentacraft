@@ -1,0 +1,182 @@
+diff --git a/lib/batch_detail_page.dart b/lib/batch_detail_page.dart
+index 0000000..0000001 100644
+--- a/lib/batch_detail_page.dart
++++ b/lib/batch_detail_page.dart
+@@ -1,6 +1,7 @@
+ import 'package:fermentacraft/utils/inventory_item_extensions.dart';
+ import 'package:fermentacraft/widgets/show_paywall.dart';
+ import 'package:flutter/material.dart';
++// (rest of your imports stay the same)
+ 
+@@
+   Future<double?> _abvForBatch(BatchModel batch) async {
+   final extras = await BatchExtrasRepo().getOrCreate(batch.id);
+   final useMeasured = extras.useMeasuredOg == true;
+   final measuredOg = extras.measuredOg;
+@@
+   return GravityService.abv(og: og, fg: fg);
+ }
+ 
++  /// NEW: Compute ABV using a provided view of BatchExtras so UI can refresh
++  /// immediately when the toggle or measured OG changes.
++  double? _computeAbvFromExtras(
++    BatchModel batch, {
++    required bool useMeasured,
++    required double? measuredOg,
++  }) {
++    final double? og = (useMeasured && measuredOg != null && measuredOg > 1.0)
++        ? measuredOg
++        : (batch.og ?? batch.plannedOg);
++
++    if (og == null || og <= 1.0) return null;
++
++    final double fg = (batch.fg ??
++            (batch.safeMeasurements.isNotEmpty
++                ? (batch.safeMeasurements.last.gravity ?? 1.000)
++                : 1.000))
++        .toDouble();
++
++    return GravityService.abv(og: og, fg: fg);
++  }
++
+@@
+   Widget _recipeSummaryCard(BatchModel batch) {
+     return Card(
+       child: Padding(
+-        const EdgeInsets.all(12),
++        padding: const EdgeInsets.all(12),
+         child: Column(
+           crossAxisAlignment: CrossAxisAlignment.stretch,
+           children: [
+@@
+             const SizedBox(height: 8),
+-Text('Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
+-Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
+-FutureBuilder<double?>(
+-  future: _abvForBatch(batch),
+-  builder: (context, snap) {
+-    final abv = snap.data;
+-    final s = (abv == null) ? '—' : abv.toStringAsFixed(1);
+-    return Text('Estimated ABV: $s%');
+-  },
+-),
++            Text('Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
++            Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
++            // ABV derived from the same BatchExtras used by the toggle,
++            // so it updates immediately when the user changes it.
++            FutureBuilder(
++              future: BatchExtrasRepo().getOrCreate(batch.id),
++              builder: (context, snapshot) {
++                if (!snapshot.hasData) return const Text('Estimated ABV: —');
++                final extras = snapshot.data!;
++                final abv = _computeAbvFromExtras(
++                  batch,
++                  useMeasured: extras.useMeasuredOg ?? false,
++                  measuredOg: extras.measuredOg,
++                );
++                final s = (abv == null) ? '—' : abv.toStringAsFixed(1);
++                return Text('Estimated ABV: $s%');
++              },
++            ),
+ 
+           ],
+         ),
+       ),
+     );
+@@
+-// --- Measured OG & Toggle (Planning) ---
++// --- Measured OG & Toggle (Planning) ---
+ FutureBuilder(
+   future: BatchExtrasRepo().getOrCreate(batch.id),
+   builder: (context, snapshot) {
+     if (!snapshot.hasData) {
+       return const Card(
+@@
+-    final extras = snapshot.data!; // BatchExtras
++    final extras = snapshot.data!; // BatchExtras
++    final abvFromThisCard = _computeAbvFromExtras(
++      batch,
++      useMeasured: extras.useMeasuredOg ?? false,
++      measuredOg: extras.measuredOg,
++    );
+ 
+     return Card(
+       child: Padding(
+         const EdgeInsets.all(16),
+         child: Column(
+@@
+             const SizedBox(height: 8),
+             SwitchListTile(
+               contentPadding: EdgeInsets.zero,
+               title: const Text('Use measured OG for ABV'),
+-              value: extras.useMeasuredOg == true,
++              value: extras.useMeasuredOg ?? false,
+               onChanged: (v) async {
+                 await BatchExtrasRepo().setUseMeasuredOg(batch.id, v);
+                 if (mounted) setState(() {});
+               },
+             ),
++            if (abvFromThisCard != null)
++              Padding(
++                padding: const EdgeInsets.only(top: 4),
++                child: Text(
++                  'ABV (with current setting): ${abvFromThisCard.toStringAsFixed(2)}%',
++                ),
++              ),
+           ],
+         ),
+       ),
+     );
+   },
+@@
+   Widget _buildCompletedTab(BatchModel batch) {
+     _tastingRating = batch.tastingRating ?? 0;
+     _finalYieldUnit = batch.finalYieldUnit ?? 'gal';
+ 
+-  final actualAbvFuture = _abvForBatch(batch);
++  // derive ABV from extras so it tracks the toggle immediately
++  final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
+@@
+-              _metricChip(
+-                icon: Icons.water_drop,
+-                label: 'FG',
+-                value: batch.fg?.toStringAsFixed(3) ?? '—',
+-                onTap: editFg,
+-              ),
+-
+-
+-FutureBuilder<double?>(
+-  future: actualAbvFuture,
+-  builder: (context, snap) {
+-    final abv = snap.data;
+-    return _metricChip(
+-      icon: Icons.percent,
+-      label: 'ABV',
+-      value: abv == null ? '—' : '${abv.toStringAsFixed(2)}%',
+-    );
+-  },
+-),
++              _metricChip(
++                icon: Icons.water_drop,
++                label: 'FG',
++                value: batch.fg?.toStringAsFixed(3) ?? '—',
++                onTap: editFg,
++              ),
++              FutureBuilder(
++                future: extrasFuture,
++                builder: (context, snap) {
++                  final extras = snap.data;
++                  final abv = (extras == null)
++                      ? null
++                      : _computeAbvFromExtras(
++                          batch,
++                          useMeasured: extras.useMeasuredOg ?? false,
++                          measuredOg: extras.measuredOg,
++                        );
++                  return _metricChip(
++                    icon: Icons.percent,
++                    label: 'ABV',
++                    value: abv == null ? '—' : '${abv.toStringAsFixed(2)}%',
++                  );
++                },
++              ),

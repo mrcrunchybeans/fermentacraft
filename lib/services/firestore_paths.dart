@@ -1,16 +1,30 @@
+// lib/services/firestore_paths.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+typedef JsonMap = Map<String, dynamic>;
+
 class FirestorePaths {
-  static CollectionReference<Map<String, dynamic>> userRoot(String uid) =>
-      FirebaseFirestore.instance.collection('users').doc(uid).collection('_root'); // unused marker
+  FirestorePaths._();
 
-  static CollectionReference<Map<String, dynamic>> coll(String uid, String name) =>
-      FirebaseFirestore.instance.collection('users').doc(uid).collection(name);
+  static FirebaseFirestore get _db => FirebaseFirestore.instance;
 
-  static DocumentReference<Map<String, dynamic>> doc(String uid, String name, String id) =>
+  /// /users/{uid}
+  static DocumentReference<JsonMap> userDoc(String uid) =>
+      _db.collection('users').doc(uid);
+
+  /// /users/{uid}/{collection}
+  static CollectionReference<JsonMap> coll(String uid, String name) =>
+      userDoc(uid).collection(name);
+
+  /// /users/{uid}/{collection}/{id}
+  static DocumentReference<JsonMap> doc(String uid, String name, String id) =>
       coll(uid, name).doc(id);
 
-  // Special doc for settings
-  static DocumentReference<Map<String, dynamic>> settingsDoc(String uid) =>
-      FirebaseFirestore.instance.collection('users').doc(uid).collection('settings').doc('app');
+  /// ✅ Single settings doc: /users/{uid}/settings/app
+  static DocumentReference<JsonMap> settingsDoc(String uid) =>
+      userDoc(uid).collection('settings').doc('app');
+
+  /// Optional: /users/{uid}/premium/status
+  static DocumentReference<JsonMap> premiumStatusDoc(String uid) =>
+      userDoc(uid).collection('premium').doc('status');
 }

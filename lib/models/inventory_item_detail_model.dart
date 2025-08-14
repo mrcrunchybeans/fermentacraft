@@ -5,6 +5,8 @@ import '../models/inventory_item.dart';
 import '../models/purchase_transaction.dart';
 import '../widgets/log_purchase_dialog.dart';
 import '../widgets/edit_purchase_dialog.dart';
+import 'package:fermentacraft/utils/money.dart';
+
 
 class InventoryItemDetailDialog extends StatefulWidget {
   const InventoryItemDetailDialog({super.key, required this.item});
@@ -48,16 +50,12 @@ class _InventoryItemDetailDialogState extends State<InventoryItemDetailDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _infoRow("Category", item.category),
-              _infoRow("Amount in Stock", "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)}"),
-              _infoRow(
+_infoRow("Category", item.category),
+_infoRow("Amount in Stock", "${item.amountInStock} ${item.getDisplayUnit(item.amountInStock)}"),
+_infoRow(
   "Cost per Unit",
-  // ignore: unnecessary_null_comparison
-  item.costPerUnit != null
-      ? "\$${item.costPerUnit.toStringAsFixed(2)}"
-      : "N/A",
+  moneyText(context, item.costPerUnit), // shows "—" if null
 ),
-
 if (item.expirationDate != null)
   Padding(
     padding: const EdgeInsets.only(bottom: 8),

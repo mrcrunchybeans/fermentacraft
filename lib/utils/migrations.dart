@@ -1,52 +1,79 @@
-import 'package:hive/hive.dart';
-import '../models/tag.dart';
-import '../utils/tag_icons.dart';
-import '../models/recipe_model.dart';
-import '../models/batch_model.dart';
+// lib/services/migrations/tag_icon_migrations.dart
 
-/// Idempotent: safe to run every startup.
-/// Migrates Tag.iconCodePoint/fontFamily → Tag.iconKey in a standalone 'tags' box.
-Future<void> migrateTagIconsIfNeeded() async {
-  if (!Hive.isBoxOpen('tags')) return;
+import 'package:hive_flutter/hive_flutter.dart';
 
-  final box = Hive.box<Tag>('tags');
+import '../../models/tag.dart';
+import '../../models/recipe_model.dart';
+import '../../models/batch_model.dart';
+import '../../utils/tag_icons.dart';
+import '../../utils/boxes.dart';
+
+/// Run after Hive boxes are opened. Safe to call multiple times.
+Future<void> runTagIconMigrations() async {
+  await Future.wait([
+    _migrateStandaloneTags(),
+    _migrateRecipeTags(),
+    _migrateBatchTags(),
+  ]);
+}
+
+/// Returns a new iconKey for [t] if it still needs migration, otherwise null.
+String? _maybeNewIconKey(Tag t) {
+  // Already migrated?
+  final current = t.iconKey;
+  if (current != null && current.isNotEmpty) return null;
+
+  // No legacy data to migrate?
+  final cp = t.iconCodePoint;
+  if (cp == null) return null;
+
+  final k = keyFromLegacy(cp, t.iconFontFamily);
+  return (k.isNotEmpty) ? k : null;
+}
+
+Future<void> _migrateStandaloneTags() async {
+  if (!Hive.isBoxOpen(Boxes.tags)) return;
+
+  final box = Hive.box<Tag>(Boxes.tags);
   for (final tag in box.values) {
-    if (tag.iconKey == null && tag.iconCodePoint != null) {
-      tag.iconKey = keyFromLegacy(tag.iconCodePoint!, tag.iconFontFamily);
+    final k = _maybeNewIconKey(tag);
+    if (k != null) {
+      tag.iconKey = k;
       await tag.save();
     }
   }
 }
 
-/// If your Tags are embedded in other objects (e.g., recipes/batches), migrate those too.
-Future<void> migrateEmbeddedTagsIfNeeded() async {
-  // Recipes
-  if (Hive.isBoxOpen('recipes')) {
-    final recipes = Hive.box<RecipeModel>('recipes');
-    for (final r in recipes.values) {
-      bool changed = false;
-      for (final t in r.tags) {
-        if (t.iconKey == null && t.iconCodePoint != null) {
-          t.iconKey = keyFromLegacy(t.iconCodePoint!, t.iconFontFamily);
-          changed = true;
-        }
-      }
-      if (changed) await r.save();
-    }
-  }
+Future<void> _migrateRecipeTags() async {
+  if (!Hive.isBoxOpen(Boxes.recipes)) return;
 
-  // Batches
-  if (Hive.isBoxOpen('batches')) {
-    final batches = Hive.box<BatchModel>('batches');
-    for (final b in batches.values) {
-      bool changed = false;
-      for (final t in b.tags) {
-        if (t.iconKey == null && t.iconCodePoint != null) {
-          t.iconKey = keyFromLegacy(t.iconCodePoint!, t.iconFontFamily);
-          changed = true;
-        }
+  final recipes = Hive.box<RecipeModel>(Boxes.recipes);
+  for (final r in recipes.values) {
+    var changed = false;
+    for (final t in r.tags) {
+      final k = _maybeNewIconKey(t);
+      if (k != null) {
+        t.iconKey = k;
+        changed = true;
       }
-      if (changed) await b.save();
     }
+    if (changed) await r.save();
+  }
+}
+
+Future<void> _migrateBatchTags() async {
+  if (!Hive.isBoxOpen(Boxes.batches)) return;
+
+  final batches = Hive.box<BatchModel>(Boxes.batches);
+  for (final b in batches.values) {
+    var changed = false;
+    for (final t in b.tags) {
+      final k = _maybeNewIconKey(t);
+      if (k != null) {
+        t.iconKey = k;
+        changed = true;
+      }
+    }
+    if (changed) await b.save();
   }
 }
