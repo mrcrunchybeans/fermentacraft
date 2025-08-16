@@ -1,33 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:fermentacraft/utils/boxes.dart';
 import 'tag.dart';
 
 class TagManager extends ChangeNotifier {
-  final Box<Tag> _tagBox = Hive.box<Tag>('tags');
+  Box<Tag> get _tagBox => Hive.box<Tag>(Boxes.tags);
 
   /// Provides a simple, reactive list of all tags from the database.
-  List<Tag> get tags => _tagBox.values.toList();
+  List<Tag> get tags {
+    if (!Hive.isBoxOpen(Boxes.tags)) return const <Tag>[];
+    return _tagBox.values.toList();
+  }
 
   /// Adds a new tag if a tag with the same name doesn't already exist.
   /// The check is case-insensitive.
-  void addTag(String name) {
-    if (!_tagBox.values.any((tag) => tag.name.toLowerCase() == name.toLowerCase().trim())) {
-      _tagBox.add(Tag(name: name.trim()));
-      notifyListeners(); // Notify UI to rebuild
+  Future<void> addTag(String name) async {
+    if (!Hive.isBoxOpen(Boxes.tags)) return;
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final exists = _tagBox.values.any((t) => t.name.toLowerCase() == trimmed.toLowerCase());
+    if (!exists) {
+      await _tagBox.add(Tag(name: trimmed));
+      notifyListeners();
     }
   }
 
   /// Deletes a given tag from the database.
-  void deleteTag(Tag tag) {
-    // HiveObjects can be deleted directly, which is very efficient.
-    tag.delete();
+  Future<void> deleteTag(Tag tag) async {
+    if (!Hive.isBoxOpen(Boxes.tags)) return;
+    await tag.delete();
     notifyListeners();
   }
 
   /// Edits the name of an existing tag.
-  void editTag(Tag oldTag, String newName) {
+  Future<void> editTag(Tag oldTag, String newName) async {
+    if (!Hive.isBoxOpen(Boxes.tags)) return;
     oldTag.name = newName.trim();
-    oldTag.save(); // Save the changes back to the database
+    await oldTag.save();
     notifyListeners();
   }
 }

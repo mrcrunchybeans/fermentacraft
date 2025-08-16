@@ -402,7 +402,7 @@ class _StripReaderTabState extends State<StripReaderTab> {
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
-                  value: selectedBrand,
+                  initialValue: selectedBrand,
                   items: knownBrands
                       .map((brand) =>
                           DropdownMenuItem(value: brand, child: Text(brand)))

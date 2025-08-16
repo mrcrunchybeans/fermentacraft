@@ -149,7 +149,7 @@ class _AddAdditiveDialogState extends State<AddAdditiveDialog> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  value: name,
+                  initialValue: name,
                   decoration: _dec('Additive'),
                   isDense: true,
                   onChanged: _onNameChanged,
@@ -183,7 +183,7 @@ class _AddAdditiveDialogState extends State<AddAdditiveDialog> {
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 140),
                       child: DropdownButtonFormField<String>(
-                        value: unit,
+                        initialValue: unit,
                         decoration: _dec('Unit'),
                         isDense: true,
                         isExpanded: true,

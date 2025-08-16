@@ -7,12 +7,13 @@ import 'package:fermentacraft/recipe_builder_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import 'models/recipe_model.dart';
 
-// NEW: imports for gating
+// Gating / sync
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
+import 'package:fermentacraft/services/firestore_sync_service.dart';
 
 import 'utils/boxes.dart';
 
@@ -95,7 +96,35 @@ class _RecipeListPageState extends State<RecipeListPage> {
     );
   }
 
-  // --- Actions ---------------------------------------------------------------
+  // ----------------- Key resolution (handles legacy/null keys) ----------------
+
+  dynamic _resolveHiveKeyFor(RecipeModel recipe) {
+    final box = Hive.box<RecipeModel>(Boxes.recipes);
+
+    // 1) If Hive attached a key, use it.
+    final dynamic k1 = recipe.key;
+    if (k1 != null) return k1;
+
+    // 2) Try by stable id (post-migration keys should equal id).
+    final id = recipe.id;
+    final map = box.toMap(); // read once
+    if (id.trim().isNotEmpty) {
+      for (final entry in map.entries) {
+        if (entry.value.id == id) return entry.key; // may be String or int
+      }
+    }
+
+    // 3) Last resort: identity match (same instance).
+    for (final entry in map.entries) {
+      if (identical(entry.value, recipe)) return entry.key;
+    }
+
+    throw StateError(
+      'Could not resolve Hive key for recipe "${recipe.name}" (id=$id, key=null)',
+    );
+  }
+
+  // --------------------------------- Actions ---------------------------------
 
   Future<void> _toggleArchiveStatus(RecipeModel recipe) async {
     final isArchiving = !recipe.isArchived;
@@ -107,7 +136,9 @@ class _RecipeListPageState extends State<RecipeListPage> {
           'Are you sure you want to ${isArchiving ? 'archive' : 'unarchive'} "${recipe.name}"?',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(isArchiving ? 'Archive' : 'Unarchive'),
@@ -121,16 +152,18 @@ class _RecipeListPageState extends State<RecipeListPage> {
       await recipe.save();
       if (!mounted) return;
 
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(isArchiving ? 'Archived "${recipe.name}"' : 'Unarchived "${recipe.name}"'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      setState(() {}); // trigger list regroup/rebuild
+      snacks
+        ..clear()
+        ..show(
+          SnackBar(
+            content: Text(isArchiving
+                ? 'Archived "${recipe.name}"'
+                : 'Unarchived "${recipe.name}"'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      setState(() {}); // regroup/rebuild
     }
   }
 
@@ -141,7 +174,9 @@ class _RecipeListPageState extends State<RecipeListPage> {
         title: const Text('Delete Recipe?'),
         content: Text('This will permanently delete "${recipe.name}".'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
@@ -153,46 +188,52 @@ class _RecipeListPageState extends State<RecipeListPage> {
         ],
       ),
     );
-
     if (confirmed != true) return;
 
-    final backup = recipe;
-    final key = recipe.key;
+    final box = Hive.box<RecipeModel>(Boxes.recipes);
+    final resolvedKey = _resolveHiveKeyFor(recipe); // robust key
+    final recipeDataBackup = recipe.toJson();
+    final recipeId = recipe.id;
     final name = recipe.name;
 
-    await recipe.delete();
+    // Mark remote deletion first to avoid race
+    await FirestoreSyncService.instance.markDeleted(
+      collection: Boxes.recipes,
+      id: recipeId,
+    );
+
+    // Delete locally using the resolved key
+    await box.delete(resolvedKey);
+
     if (!mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('Deleted "$name"'),
-        duration: const Duration(seconds: 5),
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'UNDO',
-          onPressed: () async {
-              final box = Hive.box<RecipeModel>(Boxes.recipes);
-            try {
-              await box.put(key, backup);
-            } catch (_) {
-              await box.add(backup);
-            }
-            if (!mounted) return;
-            messenger.hideCurrentSnackBar();
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text('Recipe restored'),
-                duration: Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          },
+    snacks
+      ..clear()
+      ..show(
+        SnackBar(
+          content: Text('Deleted "$name"'),
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'UNDO',
+            onPressed: () async {
+              final restored = RecipeModel.fromJson(recipeDataBackup);
+              await box.put(resolvedKey, restored);
+              await FirestoreSyncService.instance.forceSync();
+              if (!mounted) return;
+              snacks
+                ..hide()
+                ..show(
+                  const SnackBar(
+                    content: Text('Recipe restored'),
+                    duration: Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+            },
+          ),
         ),
-      ),
-    );
+      );
   }
 
   PopupMenuButton<_RecipeAction> _moreMenu(RecipeModel recipe) {
@@ -239,7 +280,8 @@ class _RecipeListPageState extends State<RecipeListPage> {
     final onColor = danger ? cs.onError : cs.onPrimary;
 
     return Container(
-      color: color.withValues(alpha: 0.90),
+      // ignore: deprecated_member_use
+      color: color.withOpacity(0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -247,35 +289,31 @@ class _RecipeListPageState extends State<RecipeListPage> {
         children: [
           Icon(icon, color: onColor),
           const SizedBox(width: 8),
-          Text(label, style: TextStyle(color: onColor, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: TextStyle(color: onColor, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 
-  // --- UI --------------------------------------------------------------------
+  // ------------------------------------ UI -----------------------------------
 
   void _onAddRecipePressed() {
     final fg = context.read<FeatureGate>();
     final recipeCount = CountsService.instance.recipeCount();
 
     if (!fg.canAddRecipe(recipeCount)) {
-      // The user has reached the free limit.
-      // Show a snackbar and the paywall, then return without navigating.
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         SnackBar(
-          content: Text('Free allows ${fg.recipeLimitFree} recipes. Upgrade to add more.'),
+          content: Text(
+              'Free allows ${fg.recipeLimitFree} recipes. Upgrade to add more.'),
         ),
       );
       showPaywall(context);
       return;
     }
 
-    // The user has not reached the limit.
-    // Clear any lingering snackbars before pushing a new route.
-    ScaffoldMessenger.of(context).clearSnackBars();
-
-    // Navigate to the RecipeBuilderPage to create a new recipe.
+    snacks.clear();
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RecipeBuilderPage()),
@@ -284,7 +322,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
 
   @override
   Widget build(BuildContext context) {
-return Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: Text(_showArchived ? 'Archived Recipes' : 'Saved Recipes'),
         actions: [
@@ -292,33 +330,43 @@ return Scaffold(
             onSelected: (mode) => setState(() => _sortMode = mode),
             icon: const Icon(Icons.sort),
             itemBuilder: (_) => const [
-              PopupMenuItem(value: SortMode.dateCreated, child: Text('Date Created')),
+              PopupMenuItem(
+                  value: SortMode.dateCreated, child: Text('Date Created')),
               PopupMenuItem(value: SortMode.aToZ, child: Text('A → Z')),
               PopupMenuItem(value: SortMode.zToA, child: Text('Z → A')),
-              PopupMenuItem(value: SortMode.recentlyOpened, child: Text('Recently Opened')),
+              PopupMenuItem(
+                  value: SortMode.recentlyOpened,
+                  child: Text('Recently Opened')),
             ],
           ),
           IconButton(
-            icon: Icon(_showArchived ? Icons.inventory_2_outlined : Icons.archive_outlined),
+            icon: Icon(_showArchived
+                ? Icons.inventory_2_outlined
+                : Icons.archive_outlined),
             tooltip: _showArchived ? 'View Active Recipes' : 'View Archived',
             onPressed: () => setState(() => _showArchived = !_showArchived),
           ),
         ],
       ),
       body: ValueListenableBuilder<Box<RecipeModel>>(
-        valueListenable: Hive.box<RecipeModel>('recipes').listenable(),
+        valueListenable: Hive.box<RecipeModel>(Boxes.recipes).listenable(),
         builder: (context, box, _) {
           if (box.isEmpty) {
             return Center(
-              child: Text(_showArchived ? 'No archived recipes.' : 'No recipes saved yet.'),
+              child: Text(_showArchived
+                  ? 'No archived recipes.'
+                  : 'No recipes saved yet.'),
             );
           }
 
-          List<RecipeModel> filtered = box.values.where((r) => r.isArchived == _showArchived).toList();
+          List<RecipeModel> filtered =
+              box.values.where((r) => r.isArchived == _showArchived).toList();
 
           if (filtered.isEmpty) {
             return Center(
-              child: Text(_showArchived ? 'No archived recipes.' : 'No recipes match your filter.'),
+              child: Text(_showArchived
+                  ? 'No archived recipes.'
+                  : 'No recipes match your filter.'),
             );
           }
 
@@ -328,19 +376,23 @@ return Scaffold(
               filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
               break;
             case SortMode.aToZ:
-              filtered.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+              filtered.sort((a, b) =>
+                  a.name.toLowerCase().compareTo(b.name.toLowerCase()));
               break;
             case SortMode.zToA:
-              filtered.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+              filtered.sort((a, b) =>
+                  b.name.toLowerCase().compareTo(a.name.toLowerCase()));
               break;
             case SortMode.recentlyOpened:
-              filtered.sort((a, b) => (b.lastOpened ?? epoch).compareTo(a.lastOpened ?? epoch));
+              filtered.sort((a, b) =>
+                  (b.lastOpened ?? epoch).compareTo(a.lastOpened ?? epoch));
               break;
           }
 
           final Map<String, List<RecipeModel>> grouped = {};
           for (final recipe in filtered) {
-            final tags = recipe.tags.isEmpty ? ['No Tag'] : recipe.tags.map((t) => t.name);
+            final tags =
+                recipe.tags.isEmpty ? ['No Tag'] : recipe.tags.map((t) => t.name);
             for (final tag in tags) {
               grouped.putIfAbsent(tag, () => []).add(recipe);
             }
@@ -354,7 +406,8 @@ return Scaffold(
               final recipes = grouped[tag]!;
 
               return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                margin:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: ExpansionTile(
                   title: _tagHeader(context, tag, recipes.length),
                   initiallyExpanded: i == 0,
@@ -365,10 +418,13 @@ return Scaffold(
                         : null;
 
                     return Dismissible(
-                      key: ValueKey(recipe.key),
+                      // Safe, stable key (prefer id; fallbacks for legacy items)
+                      key: ValueKey(recipe.id),
                       background: _swipeBg(
                         context,
-                        icon: recipe.isArchived ? Icons.unarchive : Icons.archive_outlined,
+                        icon: recipe.isArchived
+                            ? Icons.unarchive
+                            : Icons.archive_outlined,
                         label: recipe.isArchived ? 'Unarchive' : 'Archive',
                         alignment: Alignment.centerLeft,
                       ),
@@ -380,14 +436,14 @@ return Scaffold(
                         danger: true,
                       ),
                       confirmDismiss: (direction) async {
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        snacks.hide();
 
                         if (direction == DismissDirection.startToEnd) {
                           await _toggleArchiveStatus(recipe);
-                          return false;
+                          return false; // handled
                         } else {
                           await _deleteRecipeWithUndo(recipe);
-                          return false;
+                          return false; // handled
                         }
                       },
                       child: ListTile(
@@ -406,7 +462,8 @@ return Scaffold(
                             MaterialPageRoute(
                               builder: (_) => RecipeDetailPage(
                                 recipe: recipe,
-                                recipeKey: recipe.key,
+                                // Pass a non-null, correct key for legacy items too
+                                recipeKey: _resolveHiveKeyFor(recipe),
                               ),
                             ),
                           );

@@ -1,7 +1,7 @@
 name: fermentacraft
 description: A new Flutter project for tracking fermentation recipes.
-publish_to: 'none' 
-version: 1.0.0+10
+publish_to: 'none'
+version: 1.0.0+25
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -39,6 +39,7 @@ dependencies:
   cloud_functions: ^6.0.0
   http: ^1.5.0
   hive: ^2.2.3
+  firebase_crashlytics: ^5.0.0
 
 
 
@@ -50,6 +51,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.6
+  analyzer: ^6.4.1
 
 
 
@@ -63,16 +65,16 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#1B263B"
-  image: assets/images/fermentacraftlogo.png 
+  image: assets/images/fermentacraftlogo.png
 
   color_dark: "#1B263B"
-  image_dark: assets/images/fermentacraftlogo_darkmode.png 
+  image_dark: assets/images/fermentacraftlogo_darkmode.png
 
 flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/ 
+    - assets/images/
 
   fonts:
     - family: LibreBaskerville

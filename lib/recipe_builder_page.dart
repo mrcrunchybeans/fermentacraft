@@ -1,3 +1,6 @@
+// lib/recipe_builder_page.dart
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:fermentacraft/models/tag.dart';
@@ -22,6 +25,8 @@ import 'dart:async';
 import 'models/purchase_transaction.dart';
 import 'models/unit_type.dart';
 import 'utils/temp_display.dart';
+import 'package:fermentacraft/utils/snacks.dart';
+import 'package:fermentacraft/utils/tag_icons.dart';
 
 // NEW: gravity points estimator
 import 'services/gravity_service.dart';
@@ -32,16 +37,6 @@ import '../utils/id.dart';
 final logger = Logger();
 
 double calculateAbv(double og, double fg) => (og - fg) * 131.25;
-
-final Map<String, IconData> tagIconMap = {
-  'cider': Icons.local_drink,
-  'wine': Icons.wine_bar,
-  'mead': Icons.emoji_nature,
-  'soda': Icons.local_cafe,
-  'sake': Icons.rice_bowl,
-  'kombucha': Icons.eco,
-  'kefir': Icons.icecream,
-};
 
 class RecipeBuilderPage extends StatefulWidget {
   const RecipeBuilderPage({
@@ -131,16 +126,29 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
 
     if (widget.existingRecipe != null) {
       final recipe = widget.existingRecipe!;
+
+      // Prefill all the regular fields
       nameController.text = recipe.name;
       notesController.text = recipe.notes;
       additives = List<Map<dynamic, dynamic>>.from(recipe.additives);
       ingredients = List<Map<dynamic, dynamic>>.from(recipe.ingredients);
       fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
-      _estimatedOG = recipe.og; // best effort
+      _estimatedOG = recipe.og; // best-effort seed
       fg = recipe.fg ?? fg;
       abv = recipe.abv ?? abv;
       yeast = List<Map<dynamic, dynamic>>.from(recipe.yeast);
-      tags = List<Tag>.from(recipe.tags);
+
+      // Prefer referenced tags when available; otherwise fall back to legacy list
+      try {
+        tags = List<Tag>.from(recipe.tags);
+      } catch (_) {
+        try {
+          final refs = (recipe as dynamic).tagRefs as HiveList<Tag>?;
+          tags = refs?.toList() ?? List<Tag>.from(recipe.tags);
+        } catch (_) {
+          tags = List<Tag>.from(recipe.tags);
+        }
+      }
     }
 
     calculateStats();
@@ -156,18 +164,18 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   static bool _isMassUnit(String u) {
     final s = u.toLowerCase();
     return s == 'g' || s == 'gram' || s == 'grams' ||
-           s == 'kg' || s == 'kilogram' || s == 'kilograms' ||
-           s == 'lb' || s == 'lbs' || s == 'pound' || s == 'pounds' ||
-           s == 'oz (weight)' || s == 'ounce (weight)';
+        s == 'kg' || s == 'kilogram' || s == 'kilograms' ||
+        s == 'lb' || s == 'lbs' || s == 'pound' || s == 'pounds' ||
+        s == 'oz (weight)' || s == 'ounce (weight)';
   }
 
   static bool _isVolumeUnit(String u) {
     final s = u.toLowerCase();
     return s == 'gallon' || s == 'gallons' || s == 'gal' ||
-           s == 'l' || s == 'liter' || s == 'liters' ||
-           s == 'ml' || s == 'milliliter' || s == 'milliliters' ||
-           s == 'fl oz' || s == 'fluid ounce' || s == 'fluid ounces' ||
-           s == 'oz' || s == 'ounces'; // treat plain "oz" as fluid ounces
+        s == 'l' || s == 'liter' || s == 'liters' ||
+        s == 'ml' || s == 'milliliter' || s == 'milliliters' ||
+        s == 'fl oz' || s == 'fluid ounce' || s == 'fluid ounces' ||
+        s == 'oz' || s == 'ounces';
   }
 
   static double _toGallons(String unit, double amount) {
@@ -222,20 +230,18 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     if (n.contains('sucrose') || n.contains('table sugar') || n == 'sugar') return 46.0;
     if (n.contains('dextrose') || n.contains('corn sugar')) return 46.0;
     if (n.contains('honey')) return 35.0;
-    // Fallback for unknown dry fermentables if caller didn’t supply ppg field:
     return 46.0;
   }
 
   List<FermentableItem> _buildItemsFromIngredients(List<Map<dynamic, dynamic>> ings) {
     final List<FermentableItem> items = [];
     for (final raw in ings) {
-      // Normalize
       final f = Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v)));
       final name = (f['name'] ?? '').toString();
       final unit = (f['unit'] ?? '').toString();
       final amount = (f['amount'] as num?)?.toDouble() ?? 0.0;
-      final og = (f['og'] as num?)?.toDouble();     // for liquids with known SG
-      final ppg = (f['ppg'] as num?)?.toDouble();   // optional per-ingredient override
+      final og = (f['og'] as num?)?.toDouble();
+      final ppg = (f['ppg'] as num?)?.toDouble();
 
       if (amount <= 0) continue;
 
@@ -257,7 +263,6 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
           ));
         }
       } else {
-        // Unknown unit: ignore for safety (prevents volume blow-ups)
         debugPrint('Ignored ingredient with unknown unit "$unit": $name');
       }
     }
@@ -272,7 +277,6 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   }
 
   void calculateStats() {
-    // Build items from ingredients and estimate OG/Volume
     final items = _buildItemsFromIngredients(ingredients);
     final result = GravityService.estimate(items);
     _estimatedOG = result.estimatedOG;
@@ -281,17 +285,15 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     batchVolumeGallons = _totalVolGal;
     _updateMeasuredMustSGIfNotOverridden();
 
-    // Sync the visible Batch Volume control if user hasn't overridden it
     if (batchVolumeGallons != null && !userOverrodeBatchVolume) {
       final double value = selectedVolumeUnit == VolumeUnit.ounces
           ? batchVolumeGallons! * 128.0
           : selectedVolumeUnit == VolumeUnit.liters
-              ? batchVolumeGallons! * 3.78541
-              : batchVolumeGallons!;
+          ? batchVolumeGallons! * 3.78541
+          : batchVolumeGallons!;
       volumeController.text = value.toStringAsFixed(2);
     }
 
-    // Choose OG for ABV
     if (!showAdvanced) {
       originalGravity = _estimatedOG ?? 1.000;
     } else {
@@ -370,7 +372,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
 
   void editYeast() async {
     if (yeast.isEmpty) return;
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final scaffoldMessenger = snacks;
     await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => AddYeastDialog(
@@ -391,10 +393,10 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
             category: 'Yeast',
             purchaseHistory: [purchase],
           );
-  final box = Hive.box<InventoryItem>(Boxes.inventory); // ✅ opened in setup
+          final box = Hive.box<InventoryItem>(Boxes.inventory);
           await box.put(item.id, item);
           if (!mounted) return;
-          scaffoldMessenger.showSnackBar(
+          scaffoldMessenger.show(
             SnackBar(content: Text("Added '${item.name}' to Inventory")),
           );
           addYeast(yeastData);
@@ -413,71 +415,71 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     });
   }
 
-void saveRecipe() {
-  final recipeName = nameController.text.trim();
-  if (recipeName.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please enter a recipe name.")),
-    );
-    return;
-  }
+  // ✅ Refactored: rely on RecipeModel.setTagsFromBox for canonicalization & refs
+  void saveRecipe() {
+    final recipeName = nameController.text.trim();
+    if (recipeName.isEmpty) {
+      snacks.show(const SnackBar(content: Text("Please enter a recipe name.")));
+      return;
+    }
 
-  showDialog(
-    context: context,
-    useRootNavigator: false, // <-- ensure dialog uses the same navigator as this page
-    builder: (_) => AlertDialog(
-      title: const Text("Confirm Save"),
-      content: Text('Save recipe as "$recipeName"?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Cancel"),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            final newRecipe = RecipeModel(
-              id: (widget.existingRecipe != null && !widget.isClone)
-                  ? widget.existingRecipe!.id
-                  : generateId(),
-              name: recipeName,
-              tags: tags,
-              createdAt: DateTime.now(),
-              fg: fg,
-              abv: abv,
-              additives: additives,
-              og: originalGravity,
-              ingredients: ingredients,
-              yeast: yeast,
-              fermentationStages: fermentationStages,
-              notes: notesController.text.trim(),
-            );
+    showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => AlertDialog(
+        title: const Text("Confirm Save"),
+        content: Text('Save recipe as "$recipeName"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              // 1) Build recipe (don’t pass tags here; we’ll attach via setTagsFromBox)
+              final newRecipe = RecipeModel(
+                id: (widget.existingRecipe != null && !widget.isClone)
+                    ? widget.existingRecipe!.id
+                    : generateId(),
+                name: recipeName,
+                createdAt: widget.existingRecipe?.createdAt ?? DateTime.now(),
+                fg: fg,
+                abv: abv,
+                additives: additives,
+                og: originalGravity,
+                ingredients: ingredients,
+                yeast: yeast,
+                fermentationStages: fermentationStages,
+                notes: notesController.text.trim(),
+              );
 
-            final box = Hive.box<RecipeModel>(Boxes.recipes);
-            await box.put(newRecipe.id, newRecipe);
+              // 2) Persist to recipes FIRST, so it's a HiveObject in a box
+              final box = Hive.box<RecipeModel>(Boxes.recipes);
+              await box.put(newRecipe.id, newRecipe);
 
-            if (!mounted) return;
-            // 1) close the dialog on the SAME navigator
-            Navigator.of(context).pop();
+              // 3) Now that it's in a box, canonicalize and attach tags from the picker
+              final tagBox = Hive.box<Tag>(Boxes.tags);
+              await newRecipe.setTagsFromBox(tags, tagBox);
 
-            // 2) replace builder with detail (stack becomes: list -> detail)
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => RecipeDetailPage(
-                  recipe: newRecipe,
-                  recipeKey: newRecipe.id,
+              if (!mounted) return;
+
+              // Close dialog then go to details
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => RecipeDetailPage(
+                    recipe: newRecipe,
+                    recipeKey: newRecipe.id,
+                  ),
                 ),
-              ),
-            );
-          },
-          child: const Text("Save"),
-        ),
-      ],
-    ),
-  );
-}
-
-
-
+              );
+            },
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _calculateSugarNeeded() {
     sugarNeededGrams = null;
@@ -493,10 +495,10 @@ void saveRecipe() {
     final batchLiters = selectedVolumeUnit == VolumeUnit.gallons
         ? batchVolume * 3.78541
         : selectedVolumeUnit == VolumeUnit.ounces
-            ? batchVolume * 0.0295735
-            : selectedVolumeUnit == VolumeUnit.liters
-                ? batchVolume
-                : batchVolume;
+        ? batchVolume * 0.0295735
+        : selectedVolumeUnit == VolumeUnit.liters
+        ? batchVolume
+        : batchVolume;
 
     if (sgDelta > 0) {
       sugarNeededGrams = sgDelta / selectedSugarType.sgPerGramPerLiter * batchLiters;
@@ -541,7 +543,7 @@ void saveRecipe() {
       title: const Text("Ingredients Summary"),
       subtitle: Text(
         "Estimated OG: ${_estimatedOG?.toStringAsFixed(3) ?? 'N/A'}\n"
-        "Total Volume: ${_totalVolGal.toStringAsFixed(2)} gal",
+            "Total Volume: ${_totalVolGal.toStringAsFixed(2)} gal",
       ),
     );
   }
@@ -605,31 +607,29 @@ void saveRecipe() {
                         spacing: 8,
                         runSpacing: 4,
                         children: tags.map((tag) {
-                          final icon = tagIconMap[tag.name.toLowerCase()];
+                          final icon = iconForTagKey(tag.iconKey);
                           return Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: const Color(0xFF8B5E3C),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                              border: Border.all(color: Colors.white.withOpacity(0.3)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (icon != null) ...[
-                                  Icon(icon, size: 16, color: Colors.white),
-                                  const SizedBox(width: 4),
-                                ],
+                                Icon(icon, size: 16, color: Colors.white),
+                                const SizedBox(width: 6),
                                 Text(
                                   tag.name,
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                 ),
                               ],
                             ),
                           );
                         }).toList(),
                       ),
-                    )
+                    ),
                 ],
               ),
             ),
@@ -673,7 +673,7 @@ void saveRecipe() {
                           unitType: UnitType.mass,
                           onAddToRecipe: addIngredient,
                           onAddToInventory: (ingredientData) async {
-                            final scaffoldMessenger = ScaffoldMessenger.of(context);
+                            final scaffoldMessenger = snacks;
                             final purchase = PurchaseTransaction(
                               amount: (ingredientData['amount'] as num?)?.toDouble() ?? 0.0,
                               cost: (ingredientData['cost'] as num?)?.toDouble() ?? 0.0,
@@ -683,15 +683,15 @@ void saveRecipe() {
                             final item = InventoryItem(
                               id: generateId(),
                               name: ingredientData['name'] as String? ?? 'Unnamed',
-                              unit: ingredientData['unit'] as String? ?? 'oz',
-                              unitType: inferUnitType(ingredientData['unit'] as String? ?? 'oz'),
-                              category: ingredientData['type'] as String? ?? 'Other',
+                              unit: ingredientData['unit'] as String? ?? 'packets',
+                              unitType: inferUnitType(ingredientData['unit'] as String? ?? 'packets'),
+                              category: 'Yeast',
                               purchaseHistory: [purchase],
                             );
-  final box = Hive.box<InventoryItem>(Boxes.inventory); // ✅ opened in setup
+                            final box = Hive.box<InventoryItem>(Boxes.inventory);
                             await box.put(item.id, item);
                             if (!mounted) return;
-                            scaffoldMessenger.showSnackBar(
+                            scaffoldMessenger.show(
                               SnackBar(content: Text("Added '${item.name}' to Inventory")),
                             );
                             addIngredient(Map<String, dynamic>.from(ingredientData));
@@ -780,37 +780,37 @@ void saveRecipe() {
                     label: Text(yeast.isEmpty ? "Add Yeast" : "Edit Yeast"),
                     onPressed: yeast.isEmpty
                         ? () async {
-                            final scaffoldMessenger = ScaffoldMessenger.of(context);
-                            await showDialog<Map<String, dynamic>>(
-                              context: context,
-                              builder: (_) => AddYeastDialog(
-                                onAdd: addYeast,
-                                onAddToInventory: (yeastData) async {
-                                  final purchase = PurchaseTransaction(
-                                    amount: (yeastData['amount'] as num?)?.toDouble() ?? 0.0,
-                                    cost: (yeastData['cost'] as num?)?.toDouble() ?? 0.0,
-                                    date: yeastData['purchaseDate'] as DateTime? ?? DateTime.now(),
-                                    expirationDate: yeastData['expirationDate'] as DateTime?,
-                                  );
-                                  final item = InventoryItem(
-                                    id: generateId(),
-                                    name: yeastData['name'] as String? ?? 'Unnamed',
-                                    unit: yeastData['unit'] as String? ?? 'packets',
-                                    unitType: inferUnitType(yeastData['unit'] as String? ?? 'packets'),
-                                    category: 'Yeast',
-                                    purchaseHistory: [purchase],
-                                  );
-  final box = Hive.box<InventoryItem>(Boxes.inventory); // ✅ opened in setup
-                                  await box.put(item.id, item);
-                                  if (!mounted) return;
-                                  scaffoldMessenger.showSnackBar(
-                                    SnackBar(content: Text("Added '${item.name}' to Inventory")),
-                                  );
-                                  addYeast(Map<String, dynamic>.from(yeastData));
-                                },
-                              ),
+                      final scaffoldMessenger = snacks;
+                      await showDialog<Map<String, dynamic>>(
+                        context: context,
+                        builder: (_) => AddYeastDialog(
+                          onAdd: addYeast,
+                          onAddToInventory: (yeastData) async {
+                            final purchase = PurchaseTransaction(
+                              amount: (yeastData['amount'] as num?)?.toDouble() ?? 0.0,
+                              cost: (yeastData['cost'] as num?)?.toDouble() ?? 0.0,
+                              date: yeastData['purchaseDate'] as DateTime? ?? DateTime.now(),
+                              expirationDate: yeastData['expirationDate'] as DateTime?,
                             );
-                          }
+                            final item = InventoryItem(
+                              id: generateId(),
+                              name: yeastData['name'] as String? ?? 'Unnamed',
+                              unit: yeastData['unit'] as String? ?? 'packets',
+                              unitType: inferUnitType(yeastData['unit'] as String? ?? 'packets'),
+                              category: 'Yeast',
+                              purchaseHistory: [purchase],
+                            );
+                            final box = Hive.box<InventoryItem>(Boxes.inventory);
+                            await box.put(item.id, item);
+                            if (!mounted) return;
+                            scaffoldMessenger.show(
+                              SnackBar(content: Text("Added '${item.name}' to Inventory")),
+                            );
+                            addYeast(Map<String, dynamic>.from(yeastData));
+                          },
+                        ),
+                      );
+                    }
                         : editYeast,
                   ),
                 ),
@@ -1039,5 +1039,17 @@ void saveRecipe() {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    desiredAbvController.dispose();
+    measuredMustSGController.dispose();
+    nameController.dispose();
+    notesController.dispose();
+    targetMustSGController.dispose();
+    volumeController.dispose();
+    sgToAbvDebounce?.cancel();
+    super.dispose();
   }
 }

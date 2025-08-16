@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import '../models/settings_model.dart';          // <- for currencySymbol
 import '../services/yeast_store.dart';
 
@@ -163,7 +163,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
       await YeastStore.add(name);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        snacks.show(
           const SnackBar(
             content: Text('Saved without remembering (settings not opened).'),
           ),
@@ -192,7 +192,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
     final valid = _formKey.currentState?.validate() ?? true;
     if (!valid) {
       if (_isCustom && _customNameController.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        snacks.show(
           const SnackBar(content: Text('Please enter a custom yeast name.')),
         );
       }
@@ -216,7 +216,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
     } catch (e, st) {
       debugPrint('AddYeastDialog _handleAdd error: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         SnackBar(content: Text('Could not add yeast: $e')),
       );
     } finally {
@@ -251,7 +251,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
     final dupe = _myYeasts.any((e) => e.toLowerCase() == newName.toLowerCase());
     if (dupe && newName.toLowerCase() != oldName.toLowerCase()) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         SnackBar(content: Text('A custom yeast named "$newName" already exists.')),
       );
       return;
@@ -384,7 +384,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                value: _isCustom ? _kCustomOption : _dropdownValue,
+                initialValue: _isCustom ? _kCustomOption : _dropdownValue,
                 items: _menuItems(),
                 onChanged: (val) {
                   if (val == null) return;
@@ -441,7 +441,7 @@ class _AddYeastDialogState extends State<AddYeastDialog> {
 
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: unit,
+                initialValue: unit,
                 items: const ['grams', 'packets']
                     .map((u) => DropdownMenuItem(value: u, child: Text(u)))
                     .toList(),

@@ -265,7 +265,7 @@ double convertGravity(double val, String from, String to) {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              value: fromUnit,
+              initialValue: fromUnit,
               onChanged: (val) => setState(() => fromUnit = val!),
               decoration: const InputDecoration(border: OutlineInputBorder()),
               borderRadius: BorderRadius.circular(10),
@@ -302,7 +302,7 @@ double convertGravity(double val, String from, String to) {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              value: toUnit,
+              initialValue: toUnit,
               onChanged: (val) => setState(() => toUnit = val!),
               decoration: const InputDecoration(border: OutlineInputBorder()),
               borderRadius: BorderRadius.circular(10),

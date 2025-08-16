@@ -9,9 +9,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+
 import '../utils/boxes.dart';
-
-
 import '../models/batch_model.dart';
 import '../models/inventory_item.dart';
 import '../models/recipe_model.dart';
@@ -27,13 +26,13 @@ class FirestoreSyncService {
   FirestoreSyncService._();
   static final FirestoreSyncService instance = FirestoreSyncService._();
 
-  // Use canonical names from Boxes.* so everything matches setup().
+  // Keep these in sync with setup() / Boxes.*
   final _userBoxNames = const [
+    Boxes.tags,
     Boxes.recipes,
     Boxes.batches,
     Boxes.inventory,
     Boxes.shoppingList,
-    Boxes.tags,
   ];
 
   StreamSubscription? _authSub;
@@ -69,19 +68,23 @@ class FirestoreSyncService {
   // Optimizations state
   // -----------------------------
 
-  // Prevent echo loop: mark keys we just wrote into Hive from remote so the
-  // Hive watcher won't re-enqueue them to Firestore.
+  // Prevent echo loops (remote -> local -> remote)
   final Set<String> _suppressLocalEcho = {}; // key: box::id
 
-  // Debounce & coalesce: per-doc timers and latest payloads (box::id)
+  // Debounce/coalesce local writes per doc
   final Map<String, Timer> _debouncers = {};
   final Map<String, JsonMap> _pendingPayloads = {};
   final Duration _debounce = const Duration(seconds: 3);
 
-  // No-change skip: remember last JSON we sent per doc (box::id)
+  // Skip re-sending identical JSON
   final Map<String, String> _lastSentJson = {};
 
   String _keyOf(String boxName, String id) => '$boxName::$id';
+
+  // Helpers for tag id policy
+  bool _isNumericId(String s) => RegExp(r'^\d+$').hasMatch(s);
+  String _canonicalTagIdFromData(JsonMap data) =>
+      (data['name'] ?? data['id'] ?? '').toString().trim();
 
   // -----------------------------
   // Lifecycle
@@ -125,15 +128,15 @@ class FirestoreSyncService {
     if (!_enabled) return;
     _started = true;
 
-    // First time for this user on this device: pull remote, then push local (converge).
+    // First time on this device: pull remote, then push local (converge)
     await _bootstrapMerge(uid);
 
-    // Local -> Remote watchers
+    // Local -> Remote
     for (final boxName in _userBoxNames) {
       _attachHiveWatcher(uid, boxName);
     }
 
-    // Remote -> Local watchers
+    // Remote -> Local
     for (final boxName in _userBoxNames) {
       _attachFirestoreWatcher(uid, boxName);
     }
@@ -155,7 +158,6 @@ class FirestoreSyncService {
     }
     _fireSubs.clear();
 
-    // Cancel any outstanding debouncers
     for (final t in _debouncers.values) {
       t.cancel();
     }
@@ -174,7 +176,7 @@ class FirestoreSyncService {
   }
 
   // -----------------------------
-  // Pause / Resume (for isEnabled toggle)
+  // Pause / Resume (for isEnabled)
   // -----------------------------
 
   Future<void> _pauseWatchers() async {
@@ -190,7 +192,6 @@ class FirestoreSyncService {
     }
     _fireSubs.clear();
 
-    // Cancel debouncers
     for (final t in _debouncers.values) {
       t.cancel();
     }
@@ -203,15 +204,11 @@ class FirestoreSyncService {
     await _pauseWatchers();
     if (!_enabled) return;
 
-    // Small delay to let in-flight listeners settle.
     await Future<void>.delayed(const Duration(milliseconds: 50));
-
     _started = true;
 
-    // Converge before reattaching.
     await _bootstrapMerge(uid);
 
-    // Reattach watchers
     for (final boxName in _userBoxNames) {
       _attachHiveWatcher(uid, boxName);
     }
@@ -236,9 +233,13 @@ class FirestoreSyncService {
         final snap = await FirestorePaths.coll(uid, boxName).get();
         for (final doc in snap.docs) {
           try {
-            await _applyRemoteDoc(boxName, doc.data(), preferRemote: true);
+            // pass remote docId so we can tombstone numeric tag ids
+            await _applyRemoteDoc(boxName, doc.id, doc.data(),
+                preferRemote: true);
           } catch (e, st) {
-            if (kDebugMode) print('bootstrapPull apply fail [$boxName]: $e\n$st');
+            if (kDebugMode) {
+              print('bootstrapPull apply fail [$boxName]: $e\n$st');
+            }
           }
         }
       } catch (e, st) {
@@ -268,14 +269,15 @@ class FirestoreSyncService {
             final json = (value as dynamic).toJson() as JsonMap;
             final id = key.toString();
 
-            // Skip identical payloads to avoid re-writing unchanged docs.
             final fullKey = _keyOf(boxName, id);
             final s = jsonEncode(json);
             if (_lastSentJson[fullKey] == s) continue;
 
             await _pushLocalDocWithId(uid, boxName, id, json);
           } catch (e, st) {
-            if (kDebugMode) print('bootstrapPush item fail [$boxName,$key]: $e\n$st');
+            if (kDebugMode) {
+              print('bootstrapPush item fail [$boxName,$key]: $e\n$st');
+            }
           }
         }
       } catch (e, st) {
@@ -316,9 +318,7 @@ class FirestoreSyncService {
       final k = _keyOf(boxName, id);
 
       // If this change came from _applyRemoteDoc, ignore it (no echo).
-      if (_suppressLocalEcho.remove(k)) {
-        return;
-      }
+      if (_suppressLocalEcho.remove(k)) return;
 
       try {
         if (event.deleted) {
@@ -339,13 +339,14 @@ class FirestoreSyncService {
             _debouncers.remove(k);
             if (latest == null) return;
 
-            // Skip no-change writes
             final s = jsonEncode(latest);
             if (_lastSentJson[k] == s) return;
 
             await _pushLocalDocWithId(uid, boxName, id, latest);
           } catch (e, st) {
-            if (kDebugMode) print('Hive debounce flush fail [$boxName,$id]: $e\n$st');
+            if (kDebugMode) {
+              print('Hive debounce flush fail [$boxName,$id]: $e\n$st');
+            }
           }
         });
       } catch (e, st) {
@@ -356,15 +357,16 @@ class FirestoreSyncService {
 
   void _attachFirestoreWatcher(String uid, String boxName) {
     _fireSubs[boxName]?.cancel();
-    _fireSubs[boxName] = FirestorePaths.coll(uid, boxName)
-        .snapshots()
-        .listen((querySnap) async {
+    _fireSubs[boxName] =
+        FirestorePaths.coll(uid, boxName).snapshots().listen((querySnap) async {
       if (!_enabled || _uid != uid) return;
       for (final change in querySnap.docChanges) {
         try {
           final data = change.doc.data();
           if (data == null) continue;
-          await _applyRemoteDoc(boxName, data, preferRemote: true);
+          // pass remote docId so we can handle legacy numeric tag docs
+          await _applyRemoteDoc(boxName, change.doc.id, data,
+              preferRemote: true);
         } catch (e, st) {
           if (kDebugMode) print('applyRemoteDoc fail [$boxName]: $e\n$st');
         }
@@ -375,7 +377,7 @@ class FirestoreSyncService {
   }
 
   void _attachSettingsWatchers(String uid) {
-    // Push local -> remote on changes (very light debounce via microtask queue)
+    // Push local -> remote on changes
     final settings = Hive.box('settings');
     _hiveSubs['__settings_local__']?.cancel();
     Timer? settingsDebounce;
@@ -403,9 +405,8 @@ class FirestoreSyncService {
 
     // Pull remote -> local
     _fireSubs['__settings_remote__']?.cancel();
-    _fireSubs['__settings_remote__'] = FirestorePaths.settingsDoc(uid)
-        .snapshots()
-        .listen((doc) async {
+    _fireSubs['__settings_remote__'] =
+        FirestorePaths.settingsDoc(uid).snapshots().listen((doc) async {
       if (!_enabled || _uid != uid) return;
       try {
         final data = doc.data();
@@ -439,7 +440,6 @@ class FirestoreSyncService {
       case Boxes.tags:
         return Hive.openBox<Tag>(Boxes.tags);
       default:
-        // Fallback if you ever extend _userBoxNames
         return Hive.openBox(name);
     }
   }
@@ -456,7 +456,21 @@ class FirestoreSyncService {
       return;
     }
 
-    // Skip identical payloads (prevents repeated writes on bootstrap & steady state)
+    // ---- TAG POLICY ENFORCEMENT (client-side) ----
+    if (boxName == Boxes.tags) {
+      // never push numeric tag IDs
+      if (_isNumericId(cleanId)) {
+        if (kDebugMode) print('Skip push of numeric tag id "$cleanId"');
+        return;
+      }
+      // rules expect docId == id == name
+      final tagId = cleanId.trim();
+      json['id'] = tagId;
+      json['name'] = tagId;
+    }
+    // ----------------------------------------------
+
+    // Skip identical payloads
     final key = _keyOf(boxName, cleanId);
     final s = jsonEncode(json);
     if (_lastSentJson[key] == s) return;
@@ -469,7 +483,7 @@ class FirestoreSyncService {
       '_meta': {
         'updatedAt': FieldValue.serverTimestamp(),
         'deviceUpdatedAt': now,
-        'deleted': false,
+        // ✅ FIXED: Removed 'deleted': false from this method.
       }
     }, SetOptions(merge: true));
 
@@ -486,7 +500,7 @@ class FirestoreSyncService {
       '_meta': {
         'updatedAt': FieldValue.serverTimestamp(),
         'deviceUpdatedAt': now,
-        'deleted': true,
+        'deleted': true, // This is now the ONLY place that sets 'deleted'.
       }
     }, SetOptions(merge: true));
     await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
@@ -495,14 +509,22 @@ class FirestoreSyncService {
     _lastSentJson.remove(_keyOf(boxName, cleanId));
   }
 
-  Future<void> _applyRemoteDoc(String boxName, JsonMap data, {required bool preferRemote}) async {
+  Future<void> _applyRemoteDoc(
+    String boxName,
+    String remoteDocId,
+    JsonMap data, {
+    required bool preferRemote,
+  }) async {
     try {
       final meta = (data['_meta'] as Map?) ?? {};
       final deviceUpdatedAt = (meta['deviceUpdatedAt'] as num?)?.toInt() ?? 0;
       final deleted = (meta['deleted'] as bool?) ?? false;
 
-      // Prefer 'id' written from local key; fallback to 'name' if ever needed.
-      final id = (data['id'] ?? data['name'] ?? '').toString().trim();
+      // Canonical ID rules (tags use 'name'; others use 'id' fallback 'name')
+      final String id = (boxName == Boxes.tags)
+          ? _canonicalTagIdFromData(data)
+          : (data['id'] ?? data['name'] ?? '').toString().trim();
+
       if (id.isEmpty) return;
 
       final last = SyncMetaStore.getLastSyncedMillis(boxName, id) ?? 0;
@@ -512,27 +534,96 @@ class FirestoreSyncService {
       }
 
       final box = DataManagementService.getTypedBox(boxName);
+
+      // If remote is marked deleted, mirror locally
       if (deleted) {
         await box.delete(id);
         await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
-        // Since it’s deleted remotely, clear equality cache so a re-add pushes again
         _lastSentJson.remove(_keyOf(boxName, id));
         return;
       }
 
+      // ---- TAG POLICY CLEANUP (server -> client) ----
+      if (boxName == Boxes.tags) {
+        // If server docId was numeric (legacy) and differs from canonical,
+        // tombstone the numeric one so it doesn't keep coming back.
+        if (remoteDocId != id && _isNumericId(remoteDocId)) {
+          try {
+            await box.delete(remoteDocId);
+          } catch (_) {}
+          if (_uid != null) {
+            try {
+              await _markRemoteDeleted(_uid!, boxName, remoteDocId);
+            } catch (_) {}
+          }
+        }
+        // Force local canonical fields so models stay consistent
+        data = Map<String, dynamic>.from(data);
+        data['id'] = id;
+        data['name'] = id;
+      }
+      // -----------------------------------------------
+
+      // Also tombstone any mismatched non-numeric docId (case-insensitive match allowed)
+      if (remoteDocId != id && _uid != null) {
+        final sameIgnoringCase =
+            remoteDocId.toLowerCase() == id.toLowerCase();
+        if (!sameIgnoringCase) {
+          try {
+            await _markRemoteDeleted(_uid!, boxName, remoteDocId);
+          } catch (_) {}
+        }
+      }
+
+      // Start with a shallow clean copy
       final clean = Map<String, dynamic>.from(data)..remove('_meta');
+
+      // ---- Server→Client sanitizer for embedded tags on recipes/batches ----
+      if (boxName == Boxes.recipes || boxName == Boxes.batches) {
+        final rawTags = (clean['tags'] as List?) ?? const [];
+        final seen = <String>{};
+        final List<Map<String, dynamic>> tagsSanitized = [];
+        for (final t in rawTags) {
+          try {
+            final name = (t is Map ? (t['name'] ?? '') : '').toString().trim();
+            if (name.isEmpty) continue;
+            final key = name.toLowerCase();
+            if (seen.add(key)) {
+              // Only keep {name}; drop legacy/icon/ids that might cause churn
+              tagsSanitized.add({'name': name});
+            }
+          } catch (_) {}
+        }
+        clean['tags'] = tagsSanitized;
+      }
+      // ---------------------------------------------------------------------
 
       final ctor = DataManagementService.fromJsonFor(boxName);
       final obj = ctor(clean);
 
-      // Mark this key so the Hive watcher doesn't echo this write back to Firestore
+      // Prevent echo
       final k = _keyOf(boxName, id);
       _suppressLocalEcho.add(k);
 
+      // For recipes/batches: write fast, then bind canonical tag refs asynchronously
+      if (boxName == Boxes.recipes && obj is RecipeModel) {
+        await (box as Box<RecipeModel>).put(id, obj);
+        await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
+        _lastSentJson[k] = jsonEncode(clean);
+
+        // Non-blocking canonicalization of tag refs → triggers second push with tags
+        scheduleMicrotask(() async {
+          try {
+            final tagBox = Hive.box<Tag>(Boxes.tags);
+            await obj.setTagsFromBox(obj.tags, tagBox); // calls save()
+          } catch (_) {}
+        });
+        return;
+      }
+
+      // Default path
       await box.put(id, obj);
       await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
-
-      // Since remote just "won", refresh lastSent cache to avoid immediate re-push on bootstrap
       _lastSentJson[k] = jsonEncode(clean);
     } catch (e, st) {
       if (kDebugMode) print('applyRemoteDoc exception [$boxName]: $e\n$st');
@@ -544,7 +635,6 @@ class FirestoreSyncService {
       final settings = Hive.box('settings');
       final map = Map<String, dynamic>.from(data)..remove('_meta');
 
-      // Prevent echo loop for settings by setting cache before write
       final key = '__settings__::singleton';
       _lastSentJson[key] = jsonEncode(map);
 
@@ -567,7 +657,6 @@ class FirestoreSyncService {
 
   /// Clear all user-scoped local boxes when logging out or switching users.
   Future<void> _clearLocalUserData() async {
-    // Stop watchers first
     for (final s in _hiveSubs.values) {
       await s.cancel();
     }
@@ -579,16 +668,14 @@ class FirestoreSyncService {
         final box = await _ensureTypedOpen(boxName);
         await box.clear();
         if (!wasOpen) {
-          await box.close(); // restore original state
+          await box.close();
         }
       }
 
-      // Clear sync_meta timestamps so the next user’s remote wins
       if (Hive.isBoxOpen('sync_meta')) {
         await Hive.box('sync_meta').clear();
       }
 
-      // Reset caches/debouncers
       _suppressLocalEcho.clear();
       _lastSentJson.clear();
       for (final t in _debouncers.values) {
@@ -608,12 +695,9 @@ class FirestoreSyncService {
   }
 
   // ------------------------------------------------------------------
-  // ✅ Public helpers used by UI (BatchLogPage): markDeleted / restoreBatch
+  // Public helpers
   // ------------------------------------------------------------------
 
-  /// Mark a document as deleted (sets `_meta.deleted = true`) so it won't
-  /// resurrect on other devices. This is a best-effort remote write and also
-  /// updates local sync metadata caches.
   Future<void> markDeleted({
     required String collection,
     required String id,
@@ -623,7 +707,6 @@ class FirestoreSyncService {
     await _markRemoteDeleted(uid, collection, id);
   }
 
-  /// Remove a tombstone and re-upload the Batch document (used by UNDO).
   Future<void> restoreBatch(BatchModel batch) async {
     final uid = _uid;
     if (uid == null) return;
@@ -633,7 +716,6 @@ class FirestoreSyncService {
 
     final json = batch.toJson();
 
-    // Push as non-deleted
     final now = DateTime.now().millisecondsSinceEpoch;
     await FirestorePaths.doc(uid, 'batches', id).set({
       ...json,

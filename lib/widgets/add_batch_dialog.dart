@@ -127,7 +127,7 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _status,
+                initialValue: _status,
                 onChanged: (value) => setState(() => _status = value!),
                 items: _statusOptions
                     .map((status) => DropdownMenuItem(
@@ -139,7 +139,7 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedRecipeId,
+                initialValue: _selectedRecipeId,
                 onChanged: (value) => setState(() => _selectedRecipeId = value),
                 decoration: const InputDecoration(labelText: 'Linked Recipe (optional)'),
                 items: recipes.values.map((recipe) {

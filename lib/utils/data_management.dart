@@ -6,7 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import '../utils/boxes.dart';
 
 // Hive model imports
@@ -66,8 +66,8 @@ class DataManagementService {
     }
   }
 
-  // Helper to OPEN a typed box when it's currently closed.
-  static Future<Box> _openTypedBox(String name) {
+  /// Helper to OPEN a typed box when it's currently closed.
+  static Future<Box> openTypedBox(String name) {
     switch (name) {
       case Boxes.recipes:
         return Hive.openBox<RecipeModel>(Boxes.recipes);
@@ -88,90 +88,41 @@ class DataManagementService {
 
   /// --- One-time (idempotent) migration to re-key items by stable string ids/name.
   static Future<void> migrateHiveKeysToStableIds() async {
-    final uuid = const Uuid();
-
-    Future<void> rekeyBox<T>(
-      Box<T> box, {
-      required String Function(T) idOf,
-      required void Function(T, String) setId,
-    }) async {
-      final keys = box.keys.toList(growable: false);
-      for (final originalKey in keys) {
-        final value = box.get(originalKey);
-        if (value == null) continue;
-
-        var id = idOf(value).trim();
-        if (id.isEmpty) {
-          id = uuid.v4();
-          setId(value, id);
-        }
-
-        if (originalKey is String && originalKey == id) continue;
-        if (box.containsKey(id)) {
-          // extremely rare: collision → mint a new id
-          final newId = uuid.v4();
-          setId(value, newId);
-          id = newId;
-        }
-        await box.put(id, value);
-        await box.delete(originalKey);
-      }
-    }
-
-    // Re-key core boxes to key == model.id
-    await rekeyBox<RecipeModel>(
-      Hive.box<RecipeModel>(Boxes.recipes),
-      idOf: (m) => m.id,
-      setId: (m, v) => m.id = v,
+    // Re-key content boxes using a clone -> put(newKey) -> delete(oldKey) pattern.
+    await _rekeyBox<RecipeModel>(
+      boxName: Boxes.recipes,
+      box: Hive.box<RecipeModel>(Boxes.recipes),
+      idFrom: (m) => m.id,
     );
-    await rekeyBox<BatchModel>(
-      Hive.box<BatchModel>(Boxes.batches),
-      idOf: (m) => m.id,
-      setId: (m, v) => m.id = v,
+    await _rekeyBox<BatchModel>(
+      boxName: Boxes.batches,
+      box: Hive.box<BatchModel>(Boxes.batches),
+      idFrom: (m) => m.id,
     );
-    await rekeyBox<InventoryItem>(
-      Hive.box<InventoryItem>(Boxes.inventory),
-      idOf: (m) => m.id,
-      setId: (m, v) => m.id = v,
+    await _rekeyBox<InventoryItem>(
+      boxName: Boxes.inventory,
+      box: Hive.box<InventoryItem>(Boxes.inventory),
+      idFrom: (m) => m.id,
     );
-    await rekeyBox<ShoppingListItem>(
-      Hive.box<ShoppingListItem>(Boxes.shoppingList),
-      idOf: (m) => m.id,
-      setId: (m, v) => m.id = v,
+    await _rekeyBox<ShoppingListItem>(
+      boxName: Boxes.shoppingList,
+      box: Hive.box<ShoppingListItem>(Boxes.shoppingList),
+      idFrom: (m) => m.id,
     );
 
-    // Tags: use name as the key
-    final tagBox = Hive.box<Tag>(Boxes.tags);
-    final tagKeys = tagBox.keys.toList(growable: false);
-    for (final originalKey in tagKeys) {
-      final tag = tagBox.get(originalKey);
-      if (tag == null) continue;
-      final k = tag.name.trim();
-      if (k.isEmpty) continue;
-      if (originalKey is String && originalKey == k) continue;
-      if (tagBox.containsKey(k)) {
-        // prefer existing canonical key; drop duplicate
-        await tagBox.delete(originalKey);
-        continue;
-      }
-      await tagBox.put(k, tag);
-      await tagBox.delete(originalKey);
-    }
+    // Tags use name-as-key; also clone to avoid same-instance/two-keys error.
+    await _rekeyTags(Hive.box<Tag>(Boxes.tags));
   }
 
   /// Clears all data from each box without causing "already open" errors.
-  /// - If a box is open: clears it in-place (does not close or re-open).
-  /// - If a box is closed: opens, clears, then closes it again.
   static Future<void> clearAllData() async {
     for (final boxName in _boxNames) {
       try {
         if (Hive.isBoxOpen(boxName)) {
-          // Use the already-open instance; do NOT open it again.
           final box = getTypedBox(boxName);
           await box.clear();
         } else {
-          // Open the typed box, clear, then close since it wasn't open originally.
-          final box = await _openTypedBox(boxName);
+          final box = await openTypedBox(boxName);
           await box.clear();
           await box.close();
         }
@@ -181,73 +132,54 @@ class DataManagementService {
     }
   }
 
-  /// Exports all Hive data to a JSON file (download on web, save/share on device).
+  /// Exports all Hive data to a JSON file.
   static Future<void> exportData(BuildContext context) async {
     try {
       final Map<String, dynamic> allData = {};
-
       for (final boxName in _boxNames) {
         final box = Hive.isBoxOpen(boxName)
             ? getTypedBox(boxName)
-            : await _openTypedBox(boxName);
+            : await openTypedBox(boxName);
 
         try {
           if (boxName == Boxes.settings) {
-            final settingsMap = box.toMap();
-            final typedSettingsMap = Map<String, dynamic>.from(settingsMap);
-            allData[boxName] = [typedSettingsMap];
+            allData[boxName] = [Map<String, dynamic>.from(box.toMap())];
           } else {
-            final List<Map<String, dynamic>> boxData = [];
-            for (var i = 0; i < box.length; i++) {
-              final item = box.getAt(i);
-              if (item == null) continue;
-              final Map<String, dynamic> jsonItem = (item as dynamic).toJson();
-              boxData.add(jsonItem);
-            }
-            allData[boxName] = boxData;
+            allData[boxName] = box.values
+                .map((item) =>
+                    (item as dynamic).toJson() as Map<String, dynamic>)
+                .toList();
           }
         } finally {
-          // If we opened it for export, close it again.
-          if (!Hive.isBoxOpen(boxName)) {
-            await box.close();
-          }
+          if (!Hive.isBoxOpen(boxName)) await box.close();
         }
       }
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(allData);
       final bytes = utf8.encode(jsonString);
-
       final timestamp =
           DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
       final fileName = 'fermentacraft_backup_$timestamp.json';
 
       final savedPath = await saveBytesToDevice(fileName, bytes);
 
-      // Optional: share the file on device platforms when we have a path.
-      if (!kIsWeb && savedPath != null) {
-        final params = ShareParams(
-          text: 'FermentaCraft Backup',
-          files: [XFile(savedPath)],
-        );
-        await SharePlus.instance.share(params);
+      if (!kIsWeb && savedPath != null && context.mounted) {
+        // ignore: deprecated_member_use
+        await Share.shareXFiles([XFile(savedPath)],
+            text: 'FermentaCraft Backup');
       }
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data backup created successfully!')),
-        );
+        snacks.show(const SnackBar(content: Text('Data backup successful!')));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
-        );
+        snacks.show(SnackBar(content: Text('Export failed: $e')));
       }
     }
   }
 
   /// Imports data from a user-selected JSON file.
-  /// NOTE: uses stable keys (id or tag.name) instead of auto-increment add().
   static Future<void> importData(BuildContext context) async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -255,99 +187,128 @@ class DataManagementService {
         allowedExtensions: ['json'],
         withData: true,
       );
-      if (result == null) return;
+      if (result == null || !context.mounted) return;
 
-      if (context.mounted) {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Confirm Import"),
-            content: const Text(
-              "This will overwrite all existing data. "
-              "This action cannot be undone. Are you sure?",
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text("Cancel"),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text("Import"),
-              ),
-            ],
-          ),
-        );
-        if (confirmed != true) return;
-      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Confirm Import"),
+          content: const Text(
+              "This will overwrite all existing data. This action cannot be undone."),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text("Cancel")),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text("Import")),
+          ],
+        ),
+      );
 
-      final fileBytes = result.files.single.bytes;
-      if (fileBytes == null) throw Exception("No file data provided.");
-      final jsonString = utf8.decode(fileBytes);
+      if (confirmed != true) return;
 
-      final allData = jsonDecode(jsonString) as Map<String, dynamic>;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) throw Exception("No file data found.");
+
+      final allData = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
 
       for (final boxName in _boxNames) {
         if (!allData.containsKey(boxName)) continue;
 
-        // Use an existing open box or open/close around the import.
         final wasOpen = Hive.isBoxOpen(boxName);
-        final box = wasOpen ? getTypedBox(boxName) : await _openTypedBox(boxName);
-
+        final box =
+            wasOpen ? getTypedBox(boxName) : await openTypedBox(boxName);
         await box.clear();
-        final boxData = allData[boxName] as List;
 
-        for (var itemJson in boxData) {
+        final items = allData[boxName] as List;
+        for (var itemJson in items) {
           if (boxName == Boxes.settings) {
             await box.putAll(Map<String, dynamic>.from(itemJson));
             continue;
           }
 
-          if (_fromJsonConstructors.containsKey(boxName)) {
-            final item = _fromJsonConstructors[boxName]!(itemJson);
-
-            // Write by stable key (id for most; name for tags)
-            try {
-              if (boxName == Boxes.tags) {
-                final name = (item as Tag).name.trim();
-                if (name.isNotEmpty) {
-                  await box.put(name, item);
-                } else {
-                  await box.add(item);
-                }
-              } else {
-                final id = (item as dynamic).id as String?;
-                if (id != null && id.trim().isNotEmpty) {
-                  await box.put(id.trim(), item);
-                } else {
-                  await box.add(item);
-                }
-              }
-            } catch (_) {
-              await box.add(item);
-            }
+          final item = _fromJsonConstructors[boxName]!(itemJson);
+          final String key =
+              (boxName == Boxes.tags) ? (item as Tag).name : (item as dynamic).id;
+          if (key.trim().isNotEmpty) {
+            await box.put(key.trim(), item);
           }
         }
 
-        if (!wasOpen) {
-          await box.close();
-        }
+        if (!wasOpen) await box.close();
       }
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Data imported successfully! Please restart the app.'),
-          ),
-        );
+        snacks.show(const SnackBar(
+            content: Text('Data imported! Please restart the app.')));
       }
     } catch (e) {
-      debugPrint("IMPORT FAILED WITH ERROR: $e");
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error importing data: $e')),
-        );
+        snacks.show(SnackBar(content: Text('Import error: $e')));
       }
     }
+  }
+}
+
+// --- ✅ PRIVATE HELPER FUNCTIONS FOR MIGRATION (MOVED OUTSIDE CLASS) ---
+
+/// Helper to re-key tags from numeric IDs to string names.
+Future<void> _rekeyTags(Box<Tag> box) async {
+  final keys = box.keys.toList(growable: false);
+  for (final originalKey in keys) {
+    final tag = box.get(originalKey);
+    if (tag == null) continue;
+
+    final name = tag.name.trim();
+    if (name.isEmpty) continue;
+
+    if (originalKey is String && originalKey == name) continue;
+
+    if (box.containsKey(name)) {
+      await box.delete(originalKey);
+      continue;
+    }
+
+    // Clone to avoid "same instance / two keys" error
+    final cloned = Tag(
+      name: tag.name,
+      iconKey: tag.iconKey,
+      iconCodePoint: tag.iconCodePoint,
+      iconFontFamily: tag.iconFontFamily,
+    );
+
+    await box.put(name, cloned);
+    await box.delete(originalKey);
+  }
+}
+
+/// Generic rekey that clones objects, writes under the new ID, then deletes the old key.
+Future<void> _rekeyBox<T>({
+  required String boxName,
+  required Box<T> box,
+  required String Function(T) idFrom,
+}) async {
+  final uuid = const Uuid();
+  final keys = box.keys.toList(growable: false);
+  final fromJson = DataManagementService.fromJsonFor(boxName);
+
+  for (final originalKey in keys) {
+    final value = box.get(originalKey);
+    if (value == null) continue;
+
+    var id = idFrom(value).trim();
+    if (id.isEmpty) id = uuid.v4();
+    if (originalKey is String && originalKey == id) continue;
+    if (box.containsKey(id) && originalKey != id) id = uuid.v4();
+
+    // Clone via JSON serialization
+    final json = (value as dynamic).toJson() as Map<String, dynamic>;
+    json['id'] = id; // Ensure the clone has the new ID
+
+    final T cloned = fromJson(json) as T;
+
+    await box.put(id, cloned);
+    await box.delete(originalKey);
   }
 }

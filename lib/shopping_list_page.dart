@@ -7,7 +7,7 @@ import 'package:collection/collection.dart'; // groupBy
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
 import 'package:provider/provider.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import 'utils/id.dart';
 import 'models/shopping_list_item.dart';
 
@@ -82,7 +82,7 @@ showPaywall(context);
     await item.delete();
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    snacks.show(
       SnackBar(
         content: Text('Deleted "${itemBackup.name}"'),
         action: SnackBarAction(

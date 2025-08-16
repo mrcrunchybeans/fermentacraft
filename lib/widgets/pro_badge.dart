@@ -1,4 +1,6 @@
 // lib/widgets/pro_badge.dart
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 
 class ProBadge extends StatelessWidget {
@@ -18,7 +20,7 @@ class ProBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final bg = unlocked ? cs.primaryContainer.withValues(alpha: 0.85) : cs.surfaceContainerHigh;
+    final bg = unlocked ? cs.primaryContainer.withOpacity(0.85) : cs.surfaceContainerHigh;
     final fg = unlocked ? cs.onPrimaryContainer : cs.onSurfaceVariant;
     final bd = unlocked ? cs.primary : cs.outlineVariant;
 
@@ -34,7 +36,6 @@ class ProBadge extends StatelessWidget {
         border: Border.all(color: bd, width: 1),
         boxShadow: [
           BoxShadow(
-            // ignore: deprecated_member_use
             color: Colors.black.withOpacity(
               Theme.of(context).brightness == Brightness.dark ? 0.20 : 0.08,
             ),

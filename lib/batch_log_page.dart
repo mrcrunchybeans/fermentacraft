@@ -1,4 +1,6 @@
 // lib/batch_log_page.dart
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -8,7 +10,7 @@ import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:fermentacraft/batch_detail_page.dart';
 import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/widgets/add_batch_dialog.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
 // ❌ no direct sync-service calls needed
@@ -60,8 +62,8 @@ class _BatchLogPageState extends State<BatchLogPage> {
       final archived = CountsService.instance.archivedBatchCount();
       if (archived >= gate.archivedBatchLimitFree) {
         if (!mounted) return;
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.showSnackBar(
+        final messenger = snacks;
+        messenger.show(
           SnackBar(content: Text('Free allows ${gate.archivedBatchLimitFree} archived batches')),
         );
         await showPaywall(context);
@@ -88,8 +90,8 @@ class _BatchLogPageState extends State<BatchLogPage> {
       batch.isArchived = isArchiving;   // set first
       await batch.save();               // then persist
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
+      final messenger = snacks;
+      messenger.show(
         SnackBar(
           content: Text(
             isArchiving ? 'Archived "${_safeName(batch)}"' : 'Unarchived "${_safeName(batch)}"',
@@ -127,7 +129,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
   }
 
   Future<void> _deleteBatchWithUndo(BatchModel batch) async {
-    final messenger = ScaffoldMessenger.of(context);
+    final messenger = snacks;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -155,7 +157,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
 
     if (deleted) {
       // 👍 No direct sync calls: watchers will write tombstone remotely.
-      messenger.showSnackBar(
+      messenger.show(
         SnackBar(
           content: Text('Deleted "$name"'),
           duration: const Duration(seconds: 6),
@@ -170,13 +172,13 @@ class _BatchLogPageState extends State<BatchLogPage> {
                 await box.add(backup);
               }
               if (!mounted) return;
-              messenger.showSnackBar(const SnackBar(content: Text('Batch restored')));
+              messenger.show(const SnackBar(content: Text('Batch restored')));
             },
           ),
         ),
       );
     } else {
-      messenger.showSnackBar(
+      messenger.show(
         const SnackBar(content: Text('Delete failed. Item not found locally.')),
       );
     }
@@ -219,8 +221,8 @@ class _BatchLogPageState extends State<BatchLogPage> {
     final currentActive = CountsService.instance.activeBatchCount();
     if (!fg.canAddActiveBatch(currentActive)) {
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
+      final messenger = snacks;
+      messenger.show(
         SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batch${fg.activeBatchLimitFree == 1 ? '' : 'es'}')),
       );
       await showPaywall(context);
@@ -317,14 +319,20 @@ class _BatchLogPageState extends State<BatchLogPage> {
                 'Current SG: $sg',
               ),
               isThreeLine: true,
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => BatchDetailPage(batchKey: batch.key)),
-                );
-              },
-              trailing: _moreMenu(batch),
-              onLongPress: () => _toggleArchiveStatus(batch),
-            ),
+  onTap: () {
+    // Coerce Hive’s key (could be int/String/null) to a String
+    final String keyStr = (batch.key ?? batch.id ?? '').toString();
+    if (keyStr.isEmpty) return; // optional: guard if neither exists
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BatchDetailPage(batchKey: keyStr),
+      ),
+    );
+  },
+  trailing: _moreMenu(batch),
+  onLongPress: () => _toggleArchiveStatus(batch),
+)
           );
         }).toList(),
       ),
@@ -343,7 +351,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
     final onColor = danger ? cs.onError : cs.onPrimary;
 
     return Container(
-      color: base.withValues(alpha: 0.90),
+      color: base.withOpacity(0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(

@@ -1,21 +1,31 @@
 import 'package:flutter/material.dart';
 
-/// Use ONLY const Icons.* so the web icon tree-shaker can see them.
+/// Single fallback used everywhere (safe for all platforms).
+const IconData kDefaultTagIcon = Icons.sell_outlined;
+
+/// Use ONLY const Icons.* so web tree-shaking can work.
 const Map<String, IconData> kTagIconMap = {
   'ingredient': Icons.liquor_outlined,
   'yeast': Icons.bubble_chart,
   'additive': Icons.science,
   'event': Icons.event_note,
-  'default': Icons.label_outline,
+  'default': kDefaultTagIcon,
 };
 
+/// Never throws. Unknown / null -> fallback icon.
 IconData iconForTagKey(String? key) {
-  return kTagIconMap[key] ?? kTagIconMap['default']!;
+  if (key == null) return kDefaultTagIcon;
+  return kTagIconMap[key] ?? kDefaultTagIcon;
 }
 
-/// Optional: map your legacy Material codePoints → the keys above.
-/// Add cases for any other icons you previously used.
-String keyFromLegacy(int codePoint, String? family) {
+/// (Optional) list of allowed keys if you want to validate inputs/migrations.
+const Set<String> kKnownTagKeys = {
+  'ingredient', 'yeast', 'additive', 'event', 'default',
+};
+
+/// Legacy Material codePoints -> stable keys.
+/// Extend with any other icons you previously serialized.
+String keyFromLegacy(int? codePoint, String? family) {
   switch (codePoint) {
     case 0xe566: // Icons.liquor_outlined
       return 'ingredient';

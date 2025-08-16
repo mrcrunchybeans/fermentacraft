@@ -4,7 +4,7 @@ import 'package:fermentacraft/utils/sugar_gravity_data.dart';
 import '../widgets/stabilization_guidance_dialog.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 class GravityAdjustTool extends StatefulWidget {
   const GravityAdjustTool({super.key});
 
@@ -313,7 +313,7 @@ class _BacksweetenAdjustTabState extends State<BacksweetenAdjustTab> {
             onPressed: () {
               final volumeInput = double.tryParse(_volumeController.text);
               if (volumeInput == null || volumeInput <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                snacks.show(
                   const SnackBar(content: Text('Please enter a valid volume first.')),
                 );
                 return;

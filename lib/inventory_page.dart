@@ -1,10 +1,12 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import '../models/inventory_item.dart';
 import '../widgets/add_inventory_dialog.dart';
 import '../widgets/edit_inventory_dialog.dart';
@@ -111,7 +113,7 @@ showPaywall(context);
       item.isArchived = isArchiving; // sidecar flag
       await item.save();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         SnackBar(content: Text(isArchiving ? 'Archived "${item.name}"' : 'Unarchived "${item.name}"')),
       );
       setState(() {});
@@ -146,7 +148,7 @@ showPaywall(context);
     await item.delete();
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    snacks.show(
       SnackBar(
         content: Text('Deleted "${backup.name}"'),
         action: SnackBarAction(
@@ -158,7 +160,7 @@ showPaywall(context);
               await box.add(backup);
             }
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item restored')));
+            snacks.show(const SnackBar(content: Text('Item restored')));
           },
         ),
         duration: const Duration(seconds: 6),
@@ -210,7 +212,7 @@ showPaywall(context);
     final color = danger ? cs.error : cs.primary;
     final onColor = danger ? cs.onError : cs.onPrimary;
     return Container(
-      color: color.withValues(alpha:0.90),
+      color: color.withOpacity(0.90),
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -265,7 +267,7 @@ showPaywall(context);
                   margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.teal.withValues(alpha:0.08),
+                    color: Colors.teal.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(

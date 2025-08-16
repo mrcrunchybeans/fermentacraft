@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 
 class ProBadge extends StatelessWidget {
@@ -9,7 +11,7 @@ class ProBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: cs.primary.withValues(alpha:0.12),
+        color: cs.primary.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: cs.primary, width: 1),
       ),

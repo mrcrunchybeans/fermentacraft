@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/planned_event.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 class PlannedEventDialog extends StatefulWidget {
   final PlannedEvent? existingEvent;
   final void Function()? onDelete;
@@ -56,7 +56,7 @@ class _PlannedEventDialogState extends State<PlannedEventDialog> {
     final notes = notesController.text.trim();
 
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         const SnackBar(content: Text("Event title cannot be empty.")),
       );
       return;

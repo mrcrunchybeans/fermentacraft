@@ -1,5 +1,7 @@
 // lib/widgets/dashboard_section.dart
 
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/foundation.dart'; // Provides ValueListenable
 import 'package:flutter/material.dart'; // Provides general UI widgets
 import 'package:hive_flutter/hive_flutter.dart';         // Provides the 'Box' class
@@ -24,7 +26,7 @@ class DashboardSection<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
       elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(16.0),

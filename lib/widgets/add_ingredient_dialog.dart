@@ -181,7 +181,7 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                         isDense: true,
                         isExpanded: true, // fits inside the constrained box
                         // Guard the value so it ALWAYS matches exactly one item
-                        value: kCanonicalUnits.contains(amountUnit)
+                        initialValue: kCanonicalUnits.contains(amountUnit)
                             ? amountUnit
                             : (widget.unitType == UnitType.mass ? 'g' : 'ml'),
                         decoration: _dec('Unit'),
@@ -199,7 +199,7 @@ class _AddIngredientDialogState extends State<AddIngredientDialog> {
                 const SizedBox(height: 8),
 
                 DropdownButtonFormField<String>(
-                  value: type,
+                  initialValue: type,
                   decoration: _dec('Type'),
                   isDense: true,
                   onChanged: (val) => setState(() => type = val ?? type),

@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
 import 'package:provider/provider.dart';
@@ -269,7 +269,7 @@ class _So2CalculatorBodyState extends State<So2CalculatorBody> {
               tooltip: "Copy to clipboard",
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: resultText));
-                ScaffoldMessenger.of(context).showSnackBar(
+                snacks.show(
                   SnackBar(content: Text("Copied: $resultText")),
                 );
               },

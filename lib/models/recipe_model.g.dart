@@ -19,7 +19,6 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
     return RecipeModel(
       id: fields[0] as String?,
       name: fields[1] as String,
-      tags: (fields[3] as List).cast<Tag>(),
       createdAt: fields[2] as DateTime,
       og: fields[4] as double?,
       fg: fields[5] as double?,
@@ -38,15 +37,17 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       lastOpened: fields[12] as DateTime?,
       batchVolume: fields[13] as double?,
       plannedOg: fields[14] as double?,
-      isArchived: fields[16] as bool,
       plannedAbv: fields[15] as double?,
-    );
+      isArchived: fields[16] as bool,
+    )
+      ..tagsLegacy = (fields[3] as List?)?.cast<Tag>()
+      ..tagRefs = (fields[17] as HiveList?)?.castHiveList();
   }
 
   @override
   void write(BinaryWriter writer, RecipeModel obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -54,7 +55,9 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       ..writeByte(2)
       ..write(obj.createdAt)
       ..writeByte(3)
-      ..write(obj.tags)
+      ..write(obj.tagsLegacy)
+      ..writeByte(17)
+      ..write(obj.tagRefs)
       ..writeByte(4)
       ..write(obj.og)
       ..writeByte(5)

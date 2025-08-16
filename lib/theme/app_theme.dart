@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -35,14 +37,14 @@ class FermentaStatusTheme extends ThemeExtension<FermentaStatusTheme> {
         FermentationPhase.stalled: c.onError,
       },
       bg: {
-        FermentationPhase.planning: c.surfaceContainerHighest.withValues(alpha: 0.40),
-        FermentationPhase.primary: c.tertiary.withValues(alpha: 0.22),
-        FermentationPhase.secondary: c.primary.withValues(alpha: 0.18),
-        FermentationPhase.coldCrash: c.secondary.withValues(alpha: 0.18),
-        FermentationPhase.conditioning: c.primaryContainer.withValues(alpha: 0.26),
-        FermentationPhase.aged: c.secondary.withValues(alpha: 0.22),
-        FermentationPhase.completed: c.secondary.withValues(alpha: 0.18),
-        FermentationPhase.stalled: c.error.withValues(alpha: 0.22),
+        FermentationPhase.planning: c.surfaceContainerHighest.withOpacity(0.40),
+        FermentationPhase.primary: c.tertiary.withOpacity(0.22),
+        FermentationPhase.secondary: c.primary.withOpacity(0.18),
+        FermentationPhase.coldCrash: c.secondary.withOpacity(0.18),
+        FermentationPhase.conditioning: c.primaryContainer.withOpacity(0.26),
+        FermentationPhase.aged: c.secondary.withOpacity(0.22),
+        FermentationPhase.completed: c.secondary.withOpacity(0.18),
+        FermentationPhase.stalled: c.error.withOpacity(0.22),
       },
     );
   }
@@ -61,14 +63,14 @@ class FermentaStatusTheme extends ThemeExtension<FermentaStatusTheme> {
         FermentationPhase.stalled: c.onError,
       },
       bg: {
-        FermentationPhase.planning: c.surfaceContainerHighest.withValues(alpha: 0.22),
-        FermentationPhase.primary: c.tertiary.withValues(alpha: 0.24),
-        FermentationPhase.secondary: c.primary.withValues(alpha: 0.22),
-        FermentationPhase.coldCrash: c.secondary.withValues(alpha: 0.20),
-        FermentationPhase.conditioning: c.primaryContainer.withValues(alpha: 0.20),
-        FermentationPhase.aged: c.secondary.withValues(alpha: 0.22),
-        FermentationPhase.completed: c.secondary.withValues(alpha: 0.18),
-        FermentationPhase.stalled: c.error.withValues(alpha: 0.24),
+        FermentationPhase.planning: c.surfaceContainerHighest.withOpacity(0.22),
+        FermentationPhase.primary: c.tertiary.withOpacity(0.24),
+        FermentationPhase.secondary: c.primary.withOpacity(0.22),
+        FermentationPhase.coldCrash: c.secondary.withOpacity(0.20),
+        FermentationPhase.conditioning: c.primaryContainer.withOpacity(0.20),
+        FermentationPhase.aged: c.secondary.withOpacity(0.22),
+        FermentationPhase.completed: c.secondary.withOpacity(0.18),
+        FermentationPhase.stalled: c.error.withOpacity(0.24),
       },
     );
   }
@@ -202,7 +204,7 @@ class AppTheme {
       ).copyWith(
         overlayColor: WidgetStateProperty.resolveWith(
           (s) => (s.contains(WidgetState.pressed) || s.contains(WidgetState.hovered))
-              ? c.primary.withValues(alpha: 0.08)
+              ? c.primary.withOpacity(0.08)
               : null,
         ),
       );
@@ -215,8 +217,8 @@ class AppTheme {
   /// Dark inputs were too transparent on OLED → increase fill.
   static InputDecorationTheme _inputs(ColorScheme c, {required bool dark}) {
     final fill = dark
-        ? c.surfaceContainerHighest.withValues(alpha:0.55) // was ~0.30
-        : c.surfaceContainerHighest.withValues(alpha:0.50);
+        ? c.surfaceContainerHighest.withOpacity(0.55) // was ~0.30
+        : c.surfaceContainerHighest.withOpacity(0.50);
 
     OutlineInputBorder border(Color color, [double w = 1]) =>
         OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: color, width: w));
@@ -226,12 +228,12 @@ class AppTheme {
       filled: true,
       fillColor: fill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-      hintStyle: TextStyle(color: c.onSurfaceVariant.withValues(alpha: 0.7)),
+      hintStyle: TextStyle(color: c.onSurfaceVariant.withOpacity(0.7)),
       labelStyle: TextStyle(color: c.onSurfaceVariant),
       floatingLabelStyle: TextStyle(color: c.primary, fontWeight: FontWeight.w600),
       border: border(Colors.transparent),
       enabledBorder: border(Colors.transparent),
-      disabledBorder: border(c.outline.withValues(alpha: 0.2)),
+      disabledBorder: border(c.outline.withOpacity(0.2)),
       focusedBorder: border(c.primary, 1.4),
       errorBorder: border(c.error),
       focusedErrorBorder: border(c.error, 1.4),
@@ -240,7 +242,7 @@ class AppTheme {
 
   static CardThemeData _cards(ColorScheme c, {required bool dark}) => CardThemeData(
         elevation: dark ? 0 : 1,
-        color: dark ? c.surfaceContainerHighest.withValues(alpha: 0.30) : c.surface,
+        color: dark ? c.surfaceContainerHighest.withOpacity(0.30) : c.surface,
         surfaceTintColor: Colors.transparent,
         shape: _shape,
         margin: const EdgeInsets.all(8),
@@ -267,7 +269,7 @@ class AppTheme {
         height: 64,
         elevation: 0,
         backgroundColor: c.surface,
-        indicatorColor: c.primary.withValues(alpha: 0.12),
+        indicatorColor: c.primary.withOpacity(0.12),
         labelTextStyle: WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, color: c.onSurface)),
       );
 
@@ -283,7 +285,7 @@ class AppTheme {
   static ChipThemeData _chips(ColorScheme c) => ChipThemeData(
         shape: _shape,
         backgroundColor: c.surface,
-        selectedColor: c.primary.withValues(alpha: 0.16),
+        selectedColor: c.primary.withOpacity(0.16),
         side: BorderSide(color: c.outline),
         labelStyle: TextStyle(color: c.onSurface),
         secondaryLabelStyle: TextStyle(color: c.onPrimary),
@@ -339,7 +341,7 @@ class AppTheme {
   );
 
   static DividerThemeData _dividers(ColorScheme c) => DividerThemeData(
-        color: c.outline.withValues(alpha: 0.5),
+        color: c.outline.withOpacity(0.5),
         thickness: 1,
         space: 24,
       );
@@ -347,7 +349,7 @@ class AppTheme {
   static ProgressIndicatorThemeData _progress(ColorScheme c) =>
       ProgressIndicatorThemeData(
         color: c.primary,
-        linearTrackColor: c.outline.withValues(alpha: 0.25),
+        linearTrackColor: c.outline.withOpacity(0.25),
       );
 
   static SwitchThemeData _switches(ColorScheme c) => SwitchThemeData(
@@ -355,14 +357,14 @@ class AppTheme {
           if (states.contains(WidgetState.selected)) return const Icon(Icons.check);
           return const Icon(Icons.close);
         }),
-        trackOutlineColor: WidgetStatePropertyAll(c.outline.withValues(alpha: 0.5)),
+        trackOutlineColor: WidgetStatePropertyAll(c.outline.withOpacity(0.5)),
       );
 
   /// Refactored: high-contrast segmented buttons, esp. for dark mode/OLED.
   static SegmentedButtonThemeData _segments(ColorScheme c, {required bool dark}) {
     final Color unselectedBg = dark ? c.surfaceContainerHighest : c.surface;
     final Color unselectedFg = dark ? c.onSurface : c.onSurfaceVariant;
-    final Color selectedBg = dark ? c.primaryContainer : c.primary.withValues(alpha:0.16);
+    final Color selectedBg = dark ? c.primaryContainer : c.primary.withOpacity(0.16);
     final Color selectedFg = dark ? c.onPrimaryContainer : c.onPrimary;
 
     return SegmentedButtonThemeData(
@@ -375,7 +377,7 @@ class AppTheme {
         }),
         backgroundColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.disabled)) {
-            return c.surface.withValues(alpha:0.12);
+            return c.surface.withOpacity(0.12);
           }
           if (states.contains(WidgetState.selected)) return selectedBg;
           return unselectedBg; // opaque enough for OLED
@@ -386,7 +388,7 @@ class AppTheme {
         iconColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected) ? selectedFg : unselectedFg,
         ),
-        overlayColor: WidgetStatePropertyAll(c.primary.withValues(alpha:0.10)),
+        overlayColor: WidgetStatePropertyAll(c.primary.withOpacity(0.10)),
       ),
     );
   }

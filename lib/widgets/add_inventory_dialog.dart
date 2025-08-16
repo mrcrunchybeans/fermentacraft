@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import '../models/inventory_item.dart';
 import '../models/purchase_transaction.dart';
 import '../models/unit_type.dart';
@@ -107,7 +107,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
 
         if (atLimit) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
+          snacks.show(
             SnackBar(
               content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
               duration: const Duration(seconds: 3),
@@ -157,13 +157,13 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         const SnackBar(content: Text('Inventory saved')),
       );
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         SnackBar(content: Text('Error: $e')),
       );
       setState(() => _saving = false);
@@ -216,7 +216,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
 
               // Category
               DropdownButtonFormField<String>(
-                value: _category,
+                initialValue: _category,
                 items: _categories
                     .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
                     .toList(),
@@ -252,7 +252,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: kCanonicalUnits.contains(_unit) ? _unit : kCanonicalUnits.first,
+                      initialValue: kCanonicalUnits.contains(_unit) ? _unit : kCanonicalUnits.first,
                       items: kCanonicalUnits
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),

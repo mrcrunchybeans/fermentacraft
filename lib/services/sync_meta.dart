@@ -7,14 +7,14 @@ class SyncMeta {
   SyncMeta({required this.key, required this.lastSyncedMillis});
 
   Map<String, dynamic> toJson() => {
-    'key': key,
-    'lastSyncedMillis': lastSyncedMillis,
-  };
+        'key': key,
+        'lastSyncedMillis': lastSyncedMillis,
+      };
 
   static SyncMeta fromJson(Map<String, dynamic> json) => SyncMeta(
-    key: json['key'] as String,
-    lastSyncedMillis: json['lastSyncedMillis'] as int,
-  );
+        key: json['key'] as String,
+        lastSyncedMillis: json['lastSyncedMillis'] as int,
+      );
 }
 
 class SyncMetaStore {
@@ -35,7 +35,8 @@ class SyncMetaStore {
     return _box.get(k) as int?;
   }
 
-  static Future<void> setLastSyncedNow(String boxName, String id, int millis) async {
+  static Future<void> setLastSyncedNow(
+      String boxName, String id, int millis) async {
     final k = makeKey(boxName, id);
     await _box.put(k, millis);
   }

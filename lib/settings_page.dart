@@ -3,7 +3,7 @@ import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -117,13 +117,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   return;
                 }
                 if (v && user == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  snacks.show(
                     const SnackBar(content: Text("Please sign in to enable sync.")),
                   );
                   return;
                 }
 
-                final messenger = ScaffoldMessenger.of(context);
+                final messenger = snacks;
                 // Persist the preference
                 Hive.box(Boxes.settings).put('syncEnabled', v);
 
@@ -135,12 +135,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   await sync.init();      // ensure listeners are wired
                   await sync.forceSync(); // optional initial merge
                   if (!mounted) return;
-                  messenger.showSnackBar(
+                  messenger.show(
                     const SnackBar(content: Text("Sync enabled. Merging changes…")),
                   );
                 } else {
                   // If your service exposes a stop(), you can call it here.
-                  messenger.showSnackBar(
+                  messenger.show(
                     const SnackBar(content: Text("Sync disabled.")),
                   );
                 }
@@ -152,7 +152,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ElevatedButton.icon(
                   onPressed: (fg.allowSync && user != null && sync.isEnabled)
                       ? () {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          snacks.show(
                             const SnackBar(content: Text('Sync queued…')),
                           );
                           sync.forceSync();
@@ -161,11 +161,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           if (!fg.allowSync) {
                             _upsell(context, "Cloud Sync is a Premium feature");
                           } else if (user == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            snacks.show(
                               const SnackBar(content: Text('Please sign in to sync.')),
                             );
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            snacks.show(
                               const SnackBar(content: Text('Enable Sync first.')),
                             );
                           }
@@ -229,7 +229,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const Text("Currency"),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: settings.currencySymbol,
+              initialValue: settings.currencySymbol,
               decoration: const InputDecoration(
                 labelText: 'Currency symbol',
                 border: OutlineInputBorder(),
@@ -335,11 +335,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                   onPressed: () async {
                     final navigator = Navigator.of(context);
-                    final messenger = ScaffoldMessenger.of(context);
+                    final messenger = snacks;
                     await DataManagementService.clearAllData();
                     if (!mounted) return;
                     navigator.pop();
-                    messenger.showSnackBar(
+                    messenger.show(
                       const SnackBar(content: Text("All data has been cleared.")),
                     );
                   },

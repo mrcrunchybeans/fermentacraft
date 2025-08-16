@@ -1,4 +1,6 @@
 // lib/pages/paywall_page.dart
+// ignore_for_file: deprecated_member_use
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart'; // ⬅️ NEW
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:fermentacraft/utils/snacks.dart';
 import '../services/feature_gate.dart';
 import '../services/revenuecat_service.dart';
 import '../services/stripe_billing_service.dart';
@@ -226,35 +228,23 @@ class _RevenueCatPlans extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // Android/iOS: Refresh RevenueCat entitlements (local RC state)
-            TextButton(
-              onPressed: () async {
-                final m = ScaffoldMessenger.of(context);
-                try {
-                  await RevenueCatService.instance.refreshCustomerInfo();
-                  final isPremium = FeatureGate.instance.isPremium;
-                  m.showSnackBar(SnackBar(content: Text(isPremium ? 'Premium active ✅' : 'No premium found')));
-                } catch (e) {
-                  m.showSnackBar(SnackBar(content: Text('Couldn’t refresh: $e')));
-                }
-              },
-              child: const Text('Refresh entitlement'),
-            ),
+            
 
-            // NEW: Unified refresh via Cloud Function (checks RC + tester_allowlist, mirrors Firestore)
-            TextButton(
-              onPressed: () async {
-                final m = ScaffoldMessenger.of(context);
-                try {
-                  final active = await refreshPremiumStatusUnified(); // ⬅️ NEW
-                  m.showSnackBar(SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')));
-                } catch (e) {
-                  m.showSnackBar(SnackBar(content: Text('Couldn’t refresh: $e')));
-                }
-              },
-              child: const Text('Already upgraded? Refresh status'),
-            ),
-            const SizedBox(height: 8),
+            // Unified refresh via Cloud Function (checks RC + tester_allowlist, mirrors Firestore)
+TextButton(
+  onPressed: () async {
+    final m = snacks;
+    try {
+      final active = await refreshPremiumStatusUnified();
+      m.show(SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')));
+    } catch (e) {
+      m.show(SnackBar(content: Text('Couldn’t refresh: $e')));
+    }
+  },
+  child: const Text('Already upgraded? Refresh status'),
+),
+const SizedBox(height: 8),
+
 
             // Restore for RC only
             TextButton(
@@ -282,7 +272,7 @@ class _RevenueCatPlans extends StatelessWidget {
                   final code = PurchasesErrorHelper.getErrorCode(e);
                   if (code == PurchasesErrorCode.purchaseCancelledError) return;
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    snacks.show(
                       SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
                     );
                   }
@@ -356,7 +346,7 @@ class _StripePlans extends StatelessWidget {
             if (snap.hasError) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  snacks.show(
                     SnackBar(content: Text('Pricing unavailable: ${snap.error}')),
                   );
                 }
@@ -373,7 +363,7 @@ class _StripePlans extends StatelessWidget {
                     subtitle: 'Best Value',
                     savings: 'Save vs monthly',
                     onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
+                      final messenger = snacks;
                       try {
                         await StripeBillingService.instance.startCheckout(
                           priceId: _yearlyPriceId,
@@ -381,7 +371,7 @@ class _StripePlans extends StatelessWidget {
                           cancelUrl: _cancelUrl,
                         );
                       } catch (e) {
-                        messenger.showSnackBar(SnackBar(content: Text('Checkout error: $e')));
+                        messenger.show(SnackBar(content: Text('Checkout error: $e')));
                       }
                     },
                   ),
@@ -394,7 +384,7 @@ class _StripePlans extends StatelessWidget {
                     billingNote: 'Billed monthly',
                     subtitle: 'Flexible',
                     onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
+                      final messenger = snacks;
                       try {
                         await StripeBillingService.instance.startCheckout(
                           priceId: _monthlyPriceId,
@@ -402,7 +392,7 @@ class _StripePlans extends StatelessWidget {
                           cancelUrl: _cancelUrl,
                         );
                       } catch (e) {
-                        messenger.showSnackBar(SnackBar(content: Text('Checkout error: $e')));
+                        messenger.show(SnackBar(content: Text('Checkout error: $e')));
                       }
                     },
                   ),
@@ -420,14 +410,14 @@ class _StripePlans extends StatelessWidget {
           children: [
             TextButton(
               onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
+                final messenger = snacks;
                 try {
                   final active = await refreshPremiumStatusUnified(); // ⬅️ NEW
-                  messenger.showSnackBar(
+                  messenger.show(
                     SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')),
                   );
                 } catch (e) {
-                  messenger.showSnackBar(SnackBar(content: Text('Couldn’t refresh: $e')));
+                  messenger.show(SnackBar(content: Text('Couldn’t refresh: $e')));
                 }
               },
               child: const Text('Already upgraded? Refresh status'),
@@ -564,7 +554,7 @@ Future<void> _purchase(BuildContext context, Package pkg) async {
   try {
     await RevenueCatService.instance.purchasePackage(pkg);
     if (FeatureGate.instance.isPremium && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Thanks for upgrading!')));
+      snacks.show(const SnackBar(content: Text('Thanks for upgrading!')));
       Navigator.of(context).maybePop(true);
     }
   } on PlatformException catch (e) {
@@ -576,7 +566,7 @@ Future<void> _purchase(BuildContext context, Package pkg) async {
     }
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Purchase error: $e')));
+      snacks.show(SnackBar(content: Text('Purchase error: $e')));
     }
   }
 }
@@ -693,7 +683,7 @@ class _PlanOptionCard extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isBestValue ? cs.primaryContainer.withValues(alpha: 0.2) : cs.surface,
+              color: isBestValue ? cs.primaryContainer.withOpacity(0.2) : cs.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isBestValue ? cs.primary : cs.outlineVariant,

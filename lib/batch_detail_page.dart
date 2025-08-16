@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
@@ -31,8 +33,9 @@ import 'package:fermentacraft/services/counts_service.dart';
 import 'package:fermentacraft/services/gravity_service.dart';
 import 'package:fermentacraft/services/batch_extras_repo.dart';
 import 'package:fermentacraft/models/settings_model.dart';
-import 'package:provider/provider.dart';              // for context.read()
-import 'utils/temp_display.dart';                      // for .toDisplay()
+import 'package:provider/provider.dart';
+import 'utils/temp_display.dart';
+import 'package:fermentacraft/utils/snacks.dart';
 
 
 
@@ -43,6 +46,7 @@ class BatchDetailPage extends StatefulWidget {
   const BatchDetailPage({super.key, required this.batchKey});
 
   final String batchKey;
+  
 
   @override
   State<BatchDetailPage> createState() => _BatchDetailPageState();
@@ -50,16 +54,42 @@ class BatchDetailPage extends StatefulWidget {
 
 class _BatchDetailPageState extends State<BatchDetailPage>
     with SingleTickerProviderStateMixin {
-  late TextEditingController _finalNotesController;
-  late TextEditingController _finalYieldController;
+  // ---- Model / key ----
+  BatchModel? _batch;
+  late final Object _hiveKey;
+ // int or String, depending on your box keys
+
+  // ---- UI state ----
+  late final TabController _tabController;
+
+  late final TextEditingController _prepNotesController;
+  late final TextEditingController _tastingAromaController;
+  late final TextEditingController _tastingAppearanceController;
+  late final TextEditingController _tastingFlavorController;
+  late final TextEditingController _finalYieldController;
+  late final TextEditingController _finalNotesController;
+
+  int _tastingRating = 0;
   String _finalYieldUnit = 'gal';
   bool _isBrewModeEnabled = false;
-  late TextEditingController _prepNotesController;
-  late TabController _tabController;
-  late TextEditingController _tastingAppearanceController;
-  late TextEditingController _tastingAromaController;
-  late TextEditingController _tastingFlavorController;
-  int _tastingRating = 0;
+
+  // ---------------- lifecycle ----------------
+
+  @override
+void initState() {
+  super.initState();
+
+  // widget.batchKey is a String; convert to int if your box uses int keys
+  _hiveKey = int.tryParse(widget.batchKey) ?? widget.batchKey;
+
+  final box = Hive.box<BatchModel>(Boxes.batches);
+  _batch = box.get(_hiveKey);
+
+  final initialTabIndex = _initialTabIndexFor(_batch?.status);
+  _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
+
+  _initControllersFrom(_batch);
+}
 
   @override
   void dispose() {
@@ -76,108 +106,80 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
+  // ---------------- helpers ----------------
 
-    final box = Hive.box<BatchModel>(Boxes.batches); // ✅ opened in setup
-    final initialBatch = box.get(widget.batchKey);
-
-    if (initialBatch == null) {
-      // Handle the case where the batch doesn't exist, will be caught in build()
-      _tabController = TabController(length: 4, vsync: this);
-      _prepNotesController = TextEditingController();
-      _tastingAromaController = TextEditingController();
-      _tastingAppearanceController = TextEditingController();
-      _tastingFlavorController = TextEditingController();
-      _finalYieldController = TextEditingController();
-      _finalNotesController = TextEditingController();
-      return;
-    }
-
-    int initialTabIndex = 0;
-    switch (initialBatch.status) {
+  int _initialTabIndexFor(String? status) {
+    switch (status) {
       case 'Preparation':
-        initialTabIndex = 1;
-        break;
+        return 1;
       case 'Fermenting':
-        initialTabIndex = 2;
-        break;
+        return 2;
       case 'Completed':
-        initialTabIndex = 3;
-        break;
+        return 3;
+      default:
+        return 0;
     }
-    _tabController =
-        TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
-
-    _prepNotesController =
-        TextEditingController(text: initialBatch.prepNotes ?? '');
-    _tastingRating = initialBatch.tastingRating ?? 0;
-    _tastingAromaController =
-        TextEditingController(text: initialBatch.tastingNotes?['aroma'] ?? '');
-    _tastingAppearanceController = TextEditingController(
-        text: initialBatch.tastingNotes?['appearance'] ?? '');
-    _tastingFlavorController =
-        TextEditingController(text: initialBatch.tastingNotes?['flavor'] ?? '');
-    _finalYieldController =
-        TextEditingController(text: initialBatch.finalYield?.toString() ?? '');
-    _finalYieldUnit = initialBatch.finalYieldUnit ?? 'gal';
-    _finalNotesController =
-        TextEditingController(text: initialBatch.finalNotes ?? '');
   }
 
-  double? _computeAbvFromExtras(
-  BatchModel batch, {
-  required bool useMeasured,
-  required double? measuredOg,
-}) {
-  final double? og = (useMeasured && measuredOg != null && measuredOg > 1.0)
-      ? measuredOg
-      : (batch.og ?? batch.plannedOg);
+  void _initControllersFrom(BatchModel? b) {
+    _prepNotesController = TextEditingController(text: b?.prepNotes ?? '');
+    _tastingRating = b?.tastingRating ?? 0;
+    _tastingAromaController =
+        TextEditingController(text: b?.tastingNotes?['aroma'] ?? '');
+    _tastingAppearanceController =
+        TextEditingController(text: b?.tastingNotes?['appearance'] ?? '');
+    _tastingFlavorController =
+        TextEditingController(text: b?.tastingNotes?['flavor'] ?? '');
+    _finalYieldController =
+        TextEditingController(text: (b?.finalYield)?.toString() ?? '');
+    _finalYieldUnit = b?.finalYieldUnit ?? 'gal';
+    _finalNotesController = TextEditingController(text: b?.finalNotes ?? '');
+  }
 
-  if (og == null || og <= 1.0) return null;
+  // ---------------- ABV math ----------------
 
-  final double fg = (batch.fg ??
-          (batch.safeMeasurements.isNotEmpty
-              ? (batch.safeMeasurements.last.gravity ?? 1.000)
-              : 1.000))
-      .toDouble();
+  double? _computeAbv({
+    required BatchModel batch,
+    required bool useMeasured,
+    required double? measuredOg,
+  }) {
+    final double? og = (useMeasured && measuredOg != null && measuredOg > 1.0)
+        ? measuredOg
+        : (batch.og ?? batch.plannedOg);
 
-  return GravityService.abv(og: og, fg: fg);
-}
+    if (og == null || og <= 1.0) return null;
+
+    final double fg = (batch.fg ??
+            (batch.safeMeasurements.isNotEmpty
+                ? (batch.safeMeasurements.last.gravity ?? 1.000)
+                : 1.000))
+        .toDouble();
+
+    return GravityService.abv(og: og, fg: fg);
+  }
 
   Future<double?> _abvForBatch(BatchModel batch) async {
-  final extras = await BatchExtrasRepo().getOrCreate(batch.id);
-  final useMeasured = extras.useMeasuredOg == true;
-  final measuredOg = extras.measuredOg;
+    final extras = await BatchExtrasRepo().getOrCreate(batch.id);
+    return _computeAbv(
+      batch: batch,
+      useMeasured: extras.useMeasuredOg == true,
+      measuredOg: extras.measuredOg,
+    );
+  }
 
-  final double? og = (useMeasured && measuredOg != null && measuredOg > 1.0)
-      ? measuredOg
-      : (batch.og ?? batch.plannedOg);
+  // ---------------- archive toggle ----------------
 
-  if (og == null || og <= 1.0) return null;
+Future<void> _onArchiveToggle(BatchModel batch) async {
+  final wantArchive = !batch.isArchived;
 
-  final double fg = (batch.fg ??
-          (batch.safeMeasurements.isNotEmpty
-              ? (batch.safeMeasurements.last.gravity ?? 1.000)
-              : 1.000))
-      .toDouble();
-
-  return GravityService.abv(og: og, fg: fg);
-}
-
-  Future<void> _onArchiveToggle(BatchModel batch) async {
-  final isArchiving = !batch.isArchived;
-
-  // Enforce Free cap when archiving
-  if (isArchiving && !FeatureGate.instance.isPremium) {
+  if (wantArchive && !FeatureGate.instance.isPremium) {
     final archived = CountsService.instance.archivedBatchCount();
     if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      snacks.show(
         SnackBar(content: Text('Free allows ${FeatureGate.instance.archivedBatchLimitFree} archived batches')),
       );
       showPaywall(context);
-
       return;
     }
   }
@@ -185,26 +187,27 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
-      title: Text(isArchiving ? 'Archive Batch?' : 'Unarchive Batch?'),
-      content: Text('Are you sure you want to ${isArchiving ? 'archive' : 'unarchive'} "${batch.name}"?'),
+      title: Text(wantArchive ? 'Archive Batch?' : 'Unarchive Batch?'),
+      content: Text('Are you sure you want to ${wantArchive ? 'archive' : 'unarchive'} "${batch.name}"?'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text(isArchiving ? 'Archive' : 'Unarchive')),
+        ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text(wantArchive ? 'Archive' : 'Unarchive')),
       ],
     ),
   );
-
   if (confirmed != true) return;
 
-  batch.isArchived = isArchiving;
-  await batch.save();
-  if (!mounted) return;
+  final box = Hive.box<BatchModel>(Boxes.batches);
+  batch.isArchived = wantArchive;
+  await box.put(_hiveKey, batch);
 
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(isArchiving ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
+  if (!mounted) return;
+  setState(() => _batch = batch);
+  snacks.show(
+    SnackBar(content: Text(wantArchive ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
   );
-  setState(() {}); // refresh UI/read-only state
 }
+
 
   Future<void> _editIngredientDialog(BatchModel batch, int index) async {
     final existing = batch.ingredients[index];
@@ -270,7 +273,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
 
   final activeCount = CountsService.instance.activeBatchCount();
   if (activeCount >= fg.activeBatchLimitFree) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    snacks.show(
       SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batches')),
     );
 showPaywall(context);
@@ -285,7 +288,7 @@ showPaywall(context);
       _isBrewModeEnabled = !_isBrewModeEnabled;
       if (_isBrewModeEnabled) {
         WakelockPlus.enable();
-        ScaffoldMessenger.of(context).showSnackBar(
+        snacks.show(
           const SnackBar(
             content: Text("Brew Mode Enabled: Screen will stay on."),
             duration: Duration(seconds: 2),
@@ -293,7 +296,7 @@ showPaywall(context);
         );
       } else {
         WakelockPlus.disable();
-        ScaffoldMessenger.of(context).showSnackBar(
+        snacks.show(
           const SnackBar(
             content: Text("Brew Mode Disabled."),
             duration: Duration(seconds: 2),
@@ -409,17 +412,16 @@ showPaywall(context);
   }
 
   Widget _buildPlanningTab(BatchModel batch) {
-  final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id); // ← here
-
+  final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
+  
   return SingleChildScrollView(
     padding: const EdgeInsets.all(16),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [ 
-        _recipeSummaryCard(batch), // ← pass it in
+      children: [
+        _recipeSummaryCard(batch),
         const SizedBox(height: 16),
 
-        // Measured OG card: reuse the same future
         FutureBuilder(
           future: extrasFuture,
           builder: (context, snapshot) {
@@ -434,10 +436,10 @@ showPaywall(context);
               );
             }
 
-            final extras = snapshot.data!; // BatchExtras
-            final abvFromThisCard = _computeAbvFromExtras(
-              batch,
-              useMeasured: extras.useMeasuredOg,
+            final extras = snapshot.data!;
+            final abvFromThisCard = _computeAbv(
+              batch: batch,
+              useMeasured: extras.useMeasuredOg == true,
               measuredOg: extras.measuredOg,
             );
 
@@ -464,7 +466,7 @@ showPaywall(context);
                         final newValue = (parsed != null && parsed > 1.0) ? parsed : null;
                         if (newValue != extras.measuredOg) {
                           await BatchExtrasRepo().setMeasuredOg(batch.id, newValue);
-                          if (mounted) setState(() {}); // refresh UI
+                          if (mounted) setState(() {});
                         }
                       },
                     ),
@@ -482,15 +484,15 @@ showPaywall(context);
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text('ABV (with current setting): ${abvFromThisCard.toStringAsFixed(2)}%'),
+                      ),
+                  ],
                 ),
-                
-          ],
+              ),
+            );
+          },
         ),
-      ),
-    );
-  },
-),
-const SizedBox(height: 16),
+
+        const SizedBox(height: 16),
 
 
           ElevatedButton.icon(
@@ -616,7 +618,7 @@ void _showUndoSnackBar({
   required String label,
   required VoidCallback onUndo,
 }) {
-  ScaffoldMessenger.of(context).showSnackBar(
+  snacks.show(
     SnackBar(
       content: Text(label),
       action: SnackBarAction(label: 'Undo', onPressed: onUndo),
@@ -706,7 +708,7 @@ Future<void> _deleteAdditive(BatchModel batch, int index) async {
 
   Widget _ingredientsList(BatchModel batch) {
     if (batch.ingredients.isEmpty) return const Text('No ingredients added.');
-    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    final inventoryBox = Hive.box<InventoryItem>(Boxes.inventory);
     return Column(
       children: batch.ingredients.asMap().entries.map((entry) {
         final index = entry.key;
@@ -775,7 +777,7 @@ return InkWell(
 
   Widget _additivesList(BatchModel batch) {
     if (batch.additives.isEmpty) return const Text('No additives added.');
-    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    final inventoryBox = Hive.box<InventoryItem>(Boxes.inventory);
     return Column(
       children: batch.additives.asMap().entries.map((entry) {
         final index = entry.key;
@@ -844,7 +846,7 @@ return InkWell(
 
   Widget _yeastList(BatchModel batch) {
     if (batch.yeast.isEmpty) return const Text('No yeast added.');
-    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    final inventoryBox = Hive.box<InventoryItem>(Boxes.inventory);
     return Column(
       children: batch.yeast.asMap().entries.map((entry) {
         final index = entry.key;
@@ -946,15 +948,16 @@ FutureBuilder(
   builder: (context, snapshot) {
     if (!snapshot.hasData) return const Text('Estimated ABV: —');
     final extras = snapshot.data!;
-    final abv = _computeAbvFromExtras(
-      batch,
-      useMeasured: (extras.useMeasuredOg == true), // ← same trick
+    final abv = _computeAbv(
+      batch: batch,
+      useMeasured: extras.useMeasuredOg == true,
       measuredOg: extras.measuredOg,
     );
     final s = (abv == null) ? '—' : abv.toStringAsFixed(1);
     return Text('Estimated ABV: $s%');
   },
 ),
+
 
 
           ],
@@ -1172,7 +1175,7 @@ ElevatedButton(
     bool syncAdditives = true;
     bool syncStages = true;
     bool syncTargets = true;
-    final recipeBox = Hive.box<RecipeModel>('recipes');
+    final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
     List<RecipeModel> allRecipes = recipeBox.values.toList();
     if (!mounted) return;
     // FIX: Removed unnecessary null check and assertion
@@ -1259,7 +1262,7 @@ ElevatedButton(
                 child: const Text('Cancel')),
             TextButton(
                 onPressed: () async {
-                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+                  final scaffoldMessenger = snacks;
                   final navigator = Navigator.of(dialogContext);
                   final newRecipe = RecipeModel(
                     id: generateId(),
@@ -1288,7 +1291,7 @@ ElevatedButton(
                   await recalcPlannedOg(batch); // ← add
 
                   navigator.pop();
-                  scaffoldMessenger.showSnackBar(
+                  scaffoldMessenger.show(
                     const SnackBar(
                       content: Text('Recipe saved and linked'),
                       duration: Duration(seconds: 3),
@@ -1348,7 +1351,7 @@ ElevatedButton(
     if (mounted) setState(() {});
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         const SnackBar(
           content: Text('Batch synced from recipe'),
           duration: Duration(seconds: 3),
@@ -1378,7 +1381,7 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
 ) async {
   if (batch.recipeId.isEmpty) return; // no link, nothing to do
 
-  final recipeBox = Hive.box<RecipeModel>('recipes');
+  final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
   final recipe = recipeBox.get(batch.recipeId);
   if (recipe == null) return; // stale link
 
@@ -1387,7 +1390,7 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
   await recipe.save();
 
   if (!mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
+  snacks.show(
     const SnackBar(content: Text('Also added to linked recipe')),
   );
 }
@@ -1463,7 +1466,7 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
           TextPosition(offset: _prepNotesController.text.length));
     }
 
-    final inventoryBox = Hive.box<InventoryItem>('inventory');
+    final inventoryBox = Hive.box<InventoryItem>(Boxes.inventory);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1593,6 +1596,7 @@ Widget _buildChecklistItem({
 
   final inStock = inventoryItem?.amountInStock ?? 0;
   final sufficient = inStock >= amount;
+  
 
   // Show the checkbox only if:
   //  - the item exists in inventory, and
@@ -1662,7 +1666,7 @@ Widget _buildChecklistItem({
             ? ElevatedButton(
                 onPressed: () {
                   if (!FeatureGate.instance.isPremium) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    snacks.show(
                       const SnackBar(
                         content: Text('Shopping List is a Premium feature'),
                       ),
@@ -1670,7 +1674,7 @@ Widget _buildChecklistItem({
                     showPaywall(context);
                     return;
                   }
-                  final shoppingBox = Hive.box<ShoppingListItem>('shopping_list');
+                  final shoppingBox = Hive.box<ShoppingListItem>(Boxes.shoppingList);
                   final amountNeeded = amount - inStock;
                   if (amountNeeded > 0) {
                     final newItem = ShoppingListItem(
@@ -1681,7 +1685,7 @@ Widget _buildChecklistItem({
                       recipeName: batch.name,
                     );
                     shoppingBox.put(newItem.id, newItem);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    snacks.show(const SnackBar(
                       content: Text('Added item to shopping list!'),
                       duration: Duration(seconds: 2),
                     ));
@@ -1755,7 +1759,7 @@ Widget _buildChecklistItem({
       ));
       item.save();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        snacks.show(
           SnackBar(
             content: Text('Added $amount $unit to ${item.name}'),
             duration: const Duration(seconds: 2),
@@ -1779,7 +1783,7 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 
     if (atLimit) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      snacks.show(
         SnackBar(
           content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
           duration: const Duration(seconds: 2),
@@ -1809,7 +1813,7 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     required bool newValue,
     required Box<InventoryItem> inventoryBox,
   }) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final scaffoldMessenger = snacks;
 
     final name = item['name'] as String? ?? 'Unnamed';
     final amount = (item['amount'] as num?)?.toDouble() ?? 0;
@@ -1823,7 +1827,7 @@ void _showCreateInventoryItemDialog(String name, String unit) {
         );
 
     if (inventoryItem == null) {
-      scaffoldMessenger.showSnackBar(const SnackBar(
+      scaffoldMessenger.show(const SnackBar(
         content: Text('That item is not in inventory yet.'),
         duration: Duration(seconds: 3),
       ));
@@ -1857,13 +1861,13 @@ void _showCreateInventoryItemDialog(String name, String unit) {
 
     if (newValue) {
       inventoryItem.use(amount);
-      scaffoldMessenger.showSnackBar(SnackBar(
+      scaffoldMessenger.show(SnackBar(
         content: Text('Used $amount $unit from $name'),
         duration: const Duration(seconds: 2),
       ));
     } else {
       inventoryItem.restore(amount);
-      scaffoldMessenger.showSnackBar(SnackBar(
+      scaffoldMessenger.show(SnackBar(
         content: Text('Restored $amount $unit to $name'),
         duration: const Duration(seconds: 2),
       ));
@@ -1957,12 +1961,30 @@ FermentationChartWidget(
     );
   }
 
+  void _syncTextController(TextEditingController c, String text) {
+  if (c.text != text) {
+    c.value = c.value.copyWith(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+      composing: TextRange.empty,
+    );
+  }
+}
+
+void _syncCompletedControllersFrom(BatchModel b) {
+  _syncTextController(_finalYieldController, b.finalYield?.toString() ?? '');
+  _syncTextController(_tastingAromaController, b.tastingNotes?['aroma'] ?? '');
+  _syncTextController(_tastingAppearanceController, b.tastingNotes?['appearance'] ?? '');
+  _syncTextController(_tastingFlavorController, b.tastingNotes?['flavor'] ?? '');
+}
+
+
   Widget _buildCompletedTab(BatchModel batch) {
     _tastingRating = batch.tastingRating ?? 0;
     _finalYieldUnit = batch.finalYieldUnit ?? 'gal';
 
 final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
-
+  _syncCompletedControllersFrom(batch);
 
     Future<void> editFg() async {
       final c = TextEditingController(text: batch.fg?.toStringAsFixed(3) ?? '');
@@ -2030,6 +2052,7 @@ final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
               ),
 
 
+
 FutureBuilder(
   future: extrasFuture,
   builder: (context, snap) {
@@ -2037,9 +2060,9 @@ FutureBuilder(
       return _metricChip(icon: Icons.percent, label: 'ABV', value: '—');
     }
     final extras = snap.data!;
-    final abv = _computeAbvFromExtras(
-      batch,
-      useMeasured: extras.useMeasuredOg,
+    final abv = _computeAbv(
+      batch: batch,
+      useMeasured: extras.useMeasuredOg == true,
       measuredOg: extras.measuredOg,
     );
     return _metricChip(
@@ -2049,6 +2072,7 @@ FutureBuilder(
     );
   },
 ),
+
 
               _metricChip(
                 icon: Icons.inventory_2_outlined,
@@ -2130,18 +2154,14 @@ FutureBuilder(
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _finalYieldController
-                        ..text = batch.finalYield?.toString() ?? '',
-                      decoration:
-                          const InputDecoration(labelText: 'Final Yield'),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (v) {
-                        batch.finalYield = double.tryParse(v);
-                        batch.save();
-                        setState(() {});
-                      },
-                    ),
+                       controller: _finalYieldController, // <- no cascade here
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'Final Yield'),
+                          onChanged: (v) {
+                            batch.finalYield = double.tryParse(v);
+                            batch.save();
+                          },
+                        ),
                   ),
                   const SizedBox(width: 12),
                   DropdownButton<String>(
@@ -2242,30 +2262,26 @@ FutureBuilder(
               ]),
               const SizedBox(height: 8),
               TextField(
-                controller: _tastingAromaController
-                  ..text = batch.tastingNotes?['aroma'] ?? '',
-                decoration: const InputDecoration(labelText: 'Aroma'),
-                onChanged: (v) {
-                  batch.tastingNotes ??= {};
-                  batch.tastingNotes!['aroma'] = v;
-                  batch.save();
-                },
-              ),
+                  controller: _tastingAromaController,
+  decoration: const InputDecoration(labelText: 'Aroma'),
+  onChanged: (v) {
+    batch.tastingNotes ??= {};
+    batch.tastingNotes!['aroma'] = v;
+    batch.save();
+  },
+),
               TextField(
-                controller: _tastingAppearanceController
-                  ..text = batch.tastingNotes?['appearance'] ?? '',
-                decoration: const InputDecoration(labelText: 'Appearance'),
-                onChanged: (v) {
-                  batch.tastingNotes ??= {};
-                  batch.tastingNotes!['appearance'] = v;
-                  batch.save();
-                },
-              ),
+                controller: _tastingAppearanceController,
+  decoration: const InputDecoration(labelText: 'Appearance'),
+  onChanged: (v) {
+    batch.tastingNotes ??= {};
+    batch.tastingNotes!['appearance'] = v;
+    batch.save();
+  },
+),
               TextField(
-                controller: _tastingFlavorController
-                  ..text = batch.tastingNotes?['flavor'] ?? '',
-                decoration:
-                    const InputDecoration(labelText: 'Flavor & Mouthfeel'),
+                controller: _tastingFlavorController,
+                decoration: const InputDecoration(labelText: 'Flavor & Mouthfeel'),
                 onChanged: (v) {
                   batch.tastingNotes ??= {};
                   batch.tastingNotes!['flavor'] = v;
@@ -2336,8 +2352,9 @@ onPressed: () async {
   // if (!_guardRecipeLimit(context)) return;
 
   final abvVal = await _abvForBatch(batch);
+  final tagBox = Hive.box<Tag>(Boxes.tags);
 
-  final recipeBox = Hive.box<RecipeModel>('recipes');
+  final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
   final newRecipe = RecipeModel(
     id: generateId(),
     name: '${batch.name} - Final',
@@ -2355,11 +2372,14 @@ onPressed: () async {
     plannedOg: batch.plannedOg,
     plannedAbv: batch.plannedAbv,
   );
+  
+  // FIX: Call the tag canonicalization method to use the tagBox.
+  await newRecipe.setTagsFromBox(batch.tags, tagBox);
 
   await recipeBox.put(newRecipe.id, newRecipe);
 
   if (!mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
+  snacks.show(
     SnackBar(content: Text('Saved as new recipe: "${newRecipe.name}"')),
   );
 },
@@ -2370,7 +2390,7 @@ onPressed: () async {
                 label: const Text('Clone to New Batch'),
                 onPressed: () {
                   if (!_guardActiveBatchLimit(context)) return; // <-- gate
-                  final batchesBox = Hive.box<BatchModel>('batches');
+                  final batchesBox = Hive.box<BatchModel>(Boxes.batches);
 
                   final clonedBatch = BatchModel(
                     id: generateId(),
@@ -2420,7 +2440,7 @@ onPressed: () async {
                   batchesBox.put(clonedBatch.id, clonedBatch);
 
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  snacks.show(const SnackBar(
                     content: Text('Batch cloned! Navigating to new batch...'),
                     duration: Duration(seconds: 2),
                   ));
@@ -2682,102 +2702,99 @@ Future<void> recalcPlannedOg(BatchModel batch) async {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<Box<BatchModel>>(
-      valueListenable: Hive.box<BatchModel>('batches').listenable(),
-      builder: (context, batchBox, _) {
-        final batch = batchBox.get(widget.batchKey);
+@override
+Widget build(BuildContext context) {
+  final box = Hive.box<BatchModel>(Boxes.batches);
 
-        if (batch == null) {
-          return Scaffold(
-            appBar: AppBar(title: const Text("Batch Not Found")),
-            body: const Center(
-              child: Text("This batch may have been deleted."),
+  return ValueListenableBuilder<Box<BatchModel>>(
+    valueListenable: box.listenable(keys: [_hiveKey]),
+    builder: (context, b, _) {
+      final batch = b.get(_hiveKey);
+
+      if (batch == null) {
+        return Scaffold(
+          appBar: AppBar(title: const Text("Batch Not Found")),
+          body: const Center(child: Text("This batch may have been deleted.")),
+        );
+      }
+
+      final media = MediaQuery.of(context);
+      final width = media.size.width;
+      final double scale = MediaQuery.textScalerOf(context).scale(1.0);
+      final bool needsScroll = width < 380 || scale > 1.0;
+
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(batch.name),
+          actions: [
+            IconButton(
+              icon: Icon(
+                _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
+                color: _isBrewModeEnabled ? Colors.amber : null,
+              ),
+              tooltip: 'Toggle Brew Mode',
+              onPressed: _toggleBrewMode,
             ),
-          );
-        }
-
-final media = MediaQuery.of(context);
-final width = media.size.width;
-final double scale = MediaQuery.textScalerOf(context).scale(1.0); // 👈 new API
-final bool needsScroll = width < 380 || scale > 1.0;
-
-// Optional: shorter labels on tight screens
-  return Scaffold(
-    appBar: AppBar(
-      title: Text(batch.name),
-      actions: [
-        IconButton(
-          icon: Icon(
-            _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
-            color: _isBrewModeEnabled ? Colors.amber : null,
+            IconButton(
+              tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
+              icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
+              onPressed: () => _onArchiveToggle(batch),
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            isScrollable: needsScroll,
+            tabAlignment: needsScroll ? TabAlignment.start : TabAlignment.center,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+            tabs: const [
+              Tab(text: 'Plan'),
+              Tab(text: 'Prep'),
+              Tab(text: 'Ferment'),
+              Tab(text: 'Complete'),
+            ],
           ),
-          tooltip: 'Toggle Brew Mode',
-          onPressed: _toggleBrewMode,
         ),
-        IconButton(
-          tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
-          icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
-          onPressed: () => _onArchiveToggle(batch),
-        ),
-      ],
-      bottom: TabBar(
-        controller: _tabController,
-        isScrollable: needsScroll,
-        tabAlignment: needsScroll ? TabAlignment.start : TabAlignment.center,
-
-    labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-    
-        tabs: const [
-          Tab(text: 'Plan'),
-          Tab(text: 'Prep'),
-          Tab(text: 'Ferment'),
-          Tab(text: 'Complete'),
-        ],
-      ),
-    ),
-    body: Column(
-      children: [
-        if (batch.isArchived)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.amber.withValues(alpha:0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.lock, size: 18),
-                SizedBox(width: 8),
-                Expanded(child: Text('This batch is archived and read-only.')),
-              ],
-            ),
-          ),
-
-        Expanded(
-          child: AbsorbPointer(
-            absorbing: batch.isArchived == true,
-            child: Opacity(
-              opacity: batch.isArchived == true ? 0.75 : 1.0,
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildPlanningTab(batch),
-                  _buildPreparationTab(batch),
-                  _buildFermentingTab(batch),
-                  _buildCompletedTab(batch),
-                ],
+        body: Column(
+          children: [
+            if (batch.isArchived)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.lock, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('This batch is archived and read-only.')),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: batch.isArchived == true,
+                child: Opacity(
+                  opacity: batch.isArchived == true ? 0.75 : 1.0,
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildPlanningTab(batch),
+                      _buildPreparationTab(batch),
+                      _buildFermentingTab(batch),
+                      _buildCompletedTab(batch),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
-      ],
-    ),
+      );
+    },
   );
-},  // <-- closes the ValueListenableBuilder builder
-);
-}   // <-- closes build()
+}
+
 }

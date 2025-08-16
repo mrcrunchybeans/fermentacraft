@@ -84,7 +84,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 validator: (val) => val == null || val.isEmpty ? 'Required' : null,
               ),
               DropdownButtonFormField<String>(
-                value: _category,
+                initialValue: _category,
                 items: _categories
                     .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
                     .toList(),
@@ -95,7 +95,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<UnitType>(
-                      value: _unitType,
+                      initialValue: _unitType,
                       items: UnitType.values
                           .map((type) => DropdownMenuItem(
                                 value: type,
@@ -115,7 +115,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _unit,
+                      initialValue: _unit,
                       items: _unitOptions
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),

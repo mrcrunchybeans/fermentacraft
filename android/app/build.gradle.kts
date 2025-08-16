@@ -10,7 +10,8 @@ val keystoreProps = Properties().apply {
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    id("com.google.gms.google-services") // Firebase services
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics") // Firebase services
     id("dev.flutter.flutter-gradle-plugin") // Must come after android & kotlin
 }
 
@@ -21,8 +22,8 @@ android {
 
     defaultConfig {
         applicationId = "com.fermentacraft"
-        minSdk = 23
-        targetSdk = flutter.targetSdkVersion
+        minSdkVersion(flutter.minSdkVersion)
+        targetSdkVersion(flutter.targetSdkVersion)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 

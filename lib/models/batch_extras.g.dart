@@ -1,5 +1,4 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
 
 part of 'batch_extras.dart';
 
@@ -17,12 +16,10 @@ class BatchExtrasAdapter extends TypeAdapter<BatchExtras> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-
     return BatchExtras(
       batchId: fields[0] as String,
       measuredOg: fields[1] as double?,
-      // default to false if field [2] is missing or null
-      useMeasuredOg: (fields[2] as bool?) ?? false,
+      useMeasuredOg: fields[2] == null ? false : fields[2] as bool,
     );
   }
 
