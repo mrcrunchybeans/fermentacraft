@@ -1,4 +1,6 @@
 // lib/pages/settings_page.dart
+// ignore_for_file: deprecated_member_use
+
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -314,25 +316,50 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _dangerZoneCard() {
-    return Card(
-      color: Colors.red[50],
-      child: ListTile(
-        leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
-        title: const Text("Clear All Data", style: TextStyle(color: Colors.red)),
-        subtitle: const Text("Deletes all recipes, batches, and inventory."),
-        onTap: () {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
+  final theme = Theme.of(context);
+  final container = theme.colorScheme.errorContainer;
+  final onContainer = theme.colorScheme.onErrorContainer;
+
+  return Card(
+    color: container,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(color: theme.colorScheme.error.withOpacity(0.35)),
+    ),
+    child: ListTile(
+      leading: Icon(Icons.warning_amber_rounded, color: onContainer),
+      title: Text(
+        "Clear All Data",
+        style: theme.textTheme.titleMedium?.copyWith(color: onContainer),
+      ),
+      subtitle: Text(
+        "Deletes all recipes, batches, inventory, tags, and settings.",
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: onContainer.withOpacity(0.9),
+        ),
+      ),
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (context) {
+            final t = Theme.of(context);
+            return AlertDialog(
               title: const Text("Are you sure?"),
-              content: const Text("This action is irreversible and will delete all of your data."),
+              content: const Text(
+                "This action is irreversible and will delete all of your data.",
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text("Cancel"),
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                // delete button moved to use themed error colors
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.delete_forever),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: t.colorScheme.error,
+                    foregroundColor: t.colorScheme.onError,
+                  ),
                   onPressed: () async {
                     final navigator = Navigator.of(context);
                     final messenger = snacks;
@@ -343,15 +370,17 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SnackBar(content: Text("All data has been cleared.")),
                     );
                   },
-                  child: const Text("Delete Everything"),
+                  label: const Text("Delete Everything"),
                 ),
               ],
-            ),
-          );
-        },
-      ),
-    );
-  }
+            );
+          },
+        );
+      },
+    ),
+  );
+}
+
 
   // --- build -----------------------------------------------------------------
 

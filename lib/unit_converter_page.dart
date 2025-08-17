@@ -279,42 +279,59 @@ double convertGravity(double val, String from, String to) {
     );
   }
 
-  Widget _buildOutputCard(List<String> units, double result) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: SelectableText(
-                formatNumber(result),
-                style: const TextStyle(fontSize: 24),
-              ),
+Widget _buildOutputCard(List<String> units, double result) {
+  final theme = Theme.of(context);
+  final cs = theme.colorScheme;
+
+  return Card(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          // The result chip / surface
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              // M3-friendly surface for info boxes, reads correctly in dark & light
+              color: cs.surfaceContainerHighest,
+              border: Border.all(color: cs.outlineVariant),
+              borderRadius: BorderRadius.circular(8),
             ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: toUnit,
-              onChanged: (val) => setState(() => toUnit = val!),
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-              borderRadius: BorderRadius.circular(10),
-              items: units
-                  .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                  .toList(),
+            child: SelectableText(
+              formatNumber(result),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: cs.onSurface,
+                // keep the weight readable across themes
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 10),
+
+          DropdownButtonFormField<String>(
+            initialValue: toUnit,
+            onChanged: (val) => setState(() => toUnit = val!),
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              // subtle fill so it doesn’t look empty in dark mode
+              filled: true,
+              // ignore: deprecated_member_use
+              fillColor: cs.surface.withOpacity(0.4),
+            ),
+            borderRadius: BorderRadius.circular(10),
+            items: units
+                .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                .toList(),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
+
 
   String getFormulaHint() {
     if (widget.category == 'Temperature') {
