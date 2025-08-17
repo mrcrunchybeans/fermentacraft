@@ -1,6 +1,5 @@
 import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:hive/hive.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import 'tag.dart';
@@ -18,42 +17,15 @@ class RecipeModel extends HiveObject {
   @HiveField(2)
   DateTime createdAt;
 
-  // ---- TAGS (migration-friendly) ------------------------------------------
-  // Old, embedded tags. KEPT for older records.
+  // This setup with legacy and ref fields is for migration. New code primarily uses tagRefs.
   @HiveField(3)
   List<Tag>? tagsLegacy;
 
-  // New, referenced tags via HiveList
   @HiveField(17)
   HiveList<Tag>? tagRefs;
 
-  // Convenience: read tags from refs if present, else legacy (or []).
-  List<Tag> get tags => (tagRefs != null) ? tagRefs!.toList() : (tagsLegacy ?? const <Tag>[]);
-
-  /// Set tags using canonical objects from Tag box (de-duped), and persist so
-  /// Hive watchers fire (important for Firestore sync).
-  Future<void> setTagsFromBox(List<Tag> picked, Box<Tag> tagBox) async {
-    final seen = <String>{};
-    final canon = <Tag>[];
-
-    for (final t in picked) {
-      final key = t.name.trim();
-      if (key.isEmpty) continue;
-      if (seen.add(key.toLowerCase())) {
-        final stored = tagBox.get(key) ?? (() {
-          final fresh = Tag(name: key, iconKey: t.iconKey);
-          tagBox.put(key, fresh);
-          return fresh;
-        })();
-        canon.add(stored);
-      }
-    }
-
-    tagRefs = HiveList<Tag>(tagBox, objects: canon);
-    tagsLegacy = const []; // optional: clear legacy once migrated
-    await save(); // 🔑 ensures watchers emit and Firestore gets updated tags
-  }
-  // -------------------------------------------------------------------------
+  // Central, safe way to access tags, regardless of their storage format.
+  List<Tag> get tags => tagRefs?.toList() ?? tagsLegacy ?? const <Tag>[];
 
   @HiveField(4)
   double? og;
@@ -64,18 +36,17 @@ class RecipeModel extends HiveObject {
   @HiveField(6)
   double? abv;
 
-  // NOTE: Keep these as dynamic for Hive backward-compat.
   @HiveField(7)
-  List<Map<dynamic, dynamic>> additives;
+  List<Map> additives;
 
   @HiveField(8)
-  List<Map<dynamic, dynamic>> ingredients;
+  List<Map> ingredients;
 
   @HiveField(9)
   List<FermentationStage> fermentationStages;
 
   @HiveField(10)
-  List<Map<dynamic, dynamic>> yeast;
+  List<Map> yeast;
 
   @HiveField(11)
   String notes;
@@ -99,14 +70,14 @@ class RecipeModel extends HiveObject {
     String? id,
     required this.name,
     required this.createdAt,
-    List<Tag>? tags, // optional so Hive adapter can construct the object
+    List<Tag>? tags,
     this.og,
     this.fg,
     this.abv,
-    List<Map<dynamic, dynamic>>? additives,
-    List<Map<dynamic, dynamic>>? ingredients,
+    List<Map>? additives,
+    List<Map>? ingredients,
     List<FermentationStage>? fermentationStages,
-    List<Map<dynamic, dynamic>>? yeast,
+    List<Map>? yeast,
     this.notes = '',
     this.lastOpened,
     this.batchVolume,
@@ -114,29 +85,13 @@ class RecipeModel extends HiveObject {
     this.plannedAbv,
     this.isArchived = false,
   })  : id = id ?? const Uuid().v4(),
-        tagsLegacy = tags, // seed legacy if provided
-        additives = additives ?? <Map<dynamic, dynamic>>[],
-        ingredients = ingredients ?? <Map<dynamic, dynamic>>[],
-        fermentationStages = fermentationStages ?? <FermentationStage>[],
-        yeast = yeast ?? <Map<dynamic, dynamic>>[];
+        tagsLegacy = tags,
+        additives = additives ?? [],
+        ingredients = ingredients ?? [],
+        fermentationStages = fermentationStages ?? [],
+        yeast = yeast ?? [];
 
-  // ---------- Safe helpers ----------
-
-  // Convert dynamic map (from Hive/legacy) to a proper Map<String, dynamic>.
-  static Map<String, dynamic> _toStringKeyedMap(dynamic raw) {
-    if (raw is Map<String, dynamic>) return raw;
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    return <String, dynamic>{};
-  }
-
-  static double? _toDouble(dynamic v) {
-    if (v == null) return null;
-    if (v is double) return v;
-    if (v is int) return v.toDouble();
-    return double.tryParse(v.toString());
-  }
-
-  /// Use these in UI/business code instead of the raw lists.
+  // --- Safe Accessors ---
   List<Map<String, dynamic>> get safeIngredients =>
       ingredients.map(_toStringKeyedMap).toList(growable: true);
 
@@ -149,7 +104,30 @@ class RecipeModel extends HiveObject {
   List<FermentationStage> get safeStages =>
       fermentationStages.whereType<FermentationStage>().toList(growable: true);
 
-  /// Normalize in place for legacy/dirty data (call once after load if needed).
+  // --- Tag Management ---
+  Future<void> setTagsFromBox(List<Tag> pickedTags, Box<Tag> tagBox) async {
+    final seen = <String>{};
+    final canonicalTags = <Tag>[];
+
+    for (final t in pickedTags) {
+      final key = t.name.trim();
+      if (key.isEmpty || !seen.add(key.toLowerCase())) continue;
+
+      final storedTag = tagBox.get(key) ?? (() {
+        final newTag = Tag(name: key, iconKey: t.iconKey);
+        tagBox.put(key, newTag);
+        return newTag;
+      })();
+      canonicalTags.add(storedTag);
+    }
+
+    tagRefs = HiveList<Tag>(tagBox, objects: canonicalTags);
+    tagsLegacy = null; // Clear legacy field after migrating to refs.
+    await save(); // Important for Hive watchers and sync service.
+  }
+  
+  // ✅ RE-ADDED: This method is called during startup migrations.
+  /// Normalize in place for legacy/dirty data.
   void normalizeInPlace() {
     ingredients = safeIngredients;
     additives = safeAdditives;
@@ -161,19 +139,16 @@ class RecipeModel extends HiveObject {
     batchVolume = _toDouble(batchVolume);
     plannedOg = _toDouble(plannedOg);
     plannedAbv = _toDouble(plannedAbv);
-
-    // Keep tags safe if legacy is null
+    
     tagsLegacy ??= const <Tag>[];
   }
 
-  // ---------- JSON ----------
-
+  // --- JSON Serialization ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
       'createdAt': createdAt.toIso8601String(),
-      // ✅ FIX: Serialize the full tag object, not just its name.
       'tags': tags.map((t) => t.toJson()).toList(),
       'og': og,
       'fg': fg,
@@ -191,70 +166,59 @@ class RecipeModel extends HiveObject {
     };
   }
 
-  /// PURE parser: no Hive access, safe for cold-start / snapshot threads.
   factory RecipeModel.fromJson(Map<String, dynamic> json) {
-    Map<String, dynamic> toStrMap(dynamic raw) {
-      if (raw is Map<String, dynamic>) return raw;
-      if (raw is Map) return Map<String, dynamic>.from(raw);
-      return <String, dynamic>{};
-    }
-
-    List<Map<String, dynamic>> listOfMaps(dynamic v) =>
-        (v is List) ? v.map(toStrMap).toList() : <Map<String, dynamic>>[];
-
-    List<FermentationStage> stages(dynamic v) =>
-        (v is List) ? v.map((e) => FermentationStage.fromJson(toStrMap(e))).toList() : <FermentationStage>[];
-
-    double? toD(dynamic v) {
-      if (v == null) return null;
-      if (v is double) return v;
-      if (v is int) return v.toDouble();
-      return double.tryParse(v.toString());
-    }
-
-    // Parse embedded tags as {name}, preventing dupes; no Tag box access here.
-    List<Tag> parseTags(dynamic raw) {
-      final list = (raw is List) ? raw : const [];
-      final seen = <String>{};
-      final out = <Tag>[];
-      for (final t in list) {
-        // Handle both full tag objects and simple name maps
-        final name = (t is Map ? (t['name'] ?? t['id'] ?? '') : t?.toString() ?? '').trim();
-        if (name.isEmpty) continue;
-        final key = name.toLowerCase();
-        if (seen.add(key)) {
-          // Use the full fromJson factory to preserve all data
-          out.add(Tag.fromJson(t is Map ? Map<String, dynamic>.from(t) : {'name': name}));
-        }
-      }
-      return out;
-    }
-
     return RecipeModel(
       id: json['id'] as String?,
       name: (json['name'] as String?) ?? 'Untitled',
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
-      tags: parseTags(json['tags']),
-      og: toD(json['og']),
-      fg: toD(json['fg']),
-      abv: toD(json['abv']),
-      additives: listOfMaps(json['additives']),
-      ingredients: listOfMaps(json['ingredients']),
-      fermentationStages: stages(json['fermentationStages']),
-      yeast: listOfMaps(json['yeast']),
+      tags: _parseTagsFromJson(json['tags']),
+      og: _toDouble(json['og']),
+      fg: _toDouble(json['fg']),
+      abv: _toDouble(json['abv']),
+      additives: _listOfMaps(json['additives']),
+      ingredients: _listOfMaps(json['ingredients']),
+      fermentationStages: (json['fermentationStages'] as List<dynamic>? ?? [])
+          .map((e) => FermentationStage.fromJson(_toStringKeyedMap(e)))
+          .toList(),
+      yeast: _listOfMaps(json['yeast']),
       notes: (json['notes'] as String?) ?? '',
       lastOpened: (json['lastOpened'] is String)
           ? DateTime.tryParse(json['lastOpened'] as String)
           : null,
-      batchVolume: toD(json['batchVolume']),
-      plannedOg: toD(json['plannedOg']),
-      plannedAbv: toD(json['plannedAbv']),
+      batchVolume: _toDouble(json['batchVolume']),
+      plannedOg: _toDouble(json['plannedOg']),
+      plannedAbv: _toDouble(json['plannedAbv']),
       isArchived: (json['isArchived'] as bool?) ?? false,
     );
   }
 
-  // ---------- Convenience ----------
+  // --- Private Static Helpers ---
+  static Map<String, dynamic> _toStringKeyedMap(dynamic raw) {
+    return (raw is Map) ? Map<String, dynamic>.from(raw) : {};
+  }
 
+  static List<Map<String, dynamic>> _listOfMaps(dynamic v) {
+    return (v is List) ? v.map(_toStringKeyedMap).toList() : [];
+  }
+
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    return double.tryParse(v.toString());
+  }
+
+  static List<Tag> _parseTagsFromJson(dynamic raw) {
+    final list = (raw is List) ? raw : [];
+    final seen = <String>{};
+    return list.map((t) {
+      if (t is! Map) return null;
+      final name = (t['name'] ?? t['id'] ?? '').toString().trim();
+      if (name.isEmpty || !seen.add(name.toLowerCase())) return null;
+      return Tag.fromJson(Map<String, dynamic>.from(t));
+    }).whereType<Tag>().toList();
+  }
+
+  // --- Convenience Methods ---
   RecipeModel copyWith({
     String? id,
     String? name,
@@ -263,10 +227,10 @@ class RecipeModel extends HiveObject {
     double? og,
     double? fg,
     double? abv,
-    List<Map<dynamic, dynamic>>? additives,
-    List<Map<dynamic, dynamic>>? ingredients,
+    List<Map>? additives,
+    List<Map>? ingredients,
     List<FermentationStage>? fermentationStages,
-    List<Map<dynamic, dynamic>>? yeast,
+    List<Map>? yeast,
     String? notes,
     DateTime? lastOpened,
     double? batchVolume,
@@ -293,8 +257,8 @@ class RecipeModel extends HiveObject {
       plannedAbv: plannedAbv ?? this.plannedAbv,
       isArchived: isArchived ?? this.isArchived,
     );
-    // preserve refs in copies
-    r.tagRefs = tagRefs;
+    // Preserve HiveList reference if it exists to maintain relationships.
+    r.tagRefs = tagRefs; 
     return r;
   }
 }

@@ -14,7 +14,6 @@ import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'widgets/plan_badge.dart';
 
-
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -137,8 +136,12 @@ class MorePage extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                Text('Version ${packageInfo.version}', style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
-                const SizedBox(height: 16),
+Text(
+  'Version ${packageInfo.version}'
+  '${packageInfo.buildNumber.isNotEmpty ? '+${packageInfo.buildNumber}' : ''}',
+  style: theme.textTheme.bodySmall,
+  textAlign: TextAlign.center,
+),                const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 12),
                 RichText(

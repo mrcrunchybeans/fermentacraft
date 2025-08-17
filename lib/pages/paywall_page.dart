@@ -2,13 +2,14 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart'; // ⬅️ NEW
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'package:fermentacraft/utils/snacks.dart';
 import '../services/feature_gate.dart';
 import '../services/revenuecat_service.dart';
@@ -63,9 +64,9 @@ class PaywallPage extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
-          // Body scroll
+          // Body (scrolls): benefits → plans → legal
           Expanded(
             child: ScrollConfiguration(
               behavior: const _NoGlow(),
@@ -75,7 +76,7 @@ class PaywallPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _SectionTitle('Remove Free Version Limitations'),
-                    SizedBox(height: 12),
+                    SizedBox(height: 10),
                     _BenefitTile(
                       icon: Icons.all_inclusive,
                       title: 'Unlimited recipes, batches & inventory',
@@ -87,25 +88,31 @@ class PaywallPage extends StatelessWidget {
                       title: 'Unlock all soft-locked tools',
                       subtitle: 'Gain full access to advanced calculators and tools when you need them most.',
                     ),
-                    SizedBox(height: 16),
+                    SizedBox(height: 14),
                     _Divider(),
-                    SizedBox(height: 16),
+                    SizedBox(height: 14),
                     _SectionTitle('What You Get with Premium'),
-                    SizedBox(height: 12),
+                    SizedBox(height: 10),
                     _FeatureBullet(text: 'Unlimited recipes, batches, inventory, and archives'),
                     _FeatureBullet(text: 'Advanced tools: Gravity & ABV, pH, acid, SO₂, and strip readers'),
                     _FeatureBullet(text: 'Cloud sync across devices & full data export'),
                     _FeatureBullet(text: 'No soft-lock interruptions'),
                     _FeatureBullet(text: 'Directly support development'),
-                    SizedBox(height: 24),
+                    SizedBox(height: 18),
+
+                    _PlansSection(), // compact plans live inline in the scroll
+                    SizedBox(height: 12),
+
+                    _LegalFooter(),
+                    SizedBox(height: 8),
                   ],
                 ),
               ),
             ),
           ),
 
-          // CTA area (sticky)
-          const _CtaArea(),
+          // Small fixed bottom action row
+          const _RestoreRow(),
         ],
       ),
     );
@@ -119,31 +126,30 @@ class PaywallPage extends StatelessWidget {
   }
 }
 
-class _CtaArea extends StatelessWidget {
-  const _CtaArea();
+/* ============================
+    Plans switcher (inline)
+   ============================ */
+
+class _PlansSection extends StatelessWidget {
+  const _PlansSection();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    // Stripe on web/desktop; RevenueCat on Android/iOS.
     final bool useStripe = kIsWeb || !RevenueCatService.instance.isSupported;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        boxShadow: const [BoxShadow(blurRadius: 12, offset: Offset(0, -2), color: Color(0x33000000))],
-      ),
-      child: useStripe ? const _StripePlans() : const _RevenueCatPlans(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle('Choose your plan'),
+        const SizedBox(height: 10),
+        if (useStripe) const _StripePlans() else const _RevenueCatPlans(),
+      ],
     );
   }
 }
 
 /* ============================
     RevenueCat (Android / iOS)
-    ============================ */
+   ============================ */
 
 class _RevenueCatPlans extends StatelessWidget {
   const _RevenueCatPlans();
@@ -159,135 +165,81 @@ class _RevenueCatPlans extends StatelessWidget {
         final hasError = snap.hasError;
         final current = snap.data?.current;
 
-        Package? annualPkg = _findPkg(current, idHint: 'annual');
-        Package? monthlyPkg = _findPkg(current, idHint: 'monthly');
+        Package? annual = _findPkg(current, idHint: 'annual');
+        Package? monthly = _findPkg(current, idHint: 'monthly');
 
         final list = current?.availablePackages ?? const <Package>[];
-        annualPkg ??= _firstByType(list, PackageType.annual) ?? (list.isNotEmpty ? list.first : null);
-        monthlyPkg ??= _firstByType(list, PackageType.monthly) ??
+        annual ??= _firstByType(list, PackageType.annual) ?? (list.isNotEmpty ? list.first : null);
+        monthly ??= _firstByType(list, PackageType.monthly) ??
             (list.length >= 2 ? list[1] : (list.isNotEmpty ? list.first : null));
-
-        final String? monthlyIntroText = _buildIntroText(monthlyPkg);
-        final String? annualIntroText = _buildIntroText(annualPkg);
 
         final bool noProducts = !isLoading && !hasError && (current == null || current.availablePackages.isEmpty);
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: LinearProgressIndicator(),
+        if (isLoading) return const LinearProgressIndicator();
+        if (hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('Couldn’t load products. Please try again.', style: TextStyle(color: cs.error)),
+          );
+        }
+        if (noProducts) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text('No products available yet. Please try again later.'),
+          );
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 380;
+
+            final cards = [
+              _PlanOptionCard.compact(
+                title: 'Yearly',
+                price: annual?.storeProduct.priceString ?? '—',
+                badge: 'Best value',
+                note: 'Billed yearly',
+                trialText: _buildIntroText(annual),
+                enabled: annual != null,
+                onPressed: () async {
+                  if (annual != null) await _purchase(context, annual);
+                },
               ),
-            if (hasError)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text('Couldn’t load products. Please try again.', style: TextStyle(color: cs.error)),
+              _PlanOptionCard.compact(
+                title: 'Monthly',
+                price: monthly?.storeProduct.priceString ?? '—',
+                note: 'Billed monthly',
+                trialText: _buildIntroText(monthly),
+                enabled: monthly != null,
+                onPressed: () async {
+                  if (monthly != null) await _purchase(context, monthly);
+                },
               ),
-            if (noProducts)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 12),
-                child: Text('No products available yet. Please try again later.'),
-              ),
-            if (!isLoading && !hasError && !noProducts)
-              Row(
+            ];
+
+            if (narrow) {
+              // Horizontal swipe on phones (shorter vertical footprint)
+              return SizedBox(
+                height: 168,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  itemCount: cards.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (_, i) => SizedBox(width: constraints.maxWidth * .88, child: cards[i]),
+                ),
+              );
+            } else {
+              // Side-by-side on wider devices
+              return Row(
                 children: [
-                  Expanded(
-                    child: _PlanOptionCard(
-                      title: 'Yearly',
-                      price: annualPkg?.storeProduct.priceString ?? '—',
-                      billingNote: 'Billed yearly',
-                      subtitle: 'Best Value',
-                      savings: 'Save vs monthly',
-                      trialText: annualIntroText,
-                      enabled: annualPkg != null,
-                      onPressed: () async {
-                        if (annualPkg == null) return;
-                        await _purchase(context, annualPkg);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _PlanOptionCard(
-                      title: 'Monthly',
-                      price: monthlyPkg?.storeProduct.priceString ?? '—',
-                      billingNote: 'Billed monthly',
-                      subtitle: 'Flexible',
-                      trialText: monthlyIntroText,
-                      enabled: monthlyPkg != null,
-                      onPressed: () async {
-                        if (monthlyPkg == null) return;
-                        await _purchase(context, monthlyPkg);
-                      },
-                    ),
-                  ),
+                  Expanded(child: cards[0]),
+                  const SizedBox(width: 12),
+                  Expanded(child: cards[1]),
                 ],
-              ),
-
-            const SizedBox(height: 16),
-
-            
-
-            // Unified refresh via Cloud Function (checks RC + tester_allowlist, mirrors Firestore)
-TextButton(
-  onPressed: () async {
-    final m = snacks;
-    try {
-      final active = await refreshPremiumStatusUnified();
-      m.show(SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')));
-    } catch (e) {
-      m.show(SnackBar(content: Text('Couldn’t refresh: $e')));
-    }
-  },
-  child: const Text('Already upgraded? Refresh status'),
-),
-const SizedBox(height: 8),
-
-
-            // Restore for RC only
-            TextButton(
-              onPressed: () async {
-                try {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('Restoring purchases...')));
-                  final info = await Purchases.restorePurchases();
-                  await RevenueCatService.instance.refreshCustomerInfo();
-                  final hasPremium = info.entitlements.active.containsKey(RevenueCatService.entitlementId);
-                  if (hasPremium) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('Purchases restored.')));
-                      Navigator.of(context).maybePop(true);
-                    }
-                  } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('No previous purchases found.')));
-                    }
-                  }
-                } on PlatformException catch (e) {
-                  final code = PurchasesErrorHelper.getErrorCode(e);
-                  if (code == PurchasesErrorCode.purchaseCancelledError) return;
-                  if (context.mounted) {
-                    snacks.show(
-                      SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text('Restore error: $e')));
-                  }
-                }
-              },
-              child: const Text('Restore Purchases'),
-            ),
-            const SizedBox(height: 8),
-            const _LegalFooter(),
-          ],
+              );
+            }
+          },
         );
       },
     );
@@ -296,7 +248,7 @@ const SizedBox(height: 8),
 
 /* ============================
     Stripe (Web / Desktop)
-    ============================ */
+   ============================ */
 
 class _StripePlans extends StatelessWidget {
   const _StripePlans();
@@ -316,10 +268,10 @@ class _StripePlans extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text('Buy Premium securely via Stripe Checkout.',
             textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
         FutureBuilder<Map<String, StripePrice>>(
           future: StripePricingService.instance.fetchPrices([
@@ -329,7 +281,7 @@ class _StripePlans extends StatelessWidget {
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+                padding: EdgeInsets.symmetric(vertical: 12),
                 child: LinearProgressIndicator(),
               );
             }
@@ -346,22 +298,21 @@ class _StripePlans extends StatelessWidget {
             if (snap.hasError) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (context.mounted) {
-                  snacks.show(
-                    SnackBar(content: Text('Pricing unavailable: ${snap.error}')),
-                  );
+                  snacks.show(SnackBar(content: Text('Pricing unavailable: ${snap.error}')));
                 }
               });
             }
 
-            return Row(
-              children: [
-                Expanded(
-                  child: _PlanOptionCard(
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 380;
+
+                final cards = [
+                  _PlanOptionCard.compact(
                     title: 'Yearly',
                     price: yearly,
-                    billingNote: 'Billed yearly',
-                    subtitle: 'Best Value',
-                    savings: 'Save vs monthly',
+                    badge: 'Best value',
+                    note: 'Billed yearly',
                     onPressed: () async {
                       final messenger = snacks;
                       try {
@@ -375,14 +326,10 @@ class _StripePlans extends StatelessWidget {
                       }
                     },
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _PlanOptionCard(
+                  _PlanOptionCard.compact(
                     title: 'Monthly',
                     price: monthly,
-                    billingNote: 'Billed monthly',
-                    subtitle: 'Flexible',
+                    note: 'Billed monthly',
                     onPressed: () async {
                       final messenger = snacks;
                       try {
@@ -396,26 +343,104 @@ class _StripePlans extends StatelessWidget {
                       }
                     },
                   ),
-                ),
-              ],
+                ];
+
+                if (narrow) {
+                  return SizedBox(
+                    height: 168,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      itemCount: cards.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (_, i) => SizedBox(width: constraints.maxWidth * .88, child: cards[i]),
+                    ),
+                  );
+                } else {
+                  return Row(
+                    children: [
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 12),
+                      Expanded(child: cards[1]),
+                    ],
+                  );
+                }
+              },
             );
           },
         ),
+      ],
+    );
+  }
+}
 
-        const SizedBox(height: 16),
+/* ============================
+    Small bottom action row
+   ============================ */
 
-        // Web/desktop: unified refresh via callable (RC + allowlist + Firestore mirror)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+class _RestoreRow extends StatelessWidget {
+  const _RestoreRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final actionLabel = isAndroid ? 'Refresh Google Play purchases' : 'Restore Purchases';
+    final inProgress = isAndroid ? 'Refreshing purchases…' : 'Restoring purchases...';
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 14,
+          runSpacing: 6,
           children: [
+            TextButton(
+              onPressed: () async {
+                try {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(inProgress)));
+
+                  if (isAndroid) {
+                    await RevenueCatService.instance.sync();     // Android-safe refresh
+                  } else {
+                    await RevenueCatService.instance.restore();  // iOS restore
+                  }
+
+                  final refreshed = await RevenueCatService.instance.refreshCustomerInfo();
+                  final hasPremium = (refreshed.entitlements
+                          .all[RevenueCatService.entitlementId]
+                          ?.isActive ??
+                      false);
+
+                  if (!context.mounted) return;
+
+                  if (hasPremium) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Purchases restored.')));
+                    Navigator.of(context).maybePop(true);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No previous purchases found.')));
+                  }
+                } on PlatformException catch (e) {
+                  if (!context.mounted) return;
+                  final code = PurchasesErrorHelper.getErrorCode(e);
+                  if (code == PurchasesErrorCode.purchaseCancelledError) return;
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')));
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore error: $e')));
+                }
+              },
+              child: Text(actionLabel),
+            ),
             TextButton(
               onPressed: () async {
                 final messenger = snacks;
                 try {
-                  final active = await refreshPremiumStatusUnified(); // ⬅️ NEW
-                  messenger.show(
-                    SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')),
-                  );
+                  final active = await refreshPremiumStatusUnified();
+                  messenger.show(SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')));
                 } catch (e) {
                   messenger.show(SnackBar(content: Text('Couldn’t refresh: $e')));
                 }
@@ -424,17 +449,14 @@ class _StripePlans extends StatelessWidget {
             ),
           ],
         ),
-
-        const SizedBox(height: 8),
-        const _LegalFooter(),
-      ],
+      ),
     );
   }
 }
 
 /* ============================
     Shared helpers / widgets
-    ============================ */
+   ============================ */
 
 /// Unified refresh:
 /// - Calls `syncPremiumFromRC` (checks RC; if allowlisted, grants promo; mirrors Firestore)
@@ -573,7 +595,7 @@ Future<void> _purchase(BuildContext context, Package pkg) async {
 
 /* ============================
     UI bits
-    ============================ */
+   ============================ */
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);
@@ -581,8 +603,10 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text,
-        style: Theme.of(context).textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold));
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold),
+    );
   }
 }
 
@@ -608,7 +632,7 @@ class _BenefitTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: cs.primary),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -637,7 +661,7 @@ class _FeatureBullet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.check_circle_outline, size: 20, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(child: Text(text)),
         ],
       ),
@@ -649,90 +673,107 @@ class _PlanOptionCard extends StatelessWidget {
   const _PlanOptionCard({
     required this.title,
     required this.price,
-    required this.subtitle,
     required this.onPressed,
-    this.savings,
     this.trialText,
     this.billingNote,
     this.enabled = true,
+    this.badge,
+    this.compact = false,
   });
+
+  factory _PlanOptionCard.compact({
+    required String title,
+    required String price,
+    required VoidCallback onPressed,
+    String? note,
+    String? badge,
+    String? trialText,
+    bool enabled = true,
+  }) =>
+      _PlanOptionCard(
+        title: title,
+        price: price,
+        onPressed: onPressed,
+        billingNote: note,
+        trialText: trialText,
+        enabled: enabled,
+        badge: badge,
+        compact: true,
+      );
 
   final String title;
   final String price; // money only, e.g. "$29.99"
-  final String subtitle;
-  final String? savings;
   final String? trialText;
   final String? billingNote;
+  final String? badge;
   final VoidCallback onPressed;
   final bool enabled;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final isBestValue = savings != null;
-    final isPlaceholder = price == '—';
 
-    return Semantics(
-      container: true,
-      label: '$title plan',
-      child: Opacity(
-        opacity: enabled ? 1.0 : 0.6,
-        child: IgnorePointer(
-          ignoring: !enabled,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isBestValue ? cs.primaryContainer.withOpacity(0.2) : cs.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isBestValue ? cs.primary : cs.outlineVariant,
-                width: isBestValue ? 2.0 : 1.0,
-              ),
-            ),
-            child: Column(
-              children: [
-                if (isBestValue)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(16)),
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.6,
+      child: IgnorePointer(
+        ignoring: !enabled,
+        child: Container(
+          padding: EdgeInsets.all(compact ? 12 : 16),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (badge != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Text(
-                      'BEST VALUE',
+                      badge!,
                       style: theme.textTheme.labelSmall!.copyWith(
-                        color: cs.onPrimary,
-                        fontWeight: FontWeight.bold,
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-                const SizedBox(height: 8),
-                Text(title, style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
-                if (trialText != null) ...[
-                  const SizedBox(height: 4),
-                  Text(trialText!,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall!.copyWith(color: cs.primary, fontWeight: FontWeight.bold)),
-                ],
-                const SizedBox(height: 4),
-                Text(isPlaceholder ? 'Loading…' : price,
-                    style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)),
-                if (billingNote != null)
-                  Text(billingNote!, style: theme.textTheme.labelMedium!.copyWith(color: cs.onSurfaceVariant)),
-                if (savings != null)
-                  Text(savings!, style: theme.textTheme.labelMedium!.copyWith(color: cs.onSurfaceVariant)),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onPressed,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: isBestValue ? cs.primary : cs.surfaceContainerHighest,
-                      foregroundColor: isBestValue ? cs.onPrimary : cs.onSurface,
-                    ),
-                    child: Text(isBestValue ? 'Go Yearly' : 'Go Monthly'),
-                  ),
+                ),
+              const SizedBox(height: 6),
+              Text(title, style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
+              if (trialText != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  trialText!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall!.copyWith(color: cs.primary, fontWeight: FontWeight.w600),
                 ),
               ],
-            ),
+              const SizedBox(height: 6),
+              Text(price, style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold)),
+              if (billingNote != null)
+                Text(billingNote!, style: theme.textTheme.labelSmall!.copyWith(color: cs.onSurfaceVariant)),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    minimumSize: const Size.fromHeight(36),
+                  ),
+                  onPressed: onPressed,
+                  child: Text('Continue', style: theme.textTheme.labelLarge),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -755,7 +796,7 @@ class _LegalFooter extends StatelessWidget {
           textAlign: TextAlign.center,
           style: theme.textTheme.bodySmall!.copyWith(color: cs.onSurfaceVariant),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 16,

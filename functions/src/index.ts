@@ -12,24 +12,35 @@ setGlobalOptions({ region: "us-central1", timeoutSeconds: 60, memory: "256MiB" }
 admin.initializeApp();
 const db = admin.firestore();
 
-// ─── Secrets ────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Secrets
+ * ────────────────────────────────────────────────────────────────────────── */
 const STRIPE_SECRET = defineSecret("STRIPE_SECRET");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const RC_SECRET_KEY = defineSecret("RC_SECRET_KEY");
 
-// Stripe client factory
+/** Stripe client (created on demand so hot-reload picks up new secrets). */
 const stripe = () => new Stripe(STRIPE_SECRET.value(), { apiVersion: "2024-06-20" });
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-const TRIAL_DAYS = 7; // universal 7-day trial
-const ENTITLEMENT_ID = "premium"; // RevenueCat entitlement id
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Constants
+ * ────────────────────────────────────────────────────────────────────────── */
+const TRIAL_DAYS = 7;                // universal 7-day trial
+const ENTITLEMENT_ID = "premium";    // RC entitlement lookup key (not the internal UUID)
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Small helpers
+ * ────────────────────────────────────────────────────────────────────────── */
 const allowCors = (res: Response) => {
   // TODO: restrict to your production origins
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Origin");
+};
+
+const assertAuthed = (uid?: string): string => {
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  return uid;
 };
 
 const setPremium = async (
@@ -50,6 +61,7 @@ function toProductSummary(
   return { id: prod.id, name: prod.name };
 }
 
+/** Normalize Gmail (strip dots and +tag). */
 function normalizeEmail(email: string): string {
   const e = email.trim().toLowerCase();
   const m = e.match(/^([^@]+)@(.+)$/);
@@ -61,13 +73,15 @@ function normalizeEmail(email: string): string {
   return `${local}@${domain}`;
 }
 
-// ─── RevenueCat helpers ─────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  RevenueCat helpers
+ * ────────────────────────────────────────────────────────────────────────── */
 async function rcFetch(path: string, init?: RequestInit) {
   const url = `https://api.revenuecat.com${path}`;
   const resp = await fetch(url, {
     ...init,
     headers: {
-      "Authorization": `Bearer ${RC_SECRET_KEY.value()}`,
+      Authorization: `Bearer ${RC_SECRET_KEY.value()}`,
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
@@ -85,14 +99,13 @@ async function rcGetSubscriber(uid: string): Promise<any | null> {
   return r.json();
 }
 
-/** Heuristic: treat entitlement as active if exists and (no expires_date or future). */
+/** Treat entitlement as active if exists and (no expires_date or expires in the future). */
 function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boolean {
   try {
     const ent = sub?.subscriber?.entitlements?.[entitlementId];
     if (!ent) return false;
-
-    const expires = ent.expires_date; // may be null for lifetime promo
-    if (expires == null) return true;
+    const expires = ent.expires_date;
+    if (expires == null) return true; // lifetime promo
     const ts = Date.parse(expires);
     if (Number.isNaN(ts)) return false;
     return ts > Date.now();
@@ -101,28 +114,33 @@ function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boole
   }
 }
 
+/**
+ * Grant a promotional entitlement in RevenueCat.
+ * NOTE: This must use the `/promotional` path and the entitlement **lookup key** (e.g. "premium").
+ */
 async function rcGrantPromo(uid: string, entitlementId = ENTITLEMENT_ID): Promise<void> {
   const r = await rcFetch(
-    `/v1/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(entitlementId)}`,
+    `/v1/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(entitlementId)}/promotional`,
     {
       method: "POST",
-      body: JSON.stringify({ effective_date: "now", expires_date: null }),
+      // Lifetime promo starting immediately. Use ISO timestamps for a fixed window:
+      // { expires_at: "2025-12-31T23:59:59Z" }
+      body: JSON.stringify({ expires_at: null }),
     }
   );
+
   if (!r.ok) {
     const text = await r.text().catch(() => "");
     throw new HttpsError("internal", `RevenueCat grant failed: ${r.status} ${text}`);
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-//  Checkout (callable): data { priceId, successUrl, cancelUrl }
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Stripe: Checkout (callable)
+ * ────────────────────────────────────────────────────────────────────────── */
 export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) => {
   try {
-    const uid = req.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
-
+    const uid = assertAuthed(req.auth?.uid);
     const { priceId, successUrl, cancelUrl } = (req.data ?? {}) as {
       priceId?: string; successUrl?: string; cancelUrl?: string;
     };
@@ -130,10 +148,9 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
       throw new HttpsError("invalid-argument", "Missing priceId/successUrl/cancelUrl");
     }
 
+    // Validate price (surfacing live/test mismatch)
     const s = stripe();
-
-    // Validate price upfront (surfaces live/test mismatches clearly)
-    let price;
+    let price: Stripe.Price;
     try {
       price = await s.prices.retrieve(priceId, { expand: ["product"] });
       if (!price.active) throw new HttpsError("failed-precondition", "Price is inactive");
@@ -165,9 +182,9 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
   }
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-/** Checkout (HTTP): desktop; Authorization: Bearer <Firebase ID token> */
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Stripe: Checkout (HTTP) — desktop/web
+ * ────────────────────────────────────────────────────────────────────────── */
 export const createCheckoutHttp = onRequest(
   { secrets: [STRIPE_SECRET] },
   async (req: Request, res: Response): Promise<void> => {
@@ -179,8 +196,7 @@ export const createCheckoutHttp = onRequest(
       if (!auth.startsWith("Bearer ")) return void res.status(401).json({ error: "Missing Authorization header" });
       const idToken = auth.substring(7);
       const decoded = await admin.auth().verifyIdToken(idToken).catch(() => null);
-      if (!decoded?.uid) return void res.status(401).json({ error: "Invalid ID token" });
-      const uid = decoded.uid;
+      const uid = assertAuthed(decoded?.uid);
 
       const { priceId, successUrl, cancelUrl } = (req.body ?? {}) as {
         priceId?: string; successUrl?: string; cancelUrl?: string;
@@ -221,13 +237,12 @@ export const createCheckoutHttp = onRequest(
   }
 );
 
-// ────────────────────────────────────────────────────────────────────────────
-/** Billing Portal (callable): returns portal URL for current user */
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Stripe: Billing Portal (callable)
+ * ────────────────────────────────────────────────────────────────────────── */
 export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (request) => {
   try {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+    const uid = assertAuthed(request.auth?.uid);
 
     // Find stored Stripe customer ID (written by webhook)
     const snap = await db.collection("users").doc(uid).collection("premium").doc("status").get();
@@ -237,8 +252,7 @@ export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (r
     const s = stripe();
     const session = await s.billingPortal.sessions.create({
       customer,
-      // You noted you don't have /account yet; send users back home/app root:
-      return_url: "https://app.fermentacraft.com/",
+      return_url: "https://app.fermentacraft.com/", // change if you add /account later
     });
 
     return { url: session.url };
@@ -249,13 +263,12 @@ export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (r
   }
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-/** Prices (callable) */
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Stripe: Get Prices (callable)
+ * ────────────────────────────────────────────────────────────────────────── */
 export const getStripePrices = onCall({ secrets: [STRIPE_SECRET] }, async (req) => {
   try {
-    const uid = req.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+    assertAuthed(req.auth?.uid);
 
     const priceIds = (req.data?.priceIds as string[] | undefined)?.filter(Boolean) ?? [];
     if (!priceIds.length) throw new HttpsError("invalid-argument", "priceIds required");
@@ -281,9 +294,9 @@ export const getStripePrices = onCall({ secrets: [STRIPE_SECRET] }, async (req) 
   }
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-/** Prices (HTTP) */
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Stripe: Get Prices (HTTP)
+ * ────────────────────────────────────────────────────────────────────────── */
 export const getStripePricesHttp = onRequest(
   { secrets: [STRIPE_SECRET] },
   async (req: Request, res: Response): Promise<void> => {
@@ -295,7 +308,7 @@ export const getStripePricesHttp = onRequest(
       if (!auth.startsWith("Bearer ")) return void res.status(401).json({ error: "Missing Authorization header" });
       const idToken = auth.substring(7);
       const decoded = await admin.auth().verifyIdToken(idToken).catch(() => null);
-      if (!decoded?.uid) return void res.status(401).json({ error: "Invalid ID token" });
+      assertAuthed(decoded?.uid);
 
       const priceIds = (req.body?.priceIds as string[] | undefined)?.filter(Boolean) ?? [];
       if (!priceIds.length) return void res.status(400).json({ error: "priceIds required" });
@@ -321,9 +334,9 @@ export const getStripePricesHttp = onRequest(
   }
 );
 
-// ────────────────────────────────────────────────────────────────────────────
-/** Stripe Webhook → mirrors premium to Firestore */
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Stripe Webhook → mirror premium to Firestore
+ * ────────────────────────────────────────────────────────────────────────── */
 export const stripeWebhook = onRequest(
   { secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] },
   async (req: Request, res: Response): Promise<void> => {
@@ -402,14 +415,14 @@ export const stripeWebhook = onRequest(
     }
   }
 );
-// ────────────────────────────────────────────────────────────────────────────
-//  Unified refresh: check RC → allowlist → grant promo → mirror Firestore
-//  Call this from ALL platforms for "Refresh status".
-// ────────────────────────────────────────────────────────────────────────────
+
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Unified refresh: check RC → allowlist → grant promo → mirror Firestore
+ *  Call this from all platforms for "Refresh status".
+ * ────────────────────────────────────────────────────────────────────────── */
 export const syncPremiumFromRC = onCall({ secrets: [RC_SECRET_KEY] }, async (req) => {
-  const uid = req.auth?.uid;
+  const uid = assertAuthed(req.auth?.uid);
   const email = (req.auth?.token?.email as string | undefined)?.trim().toLowerCase();
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
   try {
     // 1) Ask RevenueCat first
@@ -440,19 +453,19 @@ export const syncPremiumFromRC = onCall({ secrets: [RC_SECRET_KEY] }, async (req
       return { ok: true, active: false, source: "rc", reason: "not-allowlisted", email, gmailNorm };
     }
 
-// 3) Allowlisted → grant promo in RC (idempotent enough for our use)
-await rcGrantPromo(uid, ENTITLEMENT_ID);
+    // 3) Allowlisted → grant promo in RC (idempotent enough for our use)
+    await rcGrantPromo(uid, ENTITLEMENT_ID);
 
-// 4) Immediately mirror Firestore so status is visible without second press
-const now = admin.firestore.FieldValue.serverTimestamp();
-await db.collection("rc_grants").doc(uid).set(
-  { premium: true, at: now, by: "syncPremiumFromRC" },
-  { merge: true }
-);
-await setPremium(uid, true, { source: "rc_promo", grantedAt: now });
+    // 4) Immediately mirror Firestore so status is visible without second press
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    await db.collection("rc_grants").doc(uid).set(
+      { premium: true, at: now, by: "syncPremiumFromRC" },
+      { merge: true }
+    );
+    await setPremium(uid, true, { source: "rc_promo", grantedAt: now });
 
-// 5) Return success right away
-return { ok: true, active: true, source: "rc_promo", granted: true, instant: true };
+    // 5) Return success right away
+    return { ok: true, active: true, source: "rc_promo", granted: true, instant: true };
   } catch (err: any) {
     logger.error("syncPremiumFromRC error", { message: err?.message, raw: err });
     if (err instanceof HttpsError) throw err;
@@ -460,14 +473,13 @@ return { ok: true, active: true, source: "rc_promo", granted: true, instant: tru
   }
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-//  Legacy: keep until all clients call syncPremiumFromRC
-// ────────────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Legacy: keep until all clients call syncPremiumFromRC
+ * ────────────────────────────────────────────────────────────────────────── */
 export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (req) => {
   try {
-    const uid = req.auth?.uid;
+    const uid = assertAuthed(req.auth?.uid);
     const email = (req.auth?.token.email as string | undefined)?.trim().toLowerCase();
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
     if (!email) throw new HttpsError("failed-precondition", "Email required on account.");
 
     const exactRef = db.collection("tester_allowlist").doc(email);
@@ -484,7 +496,7 @@ export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (r
       return { ok: false, reason: "not-allowlisted", email, gmailNorm };
     }
 
-    // Idempotency
+    // Idempotency: if we already marked a grant, just mirror Firestore active
     const grantRef = db.collection("rc_grants").doc(uid);
     const grantSnap = await grantRef.get();
     if (grantSnap.exists && grantSnap.get("premium") === true) {
@@ -492,7 +504,7 @@ export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (r
       return { ok: true, already: true };
     }
 
-    // Grant
+    // Grant in RC
     await rcGrantPromo(uid, ENTITLEMENT_ID);
 
     await grantRef.set(

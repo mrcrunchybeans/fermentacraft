@@ -66,6 +66,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // ✅ THIS FUNCTION IS NOW FIXED
   Future<void> loginWithGoogle() async {
     if (!mounted) return;
     setState(() {
@@ -85,10 +86,14 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      if (user == null && mounted) {
+      if (user != null) {
+        // Force a reload of the user's profile to ensure the email is available.
+        await user.reload();
+        // Get the most up-to-date user object after the reload.
+        final freshUser = FirebaseAuth.instance.currentUser;
+        await _logInRevenueCat(freshUser);
+      } else if (mounted) {
         setState(() => errorMessage = 'Google sign-in failed or was cancelled.');
-      } else {
-        await _logInRevenueCat(user);
       }
     } catch (e) {
       if (mounted) setState(() => errorMessage = 'Google sign-in failed.');

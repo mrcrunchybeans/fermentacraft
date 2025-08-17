@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+
 
 import 'feature_gate.dart';
-import 'tester_premium_service.dart'; // your callable tester grant
+// ⛔️ remove any tester-allowlist logic on RC platforms to avoid extra reads
+// import 'tester_premium_service.dart';
 
 class RevenueCatService {
   RevenueCatService._();
@@ -20,10 +23,10 @@ class RevenueCatService {
   // ── Internal state ─────────────────────────────────────────────────────────
   bool _configured = false;     // service init done
   bool _rcConfigured = false;   // RC SDK configured
+  Future<void>? _rcConfigFuture; // guard against double-config
+
   StreamSubscription<User?>? _authSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _premiumDocSub;
-
-  String? _lastClaimAttemptUid;
 
   bool get _rcSupported =>
       !kIsWeb &&
@@ -37,10 +40,11 @@ class RevenueCatService {
   Future<void> init() async {
     if (_configured) return;
 
-    // Wait for initial auth state
-    final firstUser = await FirebaseAuth.instance.authStateChanges().first;
+    // Seed once, then listen (skip the first event to avoid double-work)
+    final authStream = FirebaseAuth.instance.authStateChanges();
+    final firstUser = await authStream.first;
 
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) async {
+    _authSub = authStream.skip(1).listen((user) async {
       if (_rcSupported) {
         await _syncRCWithFirebaseUser(user);
       } else {
@@ -67,75 +71,91 @@ class RevenueCatService {
   }
 
   // ── RC path (Android/iOS) ──────────────────────────────────────────────────
-  Future<void> _ensureRCConfigured() async {
-    if (_rcConfigured || !_rcSupported) return;
+  Future<void> _ensureRCConfigured() {
+    if (!_rcSupported) return Future.value();
+    if (_rcConfigured) return Future.value();
+    if (_rcConfigFuture != null) return _rcConfigFuture!;
 
-    final apiKey = (defaultTargetPlatform == TargetPlatform.android)
-        ? _androidKey
-        : _iosKey;
+    _rcConfigFuture = () async {
+      final apiKey = (defaultTargetPlatform == TargetPlatform.android)
+          ? _androidKey
+          : _iosKey;
 
-    if (apiKey.isEmpty) {
-      // No key for this platform; treat as unsupported
-      return;
-    }
-
-    final conf = PurchasesConfiguration(apiKey);
-    await Purchases.configure(conf);
-
-    // Mirror entitlements into FeatureGate whenever RC updates
-    Purchases.addCustomerInfoUpdateListener((customerInfo) {
-      FeatureGate.instance.refreshFromCustomerInfo(customerInfo);
-    });
-
-    // Seed from current RC state if possible
-    try {
-      final info = await Purchases.getCustomerInfo();
-      FeatureGate.instance.refreshFromCustomerInfo(info);
-    } catch (_) {}
-
-    _rcConfigured = true;
-  }
-
-  Future<void> _syncRCWithFirebaseUser(User? user) async {
-    if (!_rcSupported) return;
-
-    try {
-      await _ensureRCConfigured();
-
-      if (user == null) {
-        try { await Purchases.logOut(); } catch (_) {}
-        FeatureGate.instance.setFromBackend(false);
-        _lastClaimAttemptUid = null;
+      if (apiKey.isEmpty) {
+        // No key for this platform; treat as unsupported
         return;
       }
 
-      // Log into RC with Firebase UID
-      try { await Purchases.logIn(user.uid); } catch (_) {}
+      await Purchases.configure(PurchasesConfiguration(apiKey));
 
-      // First check current entitlements
-      var info = await _safeGetCustomerInfo();
-      final hasPremiumNow = info != null && _hasPremium(info);
+      // Mirror entitlements into FeatureGate whenever RC updates
+      Purchases.addCustomerInfoUpdateListener((customerInfo) {
+        FeatureGate.instance.refreshFromCustomerInfo(customerInfo);
+      });
 
-      if (!hasPremiumNow) {
-        // Try to claim tester premium only once per UID (if allowlisted)
-        if (_lastClaimAttemptUid != user.uid) {
-          _lastClaimAttemptUid = user.uid;
-          try {
-            final claimed = await TesterPremiumService.instance.claim();
-            if (claimed) {
-              info = await _safeGetCustomerInfo(forceSync: true);
-            }
-          } catch (_) {}
-        }
-      }
-
-      if (info != null) {
+      // Seed from current RC state if possible
+      try {
+        final info = await Purchases.getCustomerInfo();
         FeatureGate.instance.refreshFromCustomerInfo(info);
-      }
-    } catch (_) {
-      // keep last known state
-    }
+      } catch (_) {}
+
+      _rcConfigured = true;
+    }();
+
+    return _rcConfigFuture!;
   }
+
+Future<void> _syncRCWithFirebaseUser(User? user) async {
+  if (!_rcSupported) return;
+
+  try {
+    await _ensureRCConfigured();
+
+    if (user == null) {
+      // Only call logOut if we're not already anonymous to avoid RC warnings
+      try {
+      final currentId = await Purchases.appUserID;
+      final isAnon = currentId.isEmpty || currentId.startsWith(r'$RCAnonymousID');
+        if (!isAnon) {
+          await Purchases.logOut();
+        }
+      } catch (_) {}
+      FeatureGate.instance.setFromBackend(false);
+      return;
+    }
+
+    final currentId = await Purchases.appUserID;
+    if (currentId != user.uid) {
+      try { await Purchases.logIn(user.uid); } catch (_) {}
+    }
+
+    // Optionally sync tester allowlist + mirror Firestore (server-side)
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('syncPremiumFromRC');
+      await fn.call(<String, dynamic>{});
+
+      // Read the mirror and update the FeatureGate
+      final snap = await FirebaseFirestore.instance
+          .collection('users').doc(user.uid)
+          .collection('premium').doc('status')
+          .get();
+      final active = (snap.data()?['active'] as bool?) ?? false;
+      FeatureGate.instance.setFromBackend(active);
+    } catch (_) {
+      // ignore; keep RC state
+    }
+
+    // Fresh pull from RC (real purchases or promo entitlements)
+    final info = await _safeGetCustomerInfo(forceSync: true);
+    if (info != null) {
+      FeatureGate.instance.refreshFromCustomerInfo(info);
+    }
+  } catch (_) {
+    // keep last known state
+  }
+}
+
 
   Future<CustomerInfo?> _safeGetCustomerInfo({bool forceSync = false}) async {
     if (!_rcSupported) return null;
@@ -148,11 +168,6 @@ class RevenueCatService {
     } catch (_) {
       return null;
     }
-  }
-
-  bool _hasPremium(CustomerInfo info) {
-    final ent = info.entitlements.all[entitlementId];
-    return ent?.isActive == true;
   }
 
   Future<Offerings> getOfferings() async {
@@ -174,6 +189,7 @@ class RevenueCatService {
     return info;
   }
 
+  /// iOS-style restore (safe). Prefer `sync()` on Android.
   Future<CustomerInfo> restore() async {
     if (!_rcSupported) {
       throw UnsupportedError('Restore not available on this platform.');
@@ -184,6 +200,7 @@ class RevenueCatService {
     return info;
   }
 
+  /// Android-safe “refresh” that does not alias other Play users on device.
   Future<CustomerInfo> sync() async {
     if (!_rcSupported) {
       throw UnsupportedError('Sync not available on this platform.');
@@ -212,7 +229,6 @@ class RevenueCatService {
     _premiumDocSub = null;
 
     FeatureGate.instance.setFromBackend(false);
-    _lastClaimAttemptUid = null;
     if (user == null) return;
 
     final docRef = FirebaseFirestore.instance

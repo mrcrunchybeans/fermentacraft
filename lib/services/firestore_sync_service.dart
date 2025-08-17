@@ -86,6 +86,101 @@ class FirestoreSyncService {
   String _canonicalTagIdFromData(JsonMap data) =>
       (data['name'] ?? data['id'] ?? '').toString().trim();
 
+  List<Map<String, dynamic>> _normalizeTagsForJson({
+    required dynamic sourceObject,
+    required List? rawTags,
+  }) {
+    final seen = <String>{};
+    final out = <Map<String, dynamic>>[];
+
+    // 1) Prefer any already-present raw tag maps/strings
+    for (final t in (rawTags ?? const [])) {
+      try {
+        if (t is Map) {
+          final m = Map<String, dynamic>.from(t);
+          final name = (m['name'] ?? m['id'] ?? '').toString().trim();
+          if (name.isEmpty) continue;
+          final key = name.toLowerCase();
+          if (seen.add(key)) {
+            out.add({
+              'id': name,
+              'name': name,
+              'iconKey': (m['iconKey'] ?? 'default') as String,
+              'iconFontFamily': m['iconFontFamily'],
+              'iconCodePoint': m['iconCodePoint'],
+            });
+          }
+        } else if (t is String) {
+          final name = t.trim();
+          if (name.isEmpty) continue;
+          final key = name.toLowerCase();
+          if (seen.add(key)) {
+            out.add({
+              'id': name,
+              'name': name,
+              'iconKey': 'default',
+              'iconFontFamily': null,
+              'iconCodePoint': null,
+            });
+          }
+        }
+      } catch (_) {/* ignore one-off bad tag */}
+    }
+
+    // 2) If nothing came from raw tags, rebuild from tagRefs (and tagsLegacy fallback)
+    if (out.isEmpty && sourceObject != null) {
+      // Try tagRefs (HiveList<Tag>)
+      try {
+        final refs = (sourceObject.tagRefs as dynamic);
+        if (refs != null) {
+          for (final tag in refs) {
+            try {
+              final name = (tag.id ?? tag.name ?? '').toString().trim();
+              if (name.isEmpty) continue;
+              final key = name.toLowerCase();
+              if (seen.add(key)) {
+                out.add({
+                  'id': name,
+                  'name': name,
+                  'iconKey': (tag.iconKey ?? 'default') as String,
+                  'iconFontFamily': tag.iconFontFamily,
+                  'iconCodePoint': tag.iconCodePoint,
+                });
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      // Fallback: tagsLegacy (List<Tag>)
+      if (out.isEmpty) {
+        try {
+          final legacy = (sourceObject.tagsLegacy as dynamic);
+          if (legacy != null) {
+            for (final tag in legacy) {
+              try {
+                final name = (tag.id ?? tag.name ?? '').toString().trim();
+                if (name.isEmpty) continue;
+                final key = name.toLowerCase();
+                if (seen.add(key)) {
+                  out.add({
+                    'id': name,
+                    'name': name,
+                    'iconKey': (tag.iconKey ?? 'default') as String,
+                    'iconFontFamily': tag.iconFontFamily,
+                    'iconCodePoint': tag.iconCodePoint,
+                  });
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    return out;
+  }
+
   // -----------------------------
   // Lifecycle
   // -----------------------------
@@ -269,11 +364,10 @@ class FirestoreSyncService {
             final json = (value as dynamic).toJson() as JsonMap;
             final id = key.toString();
 
-            final fullKey = _keyOf(boxName, id);
-            final s = jsonEncode(json);
-            if (_lastSentJson[fullKey] == s) continue;
 
-            await _pushLocalDocWithId(uid, boxName, id, json);
+
+
+            await _pushLocalDocWithId(uid, boxName, id, json, sourceObject: value);
           } catch (e, st) {
             if (kDebugMode) {
               print('bootstrapPush item fail [$boxName,$key]: $e\n$st');
@@ -339,10 +433,10 @@ class FirestoreSyncService {
             _debouncers.remove(k);
             if (latest == null) return;
 
-            final s = jsonEncode(latest);
-            if (_lastSentJson[k] == s) return;
 
-            await _pushLocalDocWithId(uid, boxName, id, latest);
+
+
+            await _pushLocalDocWithId(uid, boxName, id, latest, sourceObject: val);
           } catch (e, st) {
             if (kDebugMode) {
               print('Hive debounce flush fail [$boxName,$id]: $e\n$st');
@@ -445,16 +539,66 @@ class FirestoreSyncService {
   }
 
   Future<void> _pushLocalDocWithId(
-    String uid,
-    String boxName,
-    String id,
-    JsonMap json,
-  ) async {
+      String uid,
+      String boxName,
+      String id,
+      JsonMap json, {
+        dynamic sourceObject,
+      }) async {
     final cleanId = id.trim();
     if (cleanId.isEmpty) {
       if (kDebugMode) print('Skip push: empty key id for $boxName: $json');
       return;
     }
+// Ensure recipes/batches always emit a stable 'tags' array to Firestore.
+    // Ensure recipes/batches always emit a stable 'tags' array to Firestore.
+// Ensure recipes/batches always emit a stable 'tags' array to Firestore.
+if (boxName == Boxes.recipes || boxName == Boxes.batches) {
+  final rawTags = (json['tags'] as List?);
+
+  // Look for stronger local sources
+  dynamic tagRefs;
+  dynamic tagsLegacy;
+  try { tagRefs = (sourceObject as dynamic).tagRefs; } catch (_) {}
+  try { tagsLegacy = (sourceObject as dynamic).tagsLegacy; } catch (_) {}
+
+  final hasRefs   = tagRefs is Iterable && tagRefs.isNotEmpty;
+  final hasLegacy = tagsLegacy is Iterable && tagsLegacy.isNotEmpty;
+
+  // Did we previously send a non-empty tags array for this doc?
+  final cacheKey = _keyOf(boxName, cleanId);
+  bool lastSentHadTags = false;
+  try {
+    final prev = _lastSentJson[cacheKey];
+    if (prev != null) {
+      final prevJson = Map<String, dynamic>.from(jsonDecode(prev));
+      final prevTags = prevJson['tags'];
+      lastSentHadTags = (prevTags is List) && prevTags.isNotEmpty;
+    }
+  } catch (_) {}
+
+  // Only treat tags as a "local signal" if:
+  //  - we have non-empty raw tags, OR
+  //  - we have non-empty refs/legacy, OR
+  //  - we previously had non-empty tags and now intend to clear them (raw empty).
+  final tagsPresent = rawTags is List;
+  final tagsNonEmpty = tagsPresent && rawTags.isNotEmpty;
+
+  final shouldWriteTags = tagsNonEmpty || hasRefs || hasLegacy || (tagsPresent && !tagsNonEmpty && lastSentHadTags);
+
+  final normalized = _normalizeTagsForJson(
+    sourceObject: sourceObject,
+    rawTags: rawTags,
+  );
+
+  if (shouldWriteTags) {
+    json['tags'] = normalized;    // write (possibly empty → explicit clear)
+  } else {
+    json.remove('tags');           // don't clobber server during bootstrap window
+  }
+}
+
+
 
     // ---- TAG POLICY ENFORCEMENT (client-side) ----
     if (boxName == Boxes.tags) {
@@ -483,7 +627,7 @@ class FirestoreSyncService {
       '_meta': {
         'updatedAt': FieldValue.serverTimestamp(),
         'deviceUpdatedAt': now,
-        // ✅ FIXED: Removed 'deleted': false from this method.
+        'deleted': false,
       }
     }, SetOptions(merge: true));
 
@@ -500,7 +644,7 @@ class FirestoreSyncService {
       '_meta': {
         'updatedAt': FieldValue.serverTimestamp(),
         'deviceUpdatedAt': now,
-        'deleted': true, // This is now the ONLY place that sets 'deleted'.
+        'deleted': true,
       }
     }, SetOptions(merge: true));
     await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
@@ -579,18 +723,27 @@ class FirestoreSyncService {
       final clean = Map<String, dynamic>.from(data)..remove('_meta');
 
       // ---- Server→Client sanitizer for embedded tags on recipes/batches ----
+      // ✅ FIXED: This section now preserves all tag data, not just the name.
       if (boxName == Boxes.recipes || boxName == Boxes.batches) {
         final rawTags = (clean['tags'] as List?) ?? const [];
         final seen = <String>{};
         final List<Map<String, dynamic>> tagsSanitized = [];
         for (final t in rawTags) {
           try {
-            final name = (t is Map ? (t['name'] ?? '') : '').toString().trim();
-            if (name.isEmpty) continue;
-            final key = name.toLowerCase();
-            if (seen.add(key)) {
-              // Only keep {name}; drop legacy/icon/ids that might cause churn
-              tagsSanitized.add({'name': name});
+            if (t is Map) {
+              final m = Map<String, dynamic>.from(t);
+              final name = (m['name'] ?? m['id'] ?? '').toString().trim();
+              if (name.isEmpty) continue;
+              final key = name.toLowerCase();
+              if (seen.add(key)) {
+                tagsSanitized.add({
+                  'id': name,
+                  'name': name,
+                  'iconKey': (m['iconKey'] ?? 'default') as String,
+                  'iconFontFamily': m['iconFontFamily'],
+                  'iconCodePoint': m['iconCodePoint'],
+                });
+              }
             }
           } catch (_) {}
         }
