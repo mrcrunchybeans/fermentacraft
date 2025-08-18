@@ -48,6 +48,7 @@ class RecipeDetailPage extends StatefulWidget {
 }
 
 void _upsell(BuildContext context, String reason) {
+  debugPrint('Upsell trigger: $reason');
 showPaywall(context);
 
 }
@@ -58,13 +59,12 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-              final box = Hive.box<RecipeModel>(Boxes.recipes);
-        final updated = widget.recipe..lastOpened = DateTime.now();
-        box.put(widget.recipeKey, updated); // CHANGED from 'putAt'
-      }
-    });
+WidgetsBinding.instance.addPostFrameCallback((_) async {
+  if (!mounted) return;
+  final box = Hive.box<RecipeModel>(Boxes.recipes);
+  final updated = widget.recipe..lastOpened = DateTime.now();
+  await box.put(widget.recipeKey, updated);
+});
   }
 
   Map<String, dynamic> safeMap(dynamic input) {
@@ -129,6 +129,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       .toList();
 
   final now = DateTime.now();
+  final pretty = DateFormat.yMMMd().add_jm().format(now);
+
 
   final batch = BatchModel(
     id: generateId(),
@@ -137,14 +139,13 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     // ✅ required by your model:
     startDate: now,
     createdAt: now,
-    tags: recipe.tags,        // carry over tags from recipe
 
     // optional/other fields your model supports:
     ingredients: clonedIngredients,
     additives: clonedAdditives,
     yeast: clonedYeast,
     fermentationStages: clonedStages,
-    notes: 'Created from recipe "${recipe.name}" on ${now.toLocal()}',
+    notes: 'Created from recipe "${recipe.name}" on $pretty',
   );
 
   final box = Hive.box<BatchModel>(Boxes.batches);
@@ -203,14 +204,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("Created: ${DateFormat.yMMMd().format(recipe.createdAt)}"),
-            const SizedBox(height: 8),
-            if (recipe.tags.isNotEmpty)
-              Wrap(
-                spacing: 8.0,
-                runSpacing: 4.0,
-                children:
-                    recipe.tags.map((tag) => Chip(label: Text(tag.name))).toList(),
-              ),
+            const SizedBox(height: 4),
+          Text("Category: ${recipe.categoryLabel}"),
           ],
         ),
       ),
@@ -258,7 +253,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
           final i = safeMap(item);
           return ListTile(
             title: Text(i['name'] ?? 'Unnamed'),
-            subtitle: Text("${i['amount']} ${i['unit']}"),
+            subtitle: Text("${i['amount'] ?? '—'} ${i['unit'] ?? ''}"),
           );
         }).toList(),
       ),
@@ -281,7 +276,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
               (amount == 1 && unit == 'packets') ? 'packet' : unit;
 
           return ListTile(
-            title: Text(yeast['name']),
+            title: Text(yeast['name'] ?? 'Unnamed'),
             subtitle: Text("$amount $displayUnit"),
           );
         }).toList(),
@@ -337,7 +332,7 @@ Widget _buildFermentationCard(RecipeModel recipe) {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Box<RecipeModel>>(
-      valueListenable: Hive.box<RecipeModel>('recipes').listenable(),
+      valueListenable: Hive.box<RecipeModel>(Boxes.recipes).listenable(), // <- was 'recipes'
       builder: (context, box, _) {
         final recipe = box.get(widget.recipeKey); // CHANGED from 'getAt'
 
@@ -352,7 +347,7 @@ Widget _buildFermentationCard(RecipeModel recipe) {
 final fg = context.watch<FeatureGate>();
 // If you have a dedicated recipe limit, use it. Otherwise pick a number:
 final int freeLimit = fg.recipeLimitFree; // define in FeatureGate if not present
-final int recipeCount = Hive.box<RecipeModel>('recipes').length;
+final int recipeCount = Hive.box<RecipeModel>(Boxes.recipes).length;
 final bool atRecipeLimit = !fg.isPremium && recipeCount >= freeLimit;
 
         return Scaffold(

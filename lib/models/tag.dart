@@ -27,7 +27,7 @@ class Tag extends HiveObject {
   });
 
   /// Use this to render icons. Avoid constructing IconData dynamically.
-  IconData get icon => iconForTagKey(effectiveIconKey);
+  IconData get icon => iconForCategoryKey(effectiveIconKey);
 
   /// If iconKey is missing/legacy, derive a sane key from legacy fields.
   String? get effectiveIconKey =>

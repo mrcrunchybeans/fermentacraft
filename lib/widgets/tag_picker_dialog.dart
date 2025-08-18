@@ -96,7 +96,7 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
     });
   }
 
-  Icon _iconForTag(String tagName) {
+  Icon _iconForCategory(String tagName) {
     switch (tagName.toLowerCase()) {
       case 'cider':
         return const Icon(Icons.local_drink);
@@ -144,7 +144,7 @@ class _TagPickerDialogState extends State<TagPickerDialog> {
                     final key = tag.name.trim().toLowerCase();
                     final isSelected = _selectedLower.contains(key);
                     return FilterChip(
-                      avatar: _iconForTag(tag.name),
+                      avatar: _iconForCategory(tag.name),
                       label: Text(tag.name),
                       selected: isSelected,
                       onSelected: (_) => _toggleSelection(tag.name),

@@ -12,7 +12,6 @@ import 'models/batch_model.dart';
 import 'models/planned_event.dart';
 import 'models/inventory_item.dart';
 import 'models/purchase_transaction.dart';
-import 'models/tag.dart';
 import 'utils/boxes.dart';
 import 'utils/unit_conversion.dart';
 import 'widgets/add_ingredient_dialog.dart';
@@ -1265,22 +1264,23 @@ ElevatedButton(
                   final scaffoldMessenger = snacks;
                   final navigator = Navigator.of(dialogContext);
                   final newRecipe = RecipeModel(
-                    id: generateId(),
-                    name: batch.name,
-                    createdAt: DateTime.now(),
-                    tags: batch.tags,
-                    og: batch.og,
-                    fg: batch.fg,
-                    abv: batch.abv,
-                    additives: batch.additives,
-                    ingredients: batch.ingredients,
-                    fermentationStages: batch.safeFermentationStages.toList(), // <— change this
-                    yeast: batch.yeast,
-                    notes: batch.notes ?? '',
-                    batchVolume: batch.batchVolume,
-                    plannedOg: batch.plannedOg,
-                    plannedAbv: batch.plannedAbv,
-                  );
+id: generateId(),
+name: batch.name,
+createdAt: DateTime.now(),
+// If your RecipeModel now has category:
+category: batch.category ?? 'Uncategorized',
+og: batch.og,
+fg: batch.fg,
+abv: batch.abv,
+additives: batch.additives,
+ingredients: batch.ingredients,
+fermentationStages: batch.safeFermentationStages.toList(),
+yeast: batch.yeast,
+notes: batch.notes ?? '',
+batchVolume: batch.batchVolume,
+plannedOg: batch.plannedOg,
+plannedAbv: batch.plannedAbv,
+);
 
                   await recipeBox.put(newRecipe.id, newRecipe);
 
@@ -2352,15 +2352,15 @@ onPressed: () async {
   // if (!_guardRecipeLimit(context)) return;
 
   final abvVal = await _abvForBatch(batch);
-  final tagBox = Hive.box<Tag>(Boxes.tags);
+
 
   final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
   final newRecipe = RecipeModel(
     id: generateId(),
     name: '${batch.name} - Final',
     createdAt: DateTime.now(),
-    tags: batch.tags,
     og: batch.og,
+    category: batch.category ?? 'Uncategorized',
     fg: batch.fg,
     abv: abvVal, // use calculated ABV (respects measured OG toggle)
     additives: batch.additives,
@@ -2373,8 +2373,6 @@ onPressed: () async {
     plannedAbv: batch.plannedAbv,
   );
   
-  // FIX: Call the tag canonicalization method to use the tagBox.
-  await newRecipe.setTagsFromBox(batch.tags, tagBox);
 
   await recipeBox.put(newRecipe.id, newRecipe);
 
@@ -2399,7 +2397,7 @@ onPressed: () async {
                     startDate: DateTime.now(),
                     status: 'Planning',
                     recipeId: batch.recipeId,
-                    tags: List<Tag>.from(batch.tags),
+                    category: batch.category,
                     ingredients:
                         List<Map<String, dynamic>>.from(batch.ingredients)
                             .map((e) {

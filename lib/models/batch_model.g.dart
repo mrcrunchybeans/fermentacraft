@@ -22,10 +22,8 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       recipeId: fields[2] as String,
       startDate: fields[3] as DateTime,
       createdAt: fields[18] as DateTime,
-      tags: (fields[19] as List).cast<Tag>(),
       bottleDate: fields[4] as DateTime?,
       batchVolume: fields[5] as double?,
-      finalYieldUnit: fields[32] as String?,
       fermentationStages: (fields[6] as List?)?.cast<FermentationStage>(),
       measurementLogs: (fields[7] as List?)
           ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
@@ -58,14 +56,17 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       tastingNotes: (fields[27] as Map?)?.cast<String, String>(),
       packagingMethod: fields[28] as String?,
       finalYield: fields[29] as double?,
+      finalYieldUnit: fields[32] as String?,
       isArchived: fields[33] as bool,
+      category: fields[34] as String?,
+      tagsLegacy: (fields[19] as List?)?.cast<Tag>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, BatchModel obj) {
     writer
-      ..writeByte(34)
+      ..writeByte(35)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -74,38 +75,18 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..write(obj.recipeId)
       ..writeByte(3)
       ..write(obj.startDate)
+      ..writeByte(18)
+      ..write(obj.createdAt)
       ..writeByte(4)
       ..write(obj.bottleDate)
-      ..writeByte(5)
-      ..write(obj.batchVolume)
-      ..writeByte(6)
-      ..write(obj.fermentationStages)
-      ..writeByte(7)
-      ..write(obj.measurementLogs)
-      ..writeByte(8)
-      ..write(obj.status)
-      ..writeByte(9)
-      ..write(obj.notes)
-      ..writeByte(10)
-      ..write(obj.deductedIngredients)
-      ..writeByte(11)
-      ..write(obj.type)
-      ..writeByte(12)
-      ..write(obj.plannedOg)
-      ..writeByte(13)
-      ..write(obj.plannedAbv)
       ..writeByte(14)
       ..write(obj.ingredients)
-      ..writeByte(15)
-      ..write(obj.plannedEvents)
       ..writeByte(16)
       ..write(obj.additives)
       ..writeByte(17)
       ..write(obj.yeast)
-      ..writeByte(18)
-      ..write(obj.createdAt)
-      ..writeByte(19)
-      ..write(obj.tags)
+      ..writeByte(6)
+      ..write(obj.fermentationStages)
       ..writeByte(20)
       ..write(obj.og)
       ..writeByte(21)
@@ -114,6 +95,24 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..write(obj.abv)
       ..writeByte(23)
       ..write(obj.measurements)
+      ..writeByte(7)
+      ..write(obj.measurementLogs)
+      ..writeByte(8)
+      ..write(obj.status)
+      ..writeByte(12)
+      ..write(obj.plannedOg)
+      ..writeByte(13)
+      ..write(obj.plannedAbv)
+      ..writeByte(15)
+      ..write(obj.plannedEvents)
+      ..writeByte(5)
+      ..write(obj.batchVolume)
+      ..writeByte(9)
+      ..write(obj.notes)
+      ..writeByte(10)
+      ..write(obj.deductedIngredients)
+      ..writeByte(11)
+      ..write(obj.type)
       ..writeByte(24)
       ..write(obj.fsuDate)
       ..writeByte(25)
@@ -133,7 +132,11 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       ..writeByte(32)
       ..write(obj.finalYieldUnit)
       ..writeByte(33)
-      ..write(obj.isArchived);
+      ..write(obj.isArchived)
+      ..writeByte(19)
+      ..write(obj.tagsLegacy)
+      ..writeByte(34)
+      ..write(obj.category);
   }
 
   @override

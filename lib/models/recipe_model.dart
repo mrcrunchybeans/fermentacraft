@@ -66,6 +66,17 @@ class RecipeModel extends HiveObject {
   @HiveField(16)
   bool isArchived;
 
+  // ✅ NEW: category used for sorting/grouping
+  @HiveField(18)
+  String? category;
+
+  String get categoryLabel {
+    final c = category?.trim();
+    if (c != null && c.isNotEmpty) return c;
+    if (tags.isNotEmpty) return tags.first.name;
+    return 'Uncategorized';
+  }
+
   RecipeModel({
     String? id,
     required this.name,
@@ -84,6 +95,7 @@ class RecipeModel extends HiveObject {
     this.plannedOg,
     this.plannedAbv,
     this.isArchived = false,
+    this.category,
   })  : id = id ?? const Uuid().v4(),
         tagsLegacy = tags,
         additives = additives ?? [],
@@ -150,6 +162,7 @@ class RecipeModel extends HiveObject {
       'name': name,
       'createdAt': createdAt.toIso8601String(),
       'tags': tags.map((t) => t.toJson()).toList(),
+      'category': category, 
       'og': og,
       'fg': fg,
       'abv': abv,
@@ -167,11 +180,19 @@ class RecipeModel extends HiveObject {
   }
 
   factory RecipeModel.fromJson(Map<String, dynamic> json) {
-    return RecipeModel(
+    // try category → else derive from first legacy tag → else null (will show as 'Uncategorized')
+    String? derivedCategory() {
+      final c = (json['category'] as String?)?.trim();
+      if (c != null && c.isNotEmpty) return c;
+      final legacy = _parseTagsFromJson(json['tags']);
+      return legacy.isNotEmpty ? legacy.first.name : null;
+    }
+        return RecipeModel(
       id: json['id'] as String?,
       name: (json['name'] as String?) ?? 'Untitled',
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
       tags: _parseTagsFromJson(json['tags']),
+      category: derivedCategory(),
       og: _toDouble(json['og']),
       fg: _toDouble(json['fg']),
       abv: _toDouble(json['abv']),
@@ -237,6 +258,7 @@ class RecipeModel extends HiveObject {
     double? plannedOg,
     double? plannedAbv,
     bool? isArchived,
+    String? category,
   }) {
     final r = RecipeModel(
       id: id ?? this.id,
@@ -256,6 +278,7 @@ class RecipeModel extends HiveObject {
       plannedOg: plannedOg ?? this.plannedOg,
       plannedAbv: plannedAbv ?? this.plannedAbv,
       isArchived: isArchived ?? this.isArchived,
+      category: category ?? this.category,
     );
     // Preserve HiveList reference if it exists to maintain relationships.
     r.tagRefs = tagRefs; 

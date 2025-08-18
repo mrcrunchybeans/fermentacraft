@@ -1,6 +1,7 @@
 // functions/src/index.ts
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
@@ -13,7 +14,7 @@ admin.initializeApp();
 const db = admin.firestore();
 
 /* ──────────────────────────────────────────────────────────────────────────
- *  Secrets
+ * Secrets
  * ────────────────────────────────────────────────────────────────────────── */
 const STRIPE_SECRET = defineSecret("STRIPE_SECRET");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
@@ -23,16 +24,16 @@ const RC_SECRET_KEY = defineSecret("RC_SECRET_KEY");
 const stripe = () => new Stripe(STRIPE_SECRET.value(), { apiVersion: "2024-06-20" });
 
 /* ──────────────────────────────────────────────────────────────────────────
- *  Constants
+ * Constants
  * ────────────────────────────────────────────────────────────────────────── */
-const TRIAL_DAYS = 7;                // universal 7-day trial
-const ENTITLEMENT_ID = "premium";    // RC entitlement lookup key (not the internal UUID)
+const TRIAL_DAYS = 7;
+const ENTITLEMENT_ID = "premium";
+const USER_DATA_COLLECTIONS = ["tags", "recipes", "batches", "inventory", "shoppingList"] as const;
 
 /* ──────────────────────────────────────────────────────────────────────────
- *  Small helpers
+ * Small helpers
  * ────────────────────────────────────────────────────────────────────────── */
 const allowCors = (res: Response) => {
-  // TODO: restrict to your production origins
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Origin");
@@ -61,7 +62,6 @@ function toProductSummary(
   return { id: prod.id, name: prod.name };
 }
 
-/** Normalize Gmail (strip dots and +tag). */
 function normalizeEmail(email: string): string {
   const e = email.trim().toLowerCase();
   const m = e.match(/^([^@]+)@(.+)$/);
@@ -74,38 +74,81 @@ function normalizeEmail(email: string): string {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
- *  RevenueCat helpers
+ * RevenueCat helpers
  * ────────────────────────────────────────────────────────────────────────── */
-async function rcFetch(path: string, init?: RequestInit) {
-  const url = `https://api.revenuecat.com${path}`;
-  const resp = await fetch(url, {
+type RCMethod = "GET" | "POST" | "DELETE";
+async function rcFetchV(
+  version: "v2" | "v1",
+  path: string,
+  init?: RequestInit & { method?: RCMethod }
+) {
+  const url = `https://api.revenuecat.com/${version}${path}`;
+  const r = await fetch(url, {
+    method: init?.method ?? "GET",
     ...init,
     headers: {
       Authorization: `Bearer ${RC_SECRET_KEY.value()}`,
       "Content-Type": "application/json",
+      Accept: "application/json",
       ...(init?.headers ?? {}),
     },
   });
-  return resp;
+  return { r, url };
 }
+
+/**
+ * Grant a promotional entitlement using the RevenueCat v1 API.
+ */
+async function rcGrantPromo(
+  uid: string,
+  entitlementId = ENTITLEMENT_ID,
+  opts?: { duration?: string; end_time?: string | number | Date; start_time?: string | number | Date }
+): Promise<void> {
+  const path = `/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(entitlementId)}/promotional`;
+
+  const toMs = (d: string | number | Date) =>
+    Math.floor(typeof d === "number" ? d : new Date(d).getTime());
+
+  const body: Record<string, unknown> = {};
+
+  if (opts?.end_time) {
+    body.end_time_ms = toMs(opts.end_time);
+    if (opts.start_time) body.start_time_ms = toMs(opts.start_time);
+  } else if (opts?.duration) {
+    // Use RC’s native duration strings (e.g., "weekly", "monthly", "yearly", "lifetime")
+    body.duration = opts.duration;
+  }
+
+  const { r } = await rcFetchV("v1", path, {
+    method: "POST",
+    body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+  });
+
+  if (r.ok || r.status === 409) return; // 409 = already has an overlapping promo
+
+  const txt = await r.text().catch(() => "");
+  logger.error("RC v1 promo failed", { status: r.status, resp: txt });
+  throw new HttpsError("internal", `RevenueCat grant failed: ${r.status} ${txt}`);
+}
+
+
 
 async function rcGetSubscriber(uid: string): Promise<any | null> {
-  const r = await rcFetch(`/v1/subscribers/${encodeURIComponent(uid)}`, { method: "GET" });
-  if (r.status === 404) return null;
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new HttpsError("internal", `RevenueCat GET failed: ${r.status} ${text}`);
+  const r = await rcFetchV("v1", `/subscribers/${encodeURIComponent(uid)}`);
+  if (r.r.status === 404) return null;
+  if (!r.r.ok) {
+    const text = await r.r.text().catch(() => "");
+    throw new HttpsError("internal", `RevenueCat GET failed: ${r.r.status} ${text}`);
   }
-  return r.json();
+  return r.r.json();
 }
 
-/** Treat entitlement as active if exists and (no expires_date or expires in the future). */
 function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boolean {
   try {
     const ent = sub?.subscriber?.entitlements?.[entitlementId];
     if (!ent) return false;
     const expires = ent.expires_date;
-    if (expires == null) return true; // lifetime promo
+    if (expires == null) return true;
     const ts = Date.parse(expires);
     if (Number.isNaN(ts)) return false;
     return ts > Date.now();
@@ -114,30 +157,10 @@ function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boole
   }
 }
 
-/**
- * Grant a promotional entitlement in RevenueCat.
- * NOTE: This must use the `/promotional` path and the entitlement **lookup key** (e.g. "premium").
- */
-async function rcGrantPromo(uid: string, entitlementId = ENTITLEMENT_ID): Promise<void> {
-  const r = await rcFetch(
-    `/v1/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(entitlementId)}/promotional`,
-    {
-      method: "POST",
-      // Lifetime promo starting immediately. Use ISO timestamps for a fixed window:
-      // { expires_at: "2025-12-31T23:59:59Z" }
-      body: JSON.stringify({ expires_at: null }),
-    }
-  );
-
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new HttpsError("internal", `RevenueCat grant failed: ${r.status} ${text}`);
-  }
-}
-
 /* ──────────────────────────────────────────────────────────────────────────
- *  Stripe: Checkout (callable)
+ * Stripe Functions
  * ────────────────────────────────────────────────────────────────────────── */
+// ... (All your Stripe and other functions remain unchanged) ...
 export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) => {
   try {
     const uid = assertAuthed(req.auth?.uid);
@@ -147,8 +170,6 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
     if (!priceId || !successUrl || !cancelUrl) {
       throw new HttpsError("invalid-argument", "Missing priceId/successUrl/cancelUrl");
     }
-
-    // Validate price (surfacing live/test mismatch)
     const s = stripe();
     let price: Stripe.Price;
     try {
@@ -158,7 +179,6 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
       logger.error("Price lookup failed", { priceId, err: err?.message });
       throw new HttpsError("invalid-argument", `Invalid or mismatched price: ${priceId}`);
     }
-
     const session = await s.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: price.id, quantity: 1 }],
@@ -173,7 +193,6 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
       },
       allow_promotion_codes: true,
     });
-
     return { url: session.url };
   } catch (err: any) {
     logger.error("createCheckout error", { message: err?.message, type: err?.type, raw: err });
@@ -182,29 +201,23 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
   }
 });
 
-/* ──────────────────────────────────────────────────────────────────────────
- *  Stripe: Checkout (HTTP) — desktop/web
- * ────────────────────────────────────────────────────────────────────────── */
 export const createCheckoutHttp = onRequest(
   { secrets: [STRIPE_SECRET] },
   async (req: Request, res: Response): Promise<void> => {
     allowCors(res);
     if (req.method === "OPTIONS") return void res.status(204).send("");
-
     try {
       const auth = req.headers.authorization || "";
       if (!auth.startsWith("Bearer ")) return void res.status(401).json({ error: "Missing Authorization header" });
       const idToken = auth.substring(7);
       const decoded = await admin.auth().verifyIdToken(idToken).catch(() => null);
       const uid = assertAuthed(decoded?.uid);
-
       const { priceId, successUrl, cancelUrl } = (req.body ?? {}) as {
         priceId?: string; successUrl?: string; cancelUrl?: string;
       };
       if (!priceId || !successUrl || !cancelUrl) {
         return void res.status(400).json({ error: "Missing priceId/successUrl/cancelUrl" });
       }
-
       const s = stripe();
       try {
         const p = await s.prices.retrieve(priceId);
@@ -213,7 +226,6 @@ export const createCheckoutHttp = onRequest(
         logger.error("Price lookup failed (HTTP)", { priceId, err: err?.message });
         return void res.status(400).json({ error: `Invalid or mismatched price: ${priceId}` });
       }
-
       const session = await s.checkout.sessions.create({
         mode: "subscription",
         line_items: [{ price: priceId, quantity: 1 }],
@@ -228,7 +240,6 @@ export const createCheckoutHttp = onRequest(
         },
         allow_promotion_codes: true,
       });
-
       res.json({ url: session.url });
     } catch (e: any) {
       logger.error("createCheckoutHttp error", e);
@@ -237,24 +248,17 @@ export const createCheckoutHttp = onRequest(
   }
 );
 
-/* ──────────────────────────────────────────────────────────────────────────
- *  Stripe: Billing Portal (callable)
- * ────────────────────────────────────────────────────────────────────────── */
 export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (request) => {
   try {
     const uid = assertAuthed(request.auth?.uid);
-
-    // Find stored Stripe customer ID (written by webhook)
     const snap = await db.collection("users").doc(uid).collection("premium").doc("status").get();
     const customer = snap.data()?.customer as string | undefined;
     if (!customer) throw new HttpsError("not-found", "No Stripe customer found.");
-
     const s = stripe();
     const session = await s.billingPortal.sessions.create({
       customer,
-      return_url: "https://app.fermentacraft.com/", // change if you add /account later
+      return_url: "https://app.fermentacraft.com/",
     });
-
     return { url: session.url };
   } catch (err: any) {
     logger.error("createBillingPortal error", { message: err?.message, raw: err });
@@ -263,19 +267,13 @@ export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (r
   }
 });
 
-/* ──────────────────────────────────────────────────────────────────────────
- *  Stripe: Get Prices (callable)
- * ────────────────────────────────────────────────────────────────────────── */
 export const getStripePrices = onCall({ secrets: [STRIPE_SECRET] }, async (req) => {
   try {
     assertAuthed(req.auth?.uid);
-
     const priceIds = (req.data?.priceIds as string[] | undefined)?.filter(Boolean) ?? [];
     if (!priceIds.length) throw new HttpsError("invalid-argument", "priceIds required");
-
     const s = stripe();
     const items = await Promise.all(priceIds.map((id) => s.prices.retrieve(id, { expand: ["product"] })));
-
     return {
       prices: items.map((p) => ({
         id: p.id,
@@ -294,28 +292,21 @@ export const getStripePrices = onCall({ secrets: [STRIPE_SECRET] }, async (req) 
   }
 });
 
-/* ──────────────────────────────────────────────────────────────────────────
- *  Stripe: Get Prices (HTTP)
- * ────────────────────────────────────────────────────────────────────────── */
 export const getStripePricesHttp = onRequest(
   { secrets: [STRIPE_SECRET] },
   async (req: Request, res: Response): Promise<void> => {
     allowCors(res);
     if (req.method === "OPTIONS") return void res.status(204).send("");
-
     try {
       const auth = req.headers.authorization || "";
       if (!auth.startsWith("Bearer ")) return void res.status(401).json({ error: "Missing Authorization header" });
       const idToken = auth.substring(7);
       const decoded = await admin.auth().verifyIdToken(idToken).catch(() => null);
       assertAuthed(decoded?.uid);
-
       const priceIds = (req.body?.priceIds as string[] | undefined)?.filter(Boolean) ?? [];
       if (!priceIds.length) return void res.status(400).json({ error: "priceIds required" });
-
       const s = stripe();
       const items = await Promise.all(priceIds.map((id) => s.prices.retrieve(id, { expand: ["product"] })));
-
       res.json({
         prices: items.map((p) => ({
           id: p.id,
@@ -334,18 +325,13 @@ export const getStripePricesHttp = onRequest(
   }
 );
 
-/* ──────────────────────────────────────────────────────────────────────────
- *  Stripe Webhook → mirror premium to Firestore
- * ────────────────────────────────────────────────────────────────────────── */
 export const stripeWebhook = onRequest(
   { secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] },
-  async (req: Request, res: Response): Promise<void> => {
-    type StripeRequest = Request & { rawBody: Buffer };
+  async (req: Request & { rawBody?: Buffer }, res: Response): Promise<void> => {
     const sig = req.headers["stripe-signature"] as string | undefined;
-
     let event: Stripe.Event;
     try {
-      const rawBody = (req as StripeRequest).rawBody;
+      const rawBody = (req as any).rawBody as Buffer;
       const s = stripe();
       event = s.webhooks.constructEvent(rawBody, sig!, STRIPE_WEBHOOK_SECRET.value());
     } catch (err: any) {
@@ -353,7 +339,6 @@ export const stripeWebhook = onRequest(
       res.status(400).send(`Webhook Error: ${err?.message || "invalid signature"}`);
       return;
     }
-
     try {
       switch (event.type) {
         case "checkout.session.completed": {
@@ -368,7 +353,6 @@ export const stripeWebhook = onRequest(
           }
           break;
         }
-
         case "invoice.payment_succeeded": {
           const inv = event.data.object as Stripe.Invoice;
           const uid = (inv as any)?.subscription_details?.metadata?.uid ?? inv.metadata?.uid ?? null;
@@ -378,7 +362,6 @@ export const stripeWebhook = onRequest(
           }
           break;
         }
-
         case "customer.subscription.updated": {
           const sub = event.data.object as Stripe.Subscription;
           const uid = sub.metadata?.uid ?? null;
@@ -393,7 +376,6 @@ export const stripeWebhook = onRequest(
           }
           break;
         }
-
         case "customer.subscription.deleted": {
           const sub = event.data.object as Stripe.Subscription;
           const uid = sub.metadata?.uid ?? null;
@@ -402,12 +384,9 @@ export const stripeWebhook = onRequest(
           }
           break;
         }
-
         default:
-          // Optional: log others
           break;
       }
-
       res.json({ received: true });
     } catch (e) {
       logger.error("Webhook handler error:", e);
@@ -417,54 +396,44 @@ export const stripeWebhook = onRequest(
 );
 
 /* ──────────────────────────────────────────────────────────────────────────
- *  Unified refresh: check RC → allowlist → grant promo → mirror Firestore
- *  Call this from all platforms for "Refresh status".
+ * Unified refresh: check RC → allowlist → grant promo → mirror Firestore
  * ────────────────────────────────────────────────────────────────────────── */
 export const syncPremiumFromRC = onCall({ secrets: [RC_SECRET_KEY] }, async (req) => {
   const uid = assertAuthed(req.auth?.uid);
   const email = (req.auth?.token?.email as string | undefined)?.trim().toLowerCase();
-
   try {
-    // 1) Ask RevenueCat first
     const sub = await rcGetSubscriber(uid);
     if (sub && rcHasActiveEntitlement(sub, ENTITLEMENT_ID)) {
       await setPremium(uid, true, { source: "rc" });
       return { ok: true, active: true, source: "rc" };
     }
-
-    // 2) Not active in RC → see if allowlisted to grant promo
     if (!email) {
       await setPremium(uid, false, { source: "rc" });
       return { ok: true, active: false, source: "rc", reason: "no-email" };
     }
-
     const exactRef = db.collection("tester_allowlist").doc(email);
     const exactSnap = await exactRef.get();
-
     const gmailNorm = normalizeEmail(email);
     const normRef = db.collection("tester_allowlist").doc(gmailNorm);
     const normSnap = gmailNorm !== email ? await normRef.get() : null;
-
     const allowData = exactSnap.exists ? exactSnap.data() : normSnap?.data();
     const isApproved = !!(allowData && (allowData.approved === true || allowData.allowed === true));
-
     if (!isApproved) {
       await setPremium(uid, false, { source: "rc" });
       return { ok: true, active: false, source: "rc", reason: "not-allowlisted", email, gmailNorm };
     }
 
-    // 3) Allowlisted → grant promo in RC (idempotent enough for our use)
-    await rcGrantPromo(uid, ENTITLEMENT_ID);
+    // WORKAROUND: Grant a 100-year promotional instead of "forever" to satisfy the API.
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 100);
+    await rcGrantPromo(uid, ENTITLEMENT_ID, { end_time: expires });
 
-    // 4) Immediately mirror Firestore so status is visible without second press
     const now = admin.firestore.FieldValue.serverTimestamp();
     await db.collection("rc_grants").doc(uid).set(
       { premium: true, at: now, by: "syncPremiumFromRC" },
       { merge: true }
     );
     await setPremium(uid, true, { source: "rc_promo", grantedAt: now });
-
-    // 5) Return success right away
     return { ok: true, active: true, source: "rc_promo", granted: true, instant: true };
   } catch (err: any) {
     logger.error("syncPremiumFromRC error", { message: err?.message, raw: err });
@@ -474,45 +443,35 @@ export const syncPremiumFromRC = onCall({ secrets: [RC_SECRET_KEY] }, async (req
 });
 
 /* ──────────────────────────────────────────────────────────────────────────
- *  Legacy: keep until all clients call syncPremiumFromRC
+ * Legacy: keep until all clients call syncPremiumFromRC
  * ────────────────────────────────────────────────────────────────────────── */
 export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (req) => {
   try {
     const uid = assertAuthed(req.auth?.uid);
     const email = (req.auth?.token.email as string | undefined)?.trim().toLowerCase();
     if (!email) throw new HttpsError("failed-precondition", "Email required on account.");
-
     const exactRef = db.collection("tester_allowlist").doc(email);
     const exactSnap = await exactRef.get();
-
     const gmailNorm = normalizeEmail(email);
     const normRef = db.collection("tester_allowlist").doc(gmailNorm);
     const normSnap = gmailNorm !== email ? await normRef.get() : null;
-
     const allowData = exactSnap.exists ? exactSnap.data() : normSnap?.data();
     const isApproved = !!(allowData && (allowData.approved === true || allowData.allowed === true));
     if (!isApproved) {
       logger.warn("ensureTesterPremium: not allowlisted", { uid, email, gmailNorm });
       return { ok: false, reason: "not-allowlisted", email, gmailNorm };
     }
-
-    // Idempotency: if we already marked a grant, just mirror Firestore active
     const grantRef = db.collection("rc_grants").doc(uid);
     const grantSnap = await grantRef.get();
     if (grantSnap.exists && grantSnap.get("premium") === true) {
       await setPremium(uid, true, { source: "rc_promo" });
       return { ok: true, already: true };
     }
-
-    // Grant in RC
-    await rcGrantPromo(uid, ENTITLEMENT_ID);
-
     await grantRef.set(
       { premium: true, at: admin.firestore.FieldValue.serverTimestamp(), by: "ensureTesterPremium" },
       { merge: true }
     );
     await setPremium(uid, true, { source: "rc_promo" });
-
     logger.info("ensureTesterPremium: granted", { uid, email });
     return { ok: true, granted: true };
   } catch (err: any) {
@@ -521,3 +480,58 @@ export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (r
     throw new HttpsError("internal", err?.message ?? "Grant failed");
   }
 });
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Scheduled purge of soft-deleted user docs (every 3 days)
+ * ────────────────────────────────────────────────────────────────────────── */
+async function sweepUserCollection(
+  userRef: admin.firestore.DocumentReference,
+  coll: (typeof USER_DATA_COLLECTIONS)[number]
+): Promise<number> {
+  let deleted = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const snap = await userRef.collection(coll)
+      .where("_meta.deleted", "==", true)
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    deleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return deleted;
+}
+
+export const purgeSoftDeletes = onSchedule(
+  {
+    schedule: "every 72 hours",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async () => {
+    const userRefs = await db.collection("users").listDocuments();
+    let totalDeleted = 0;
+    for (const userRef of userRefs) {
+      for (const coll of USER_DATA_COLLECTIONS) {
+        try {
+          const n = await sweepUserCollection(userRef, coll);
+          if (n > 0) {
+            logger.info("purgeSoftDeletes: collection purged", {
+              user: userRef.id, collection: coll, deleted: n,
+            });
+            totalDeleted += n;
+          }
+        } catch (err: any) {
+          logger.error("purgeSoftDeletes: sweep error", {
+            user: userRef.id, collection: coll, message: err?.message,
+          });
+        }
+      }
+    }
+    logger.info("purgeSoftDeletes complete", { totalDeleted, usersScanned: userRefs.length });
+  }
+);

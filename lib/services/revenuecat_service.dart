@@ -16,7 +16,7 @@ class RevenueCatService {
   static final instance = RevenueCatService._();
 
   // ── Configure your keys ────────────────────────────────────────────────────
-  static const _androidKey = 'goog_UtmkZanhtAfZZhUtNfrKGiBueUu';
+  static const _androidKey = 'goog_NLVqxCUYZETbdnxlAqMHfjiXAzx';
   static const _iosKey     = ''; // add when shipping iOS
   static const entitlementId = 'premium';
 

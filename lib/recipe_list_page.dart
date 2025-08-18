@@ -32,7 +32,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
   SortMode _sortMode = SortMode.dateCreated;
   bool _showArchived = false;
 
-  IconData _iconForTag(String tag) {
+  IconData _iconForCategory(String tag) {
     switch (tag.toLowerCase()) {
       case 'cider':
         return Icons.local_drink_outlined;
@@ -51,50 +51,40 @@ class _RecipeListPageState extends State<RecipeListPage> {
         return Icons.star_outline;
       case 'archived':
         return Icons.archive_outlined;
+      case 'uncategorized':
+        return Icons.folder_open_outlined;
       case 'no tag':
         return Icons.label_off_outlined;
       default:
         return Icons.label_outline;
     }
   }
+Color _colorForCategory(BuildContext context, String category) {
+  final cs = Theme.of(context).colorScheme;
+  final seed = category.hashCode;
+  final palette = <Color>[
+    cs.primary, cs.tertiary, cs.secondary,
+    cs.primaryContainer, cs.tertiaryContainer, cs.secondaryContainer,
+  ];
+  return palette[(seed.abs()) % palette.length];
+}
 
-  Color _colorForTag(BuildContext context, String tag) {
-    final cs = Theme.of(context).colorScheme;
-    final seed = tag.hashCode;
-    final palette = <Color>[
-      cs.primary,
-      cs.tertiary,
-      cs.secondary,
-      cs.primaryContainer,
-      cs.tertiaryContainer,
-      cs.secondaryContainer,
-    ];
-    return palette[(seed.abs()) % palette.length];
-  }
-
-  Widget _tagHeader(BuildContext context, String tag, int count) {
-    final icon = _iconForTag(tag);
-    final color = _colorForTag(context, tag);
-    return Row(
-      children: [
-        Icon(icon, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            tag,
-            style: Theme.of(context).textTheme.titleMedium,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Chip(
-          label: Text('$count'),
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      ],
-    );
-  }
+Widget _categoryHeader(BuildContext context, String category, int count) {
+  final color = _colorForCategory(context, category);
+  return Row(
+    children: [
+      Icon(_iconForCategory(category), color: color),
+      const SizedBox(width: 8),
+      Text(category, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(width: 8),
+      Chip(
+        label: Text('$count'),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ],
+  );
+}
 
   // ----------------- Key resolution (handles legacy/null keys) ----------------
 
@@ -389,15 +379,12 @@ class _RecipeListPageState extends State<RecipeListPage> {
               break;
           }
 
-          final Map<String, List<RecipeModel>> grouped = {};
-          for (final recipe in filtered) {
-            final tags =
-                recipe.tags.isEmpty ? ['No Tag'] : recipe.tags.map((t) => t.name);
-            for (final tag in tags) {
-              grouped.putIfAbsent(tag, () => []).add(recipe);
-            }
-          }
-          final sortedKeys = grouped.keys.toList()..sort();
+        final Map<String, List<RecipeModel>> grouped = {};
+        for (final recipe in filtered) {
+          final key = recipe.categoryLabel; // ✅ single category
+          grouped.putIfAbsent(key, () => []).add(recipe);
+        }
+        final sortedKeys = grouped.keys.toList()..sort();
 
           return ListView.builder(
             itemCount: sortedKeys.length,
@@ -409,13 +396,11 @@ class _RecipeListPageState extends State<RecipeListPage> {
                 margin:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: ExpansionTile(
-                  title: _tagHeader(context, tag, recipes.length),
+                  title: _categoryHeader(context, tag, recipes.length),
                   initiallyExpanded: i == 0,
                   children: recipes.map((recipe) {
-                    final created = _date.format(recipe.createdAt);
-                    final tagLine = recipe.tags.isNotEmpty
-                        ? 'Tags: ${recipe.tags.map((t) => t.name).join(", ")}'
-                        : null;
+                  final created = _date.format(recipe.createdAt);
+
 
                     return Dismissible(
                       // Safe, stable key (prefer id; fallbacks for legacy items)
@@ -447,30 +432,22 @@ class _RecipeListPageState extends State<RecipeListPage> {
                         }
                       },
                       child: ListTile(
-                        title: Text(recipe.name),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (tagLine != null) Text(tagLine),
-                            Text('Created: $created'),
-                          ],
-                        ),
-                        isThreeLine: tagLine != null,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => RecipeDetailPage(
-                                recipe: recipe,
-                                // Pass a non-null, correct key for legacy items too
-                                recipeKey: _resolveHiveKeyFor(recipe),
-                              ),
-                            ),
-                          );
-                        },
-                        trailing: _moreMenu(recipe),
-                        onLongPress: () => _toggleArchiveStatus(recipe),
-                      ),
+  title: Text(recipe.name),
+  subtitle: Text('Created: $created'),
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RecipeDetailPage(
+          recipe: recipe,
+          recipeKey: _resolveHiveKeyFor(recipe),
+        ),
+      ),
+    );
+  },
+  trailing: _moreMenu(recipe),
+  onLongPress: () => _toggleArchiveStatus(recipe),
+),
                     );
                   }).toList(),
                 ),

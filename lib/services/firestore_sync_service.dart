@@ -9,6 +9,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:logger/logger.dart';
 
 import '../utils/boxes.dart';
 import '../models/batch_model.dart';
@@ -25,6 +26,8 @@ typedef JsonMap = Map<String, dynamic>;
 class FirestoreSyncService {
   FirestoreSyncService._();
   static final FirestoreSyncService instance = FirestoreSyncService._();
+
+  final _log = Logger();
 
   // Keep these in sync with setup() / Boxes.*
   final _userBoxNames = const [
@@ -328,17 +331,21 @@ class FirestoreSyncService {
         final snap = await FirestorePaths.coll(uid, boxName).get();
         for (final doc in snap.docs) {
           try {
-            // pass remote docId so we can tombstone numeric tag ids
-            await _applyRemoteDoc(boxName, doc.id, doc.data(),
-                preferRemote: true);
+            await _applyRemoteDoc(
+              boxName,
+              doc.id,
+              doc.data(),
+            );
           } catch (e, st) {
             if (kDebugMode) {
               print('bootstrapPull apply fail [$boxName]: $e\n$st');
             }
+            _log.w('bootstrapPull apply fail [$boxName]', error: e, stackTrace: st);
           }
         }
       } catch (e, st) {
         if (kDebugMode) print('bootstrapPull fail [$boxName]: $e\n$st');
+        _log.w('bootstrapPull fail [$boxName]', error: e, stackTrace: st);
       }
     }
 
@@ -350,6 +357,7 @@ class FirestoreSyncService {
       }
     } catch (e, st) {
       if (kDebugMode) print('bootstrapPull settings fail: $e\n$st');
+      _log.w('bootstrapPull settings fail', error: e, stackTrace: st);
     }
   }
 
@@ -363,19 +371,17 @@ class FirestoreSyncService {
             if (value == null) continue;
             final json = (value as dynamic).toJson() as JsonMap;
             final id = key.toString();
-
-
-
-
             await _pushLocalDocWithId(uid, boxName, id, json, sourceObject: value);
           } catch (e, st) {
             if (kDebugMode) {
               print('bootstrapPush item fail [$boxName,$key]: $e\n$st');
             }
+            _log.w('bootstrapPush item fail [$boxName,$key]', error: e, stackTrace: st);
           }
         }
       } catch (e, st) {
         if (kDebugMode) print('bootstrapPush box fail [$boxName]: $e\n$st');
+        _log.w('bootstrapPush box fail [$boxName]', error: e, stackTrace: st);
       }
     }
 
@@ -386,15 +392,16 @@ class FirestoreSyncService {
         final key = '__settings__::singleton';
         final s = jsonEncode(settingsMap);
         if (_lastSentJson[key] != s) {
-          _lastSentJson[key] = s;
           await FirestorePaths.settingsDoc(uid).set({
             ...settingsMap,
             '_meta': {'updatedAt': FieldValue.serverTimestamp()}
           }, SetOptions(merge: true));
+          _lastSentJson[key] = s; // only mark after success
         }
       }
     } catch (e, st) {
       if (kDebugMode) print('bootstrapPush settings fail: $e\n$st');
+      _log.w('bootstrapPush settings fail', error: e, stackTrace: st);
     }
   }
 
@@ -432,19 +439,17 @@ class FirestoreSyncService {
             final latest = _pendingPayloads.remove(k);
             _debouncers.remove(k);
             if (latest == null) return;
-
-
-
-
             await _pushLocalDocWithId(uid, boxName, id, latest, sourceObject: val);
           } catch (e, st) {
             if (kDebugMode) {
               print('Hive debounce flush fail [$boxName,$id]: $e\n$st');
             }
+            _log.w('Hive debounce flush fail [$boxName,$id]', error: e, stackTrace: st);
           }
         });
       } catch (e, st) {
         if (kDebugMode) print('Hive watcher error [$boxName]: $e\n$st');
+        _log.w('Hive watcher error [$boxName]', error: e, stackTrace: st);
       }
     });
   }
@@ -458,15 +463,19 @@ class FirestoreSyncService {
         try {
           final data = change.doc.data();
           if (data == null) continue;
-          // pass remote docId so we can handle legacy numeric tag docs
-          await _applyRemoteDoc(boxName, change.doc.id, data,
-              preferRemote: true);
+          await _applyRemoteDoc(
+            boxName,
+            change.doc.id,
+            data,
+          );
         } catch (e, st) {
           if (kDebugMode) print('applyRemoteDoc fail [$boxName]: $e\n$st');
+          _log.w('applyRemoteDoc fail [$boxName]', error: e, stackTrace: st);
         }
       }
     }, onError: (e, st) {
       if (kDebugMode) print('Firestore watcher error [$boxName]: $e\n$st');
+      _log.w('Firestore watcher error [$boxName]', error: e, stackTrace: st);
     });
   }
 
@@ -485,14 +494,20 @@ class FirestoreSyncService {
           final key = '__settings__::singleton';
           final s = jsonEncode(map);
           if (_lastSentJson[key] == s) return;
-          _lastSentJson[key] = s;
 
-          await FirestorePaths.settingsDoc(uid).set({
-            ...map,
-            '_meta': {'updatedAt': FieldValue.serverTimestamp()}
-          }, SetOptions(merge: true));
+          try {
+            await FirestorePaths.settingsDoc(uid).set({
+              ...map,
+              '_meta': {'updatedAt': FieldValue.serverTimestamp()}
+            }, SetOptions(merge: true));
+            _lastSentJson[key] = s; // only after success
+          } catch (e, st) {
+            if (kDebugMode) print('settings push fail: $e\n$st');
+            _log.w('settings push fail', error: e, stackTrace: st);
+          }
         } catch (e, st) {
           if (kDebugMode) print('settings push fail: $e\n$st');
+          _log.w('settings push fail', error: e, stackTrace: st);
         }
       });
     });
@@ -508,6 +523,7 @@ class FirestoreSyncService {
         await _applyRemoteSettings(data);
       } catch (e, st) {
         if (kDebugMode) print('settings pull fail: $e\n$st');
+        _log.w('settings pull fail', error: e, stackTrace: st);
       }
     });
   }
@@ -539,72 +555,93 @@ class FirestoreSyncService {
   }
 
   Future<void> _pushLocalDocWithId(
-      String uid,
-      String boxName,
-      String id,
-      JsonMap json, {
-        dynamic sourceObject,
-      }) async {
+    String uid,
+    String boxName,
+    String id,
+    JsonMap json, {
+    dynamic sourceObject,
+  }) async {
     final cleanId = id.trim();
     if (cleanId.isEmpty) {
       if (kDebugMode) print('Skip push: empty key id for $boxName: $json');
       return;
     }
-// Ensure recipes/batches always emit a stable 'tags' array to Firestore.
-    // Ensure recipes/batches always emit a stable 'tags' array to Firestore.
-// Ensure recipes/batches always emit a stable 'tags' array to Firestore.
-if (boxName == Boxes.recipes || boxName == Boxes.batches) {
-  final rawTags = (json['tags'] as List?);
 
-  // Look for stronger local sources
-  dynamic tagRefs;
-  dynamic tagsLegacy;
-  try { tagRefs = (sourceObject as dynamic).tagRefs; } catch (_) {}
-  try { tagsLegacy = (sourceObject as dynamic).tagsLegacy; } catch (_) {}
+    // ---------- TAGS WRITE POLICY (prevents accidental stripping) ----------
+    if (boxName == Boxes.recipes || boxName == Boxes.batches) {
+      final rawTags = (json['tags'] as List?);
 
-  final hasRefs   = tagRefs is Iterable && tagRefs.isNotEmpty;
-  final hasLegacy = tagsLegacy is Iterable && tagsLegacy.isNotEmpty;
+      // Canonical local sources (tri-state: unknown vs empty vs non-empty)
+      dynamic refsList;
+      dynamic legacyList;
+      List? plainList;
+      try { refsList = (sourceObject as dynamic).tagRefs; } catch (_) {}
+      try { legacyList = (sourceObject as dynamic).tagsLegacy; } catch (_) {}
+      try { plainList = (sourceObject as dynamic).tags as List?; } catch (_) {}
 
-  // Did we previously send a non-empty tags array for this doc?
-  final cacheKey = _keyOf(boxName, cleanId);
-  bool lastSentHadTags = false;
-  try {
-    final prev = _lastSentJson[cacheKey];
-    if (prev != null) {
-      final prevJson = Map<String, dynamic>.from(jsonDecode(prev));
-      final prevTags = prevJson['tags'];
-      lastSentHadTags = (prevTags is List) && prevTags.isNotEmpty;
+      final refsKnown     = refsList != null;
+      final refsNonEmpty  = refsKnown && (refsList is Iterable) && refsList.isNotEmpty;
+
+      final legacyKnown   = legacyList != null;
+      final legacyNonEmpty= legacyKnown && (legacyList is Iterable) && legacyList.isNotEmpty;
+
+      final plainKnown    = plainList != null;
+      final plainNonEmpty = (plainList?.isNotEmpty ?? false);
+
+      // What did we last send (to gate intentional clears)?
+      final cacheKey = _keyOf(boxName, cleanId);
+      bool lastSentHadTags = false;
+      try {
+        final prev = _lastSentJson[cacheKey];
+        if (prev != null) {
+          final prevJson = Map<String, dynamic>.from(jsonDecode(prev));
+          final prevTags = prevJson['tags'];
+          lastSentHadTags = (prevTags is List) && prevTags.isNotEmpty;
+        }
+      } catch (_) {}
+
+      // Only treat "clear" as intentional if:
+      //  - the payload explicitly carries [] AND
+      //  - we previously sent non-empty tags AND
+      //  - every known local canonical source has no tags.
+      final payloadExplicitlyEmpty =
+          json.containsKey('tags') && (rawTags is List) && rawTags.isEmpty;
+
+      final canonicalKnownEmpty =
+          (!refsKnown || !refsNonEmpty) &&
+          (!legacyKnown || !legacyNonEmpty) &&
+          (!plainKnown || !plainNonEmpty);
+
+      final shouldExplicitClear =
+          lastSentHadTags && payloadExplicitlyEmpty && canonicalKnownEmpty;
+
+      // Only write tags when we truly mean to (any local source has tags),
+      // otherwise omit the field so Firestore preserves whatever it has.
+      final hasLocalTags =
+          (rawTags is List && rawTags.isNotEmpty) ||
+          refsNonEmpty ||
+          legacyNonEmpty ||
+          plainNonEmpty;
+
+      if (hasLocalTags || shouldExplicitClear) {
+        // ignore: unnecessary_type_check
+        final preferred = (rawTags != null && (rawTags is List))
+            ? rawTags
+            : (plainList ?? const []);
+        json['tags'] =
+            _normalizeTagsForJson(sourceObject: sourceObject, rawTags: preferred);
+      } else {
+        json.remove('tags'); // preserve server value
+      }
     }
-  } catch (_) {}
-
-  // Only treat tags as a "local signal" if:
-  //  - we have non-empty raw tags, OR
-  //  - we have non-empty refs/legacy, OR
-  //  - we previously had non-empty tags and now intend to clear them (raw empty).
-  final tagsPresent = rawTags is List;
-  final tagsNonEmpty = tagsPresent && rawTags.isNotEmpty;
-
-  final shouldWriteTags = tagsNonEmpty || hasRefs || hasLegacy || (tagsPresent && !tagsNonEmpty && lastSentHadTags);
-
-  final normalized = _normalizeTagsForJson(
-    sourceObject: sourceObject,
-    rawTags: rawTags,
-  );
-
-  if (shouldWriteTags) {
-    json['tags'] = normalized;    // write (possibly empty → explicit clear)
-  } else {
-    json.remove('tags');           // don't clobber server during bootstrap window
-  }
-}
-
-
+    // ----------------------------------------------------------------------
 
     // ---- TAG POLICY ENFORCEMENT (client-side) ----
     if (boxName == Boxes.tags) {
       // never push numeric tag IDs
       if (_isNumericId(cleanId)) {
         if (kDebugMode) print('Skip push of numeric tag id "$cleanId"');
+        _log.i('Skip push of numeric tag id "$cleanId"');
         return;
       }
       // rules expect docId == id == name
@@ -618,20 +655,29 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
     final key = _keyOf(boxName, cleanId);
     final s = jsonEncode(json);
     if (_lastSentJson[key] == s) return;
-    _lastSentJson[key] = s;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    await FirestorePaths.doc(uid, boxName, cleanId).set({
-      ...json,
-      'id': cleanId, // ensure remote carries the id too
-      '_meta': {
-        'updatedAt': FieldValue.serverTimestamp(),
-        'deviceUpdatedAt': now,
-        'deleted': false,
+    try {
+      await FirestorePaths.doc(uid, boxName, cleanId).set({
+        ...json,
+        'id': cleanId, // ensure remote carries the id too
+        '_meta': {
+          'updatedAt': FieldValue.serverTimestamp(),
+          'deviceUpdatedAt': now,
+          'deleted': false,
+        }
+      }, SetOptions(merge: true));
+      _lastSentJson[key] = s; // only mark after success
+      await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
+    } catch (e, st) {
+      // On failure, don't poison the equality cache
+      _lastSentJson.remove(key);
+      if (kDebugMode) {
+        print('Firestore set failed [$boxName/$cleanId]: $e\n$st');
       }
-    }, SetOptions(merge: true));
-
-    await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
+      _log.e('Firestore set failed [$boxName/$cleanId]', error: e, stackTrace: st);
+      rethrow;
+    }
   }
 
   Future<void> _markRemoteDeleted(String uid, String boxName, String id) async {
@@ -656,9 +702,8 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
   Future<void> _applyRemoteDoc(
     String boxName,
     String remoteDocId,
-    JsonMap data, {
-    required bool preferRemote,
-  }) async {
+    JsonMap data,
+  ) async {
     try {
       final meta = (data['_meta'] as Map?) ?? {};
       final deviceUpdatedAt = (meta['deviceUpdatedAt'] as num?)?.toInt() ?? 0;
@@ -689,8 +734,7 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
 
       // ---- TAG POLICY CLEANUP (server -> client) ----
       if (boxName == Boxes.tags) {
-        // If server docId was numeric (legacy) and differs from canonical,
-        // tombstone the numeric one so it doesn't keep coming back.
+        // tombstone legacy numeric doc id if it differs from canonical
         if (remoteDocId != id && _isNumericId(remoteDocId)) {
           try {
             await box.delete(remoteDocId);
@@ -708,10 +752,9 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
       }
       // -----------------------------------------------
 
-      // Also tombstone any mismatched non-numeric docId (case-insensitive match allowed)
+      // Also tombstone any mismatched non-numeric docId (case-insensitive ok)
       if (remoteDocId != id && _uid != null) {
-        final sameIgnoringCase =
-            remoteDocId.toLowerCase() == id.toLowerCase();
+        final sameIgnoringCase = remoteDocId.toLowerCase() == id.toLowerCase();
         if (!sameIgnoringCase) {
           try {
             await _markRemoteDeleted(_uid!, boxName, remoteDocId);
@@ -722,32 +765,87 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
       // Start with a shallow clean copy
       final clean = Map<String, dynamic>.from(data)..remove('_meta');
 
-      // ---- Server→Client sanitizer for embedded tags on recipes/batches ----
-      // ✅ FIXED: This section now preserves all tag data, not just the name.
+      // ---- Merge policy to avoid tag loss on pull ----
       if (boxName == Boxes.recipes || boxName == Boxes.batches) {
-        final rawTags = (clean['tags'] as List?) ?? const [];
-        final seen = <String>{};
-        final List<Map<String, dynamic>> tagsSanitized = [];
-        for (final t in rawTags) {
-          try {
-            if (t is Map) {
-              final m = Map<String, dynamic>.from(t);
-              final name = (m['name'] ?? m['id'] ?? '').toString().trim();
-              if (name.isEmpty) continue;
-              final key = name.toLowerCase();
-              if (seen.add(key)) {
-                tagsSanitized.add({
-                  'id': name,
-                  'name': name,
-                  'iconKey': (m['iconKey'] ?? 'default') as String,
-                  'iconFontFamily': m['iconFontFamily'],
-                  'iconCodePoint': m['iconCodePoint'],
-                });
-              }
+        final remoteTags = (clean['tags'] as List?) ?? const [];
+        final remoteHasTags = remoteTags.isNotEmpty;
+
+        dynamic localObj;
+        try { localObj = await box.get(id); } catch (_) {}
+
+        bool localHasRefs = false;
+        bool localHasLegacy = false;
+        List? localTagsArray;
+        bool localHasTagsArray = false;
+
+        try { localHasRefs = (localObj?.tagRefs as dynamic)?.isNotEmpty == true; } catch (_) {}
+        try { localHasLegacy = (localObj?.tagsLegacy as dynamic)?.isNotEmpty == true; } catch (_) {}
+        try {
+          localTagsArray = (localObj as dynamic)?.tags as List?;
+          localHasTagsArray = localTagsArray != null && localTagsArray.isNotEmpty;
+        } catch (_) {}
+
+        // Last-sent fallback (helps the very first pull after a write)
+        final k = _keyOf(boxName, id);
+        bool lastSentHadTags = false;
+        List<dynamic> lastSentTags = const [];
+        try {
+          final prev = _lastSentJson[k];
+          if (prev != null) {
+            final prevJson = Map<String, dynamic>.from(jsonDecode(prev));
+            final prevTags = prevJson['tags'];
+            if (prevTags is List && prevTags.isNotEmpty) {
+              lastSentHadTags = true;
+              lastSentTags = prevTags;
             }
-          } catch (_) {}
+          }
+        } catch (_) {}
+
+        if (!remoteHasTags && (localHasRefs || localHasLegacy || localHasTagsArray || lastSentHadTags)) {
+          final chosenRaw = localHasTagsArray ? localTagsArray : (lastSentHadTags ? lastSentTags : null);
+          clean['tags'] = _normalizeTagsForJson(
+            sourceObject: localObj,
+            rawTags: chosenRaw,
+          );
+        } else {
+          // Otherwise sanitize what we got from remote (upgrade strings, dedupe)
+          final raw = (clean['tags'] as List?) ?? const [];
+          final seen = <String>{};
+          final List<Map<String, dynamic>> tagsSanitized = [];
+          for (final t in raw) {
+            try {
+              if (t is Map) {
+                final m = Map<String, dynamic>.from(t);
+                final name = (m['name'] ?? m['id'] ?? '').toString().trim();
+                if (name.isEmpty) continue;
+                final key = name.toLowerCase();
+                if (seen.add(key)) {
+                  tagsSanitized.add({
+                    'id': name,
+                    'name': name,
+                    'iconKey': (m['iconKey'] ?? 'default') as String,
+                    'iconFontFamily': m['iconFontFamily'],
+                    'iconCodePoint': m['iconCodePoint'],
+                  });
+                }
+              } else if (t is String) {
+                final name = t.trim();
+                if (name.isEmpty) continue;
+                final key = name.toLowerCase();
+                if (seen.add(key)) {
+                  tagsSanitized.add({
+                    'id': name,
+                    'name': name,
+                    'iconKey': 'default',
+                    'iconFontFamily': null,
+                    'iconCodePoint': null,
+                  });
+                }
+              }
+            } catch (_) {}
+          }
+          clean['tags'] = tagsSanitized;
         }
-        clean['tags'] = tagsSanitized;
       }
       // ---------------------------------------------------------------------
 
@@ -764,11 +862,28 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
         await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
         _lastSentJson[k] = jsonEncode(clean);
 
-        // Non-blocking canonicalization of tag refs → triggers second push with tags
         scheduleMicrotask(() async {
           try {
             final tagBox = Hive.box<Tag>(Boxes.tags);
             await obj.setTagsFromBox(obj.tags, tagBox); // calls save()
+          } catch (_) {}
+        });
+        return;
+      }
+
+      if (boxName == Boxes.batches && obj is BatchModel) {
+        await (box as Box<BatchModel>).put(id, obj);
+        await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
+        _lastSentJson[k] = jsonEncode(clean);
+
+        // Try dynamic tag-ref canonicalization for batches (if model provides it)
+        scheduleMicrotask(() async {
+          try {
+            final tagBox = Hive.box<Tag>(Boxes.tags);
+            final dyn = obj as dynamic;
+            if (dyn.setTagsFromBox != null) {
+              await dyn.setTagsFromBox(dyn.tags, tagBox); // calls save() if implemented
+            }
           } catch (_) {}
         });
         return;
@@ -780,6 +895,7 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
       _lastSentJson[k] = jsonEncode(clean);
     } catch (e, st) {
       if (kDebugMode) print('applyRemoteDoc exception [$boxName]: $e\n$st');
+      _log.w('applyRemoteDoc exception [$boxName]', error: e, stackTrace: st);
     }
   }
 
@@ -796,6 +912,7 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
       }
     } catch (e, st) {
       if (kDebugMode) print('applyRemoteSettings fail: $e\n$st');
+      _log.w('applyRemoteSettings fail', error: e, stackTrace: st);
     }
   }
 
@@ -838,13 +955,52 @@ if (boxName == Boxes.recipes || boxName == Boxes.batches) {
       _pendingPayloads.clear();
     } catch (e) {
       if (kDebugMode) print('Clear local data error: $e');
+      _log.w('Clear local data error', error: e);
+    }
+  }
+
+  // Flush any debounced, coalesced local writes immediately.
+  Future<void> _flushPendingNow(String uid) async {
+    for (final t in _debouncers.values) {
+      t.cancel();
+    }
+    _debouncers.clear();
+
+    final entries = _pendingPayloads.entries.toList();
+    _pendingPayloads.clear();
+
+    for (final e in entries) {
+      final k = e.key; // format: boxName::id
+      final sep = k.indexOf('::');
+      if (sep <= 0) continue;
+      final boxName = k.substring(0, sep);
+      final id = k.substring(sep + 2);
+      try {
+        final box = DataManagementService.getTypedBox(boxName);
+        final sourceObject = box.get(id);
+        if (sourceObject == null) continue;
+        await _pushLocalDocWithId(uid, boxName, id, e.value, sourceObject: sourceObject);
+      } catch (err, st) {
+        if (kDebugMode) {
+          print('flushPending fail [$boxName/$id]: $err\n$st');
+        }
+        _log.w('flushPending fail [$boxName/$id]', error: err, stackTrace: st);
+      }
     }
   }
 
   Future<void> forceSync() async {
     final uid = _uid;
     if (uid == null || !_enabled) return;
-    await _bootstrapMerge(uid);
+
+    // 1) Flush any debounced local changes
+    await _flushPendingNow(uid);
+
+    // 2) Push local → remote first so remote can't clobber fresh local edits
+    await _bootstrapPushLocal(uid);
+
+    // 3) Then pull remote → local to converge any remaining deltas
+    await _bootstrapPullRemote(uid);
   }
 
   // ------------------------------------------------------------------

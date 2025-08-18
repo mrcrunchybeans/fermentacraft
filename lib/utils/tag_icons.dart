@@ -13,7 +13,7 @@ const Map<String, IconData> kTagIconMap = {
 };
 
 /// Never throws. Unknown / null -> fallback icon.
-IconData iconForTagKey(String? key) {
+IconData iconForCategoryKey(String? key) {
   if (key == null) return kDefaultTagIcon;
   return kTagIconMap[key] ?? kDefaultTagIcon;
 }

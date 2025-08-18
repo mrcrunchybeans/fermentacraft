@@ -70,7 +70,6 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
             ? null
             : _notesController.text.trim(),
         createdAt: DateTime.now(),
-        tags: [],
         og: selectedRecipe?.og,
         fg: selectedRecipe?.fg,
         abv: selectedRecipe?.abv,

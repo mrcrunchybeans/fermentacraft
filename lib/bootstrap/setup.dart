@@ -150,6 +150,8 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
         }
       }
 
+      
+
       // Normalize any custom fields if your model supports it
       try {
         // ignore: invalid_use_of_visible_for_testing_member
@@ -319,14 +321,20 @@ Future<void> _sanitizeBatchEmbeddedTags() async {
       final b = batchBox.get(key);
       if (b == null) continue;
 
+      final tags = _getBatchEmbeddedTags(b);
+      if (tags.isEmpty) continue;
+
       bool dirty = false;
-      for (final t in b.tags) {
+      for (final t in tags) {
         if (!kTagIconMap.containsKey(t.iconKey)) {
           t.iconKey = keyFromLegacy(t.iconCodePoint, t.iconFontFamily);
           dirty = true;
         }
       }
-      if (dirty) await b.save();
+      if (dirty) {
+        _setBatchEmbeddedTags(b, tags); // write back to whichever field exists
+        await b.save();
+      }
     } catch (_) {
       // skip deleting batches by default
     }
@@ -389,4 +397,24 @@ void _setRefs(RecipeModel r, List<Tag> canon) {
   } catch (_) {
     // ignore on models without tagRefs
   }
+}
+
+// ---- Batch tag helpers (cross-version safe) ----
+List<Tag> _getBatchEmbeddedTags(BatchModel b) {
+  // Prefer legacy field if present; else current field; else empty.
+  try {
+    final legacy = (b as dynamic).tagsLegacy as List<Tag>?;
+    if (legacy != null) return legacy;
+  } catch (_) {}
+  try {
+    final current = (b as dynamic).tags as List<Tag>?;
+    if (current != null) return current;
+  } catch (_) {}
+  return const <Tag>[];
+}
+
+void _setBatchEmbeddedTags(BatchModel b, List<Tag> tags) {
+  // Try to write both; ignore if field is absent or final on this version.
+  try { (b as dynamic).tagsLegacy = tags; } catch (_) {}
+  try { (b as dynamic).tags = tags; } catch (_) {}
 }

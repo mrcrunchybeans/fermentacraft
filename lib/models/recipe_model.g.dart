@@ -39,6 +39,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       plannedOg: fields[14] as double?,
       plannedAbv: fields[15] as double?,
       isArchived: fields[16] as bool,
+      category: fields[18] as String?,
     )
       ..tagsLegacy = (fields[3] as List?)?.cast<Tag>()
       ..tagRefs = (fields[17] as HiveList?)?.castHiveList();
@@ -47,7 +48,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
   @override
   void write(BinaryWriter writer, RecipeModel obj) {
     writer
-      ..writeByte(18)
+      ..writeByte(19)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -83,7 +84,9 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       ..writeByte(15)
       ..write(obj.plannedAbv)
       ..writeByte(16)
-      ..write(obj.isArchived);
+      ..write(obj.isArchived)
+      ..writeByte(18)
+      ..write(obj.category);
   }
 
   @override

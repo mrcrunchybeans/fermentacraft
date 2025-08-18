@@ -3,7 +3,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/models/fermentation_stage.dart';
-import 'package:fermentacraft/models/tag.dart';
 import 'package:fermentacraft/utils/unit_conversion.dart';
 import 'package:logger/logger.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -19,24 +18,25 @@ import 'widgets/add_fermentation_stage_dialog.dart';
 import 'widgets/add_ingredient_dialog.dart';
 import 'utils/utils.dart';
 import 'models/recipe_model.dart';
-import 'widgets/tag_picker_dialog.dart';
 import 'widgets/add_yeast_dialog.dart';
 import 'dart:async';
 import 'models/purchase_transaction.dart';
 import 'models/unit_type.dart';
 import 'utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
-import 'package:fermentacraft/utils/tag_icons.dart';
 
 // NEW: gravity points estimator
 import 'services/gravity_service.dart';
 
 // Import the unique ID generator
-import '../utils/id.dart';
+import 'utils/id.dart';
 
 final logger = Logger();
-
-double calculateAbv(double og, double fg) => (og - fg) * 131.25;
+class _CategoryChoice {
+  final String label;
+  final IconData icon;
+  const _CategoryChoice(this.label, this.icon);
+}
 
 class RecipeBuilderPage extends StatefulWidget {
   const RecipeBuilderPage({
@@ -67,6 +67,122 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   final TextEditingController measuredMustSGController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
   TextEditingController notesController = TextEditingController();
+  final TextEditingController categoryController = TextEditingController();
+  final TextEditingController fgController = TextEditingController();
+_CategoryChoice? _selectedCategory;
+_CategoryChoice? _userCategory; // if user creates a custom category
+late final List<_CategoryChoice> _defaultCategories;
+late final _CategoryChoice _customSentinel;
+
+List<DropdownMenuItem<_CategoryChoice>> _categoryItems() {
+  final items = <_CategoryChoice>[
+    ..._defaultCategories,
+    if (_userCategory != null) _userCategory!,
+    _customSentinel,
+  ];
+  return items.map((c) {
+    return DropdownMenuItem<_CategoryChoice>(
+      value: c,
+      child: Row(
+        children: [
+          Icon(c.icon, size: 20),
+          const SizedBox(width: 10),
+          Text(c.label),
+        ],
+      ),
+    );
+  }).toList();
+}
+
+// NEW: dialog to create a custom category (name + icon)
+Future<void> _openCustomCategoryDialog() async {
+  final nameCtrl = TextEditingController();
+  IconData selectedIcon = Icons.label_outline;
+  final iconChoices = <IconData>[
+    Icons.wine_bar,
+    Icons.hive_outlined,
+    Icons.local_drink,
+    Icons.local_florist,
+    Icons.bubble_chart,
+    Icons.category_outlined,
+    Icons.local_bar,
+    Icons.emoji_food_beverage,
+    Icons.spa,
+    Icons.grass,
+  ];
+
+  final created = await showDialog<_CategoryChoice>(
+    context: context,
+    builder: (ctx) {
+      int picked = 0;
+      return StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Custom Category'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Category name',
+                  hintText: 'e.g., Cyser',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Icon', style: Theme.of(ctx).textTheme.titleSmall),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(iconChoices.length, (i) {
+                  final icon = iconChoices[i];
+                  final isSelected = i == picked;
+                  return ChoiceChip(
+                    label: Icon(icon, size: 18),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      setSt(() {
+                        picked = i;
+                        selectedIcon = iconChoices[picked];
+                      });
+                    },
+                  );
+                }),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final label = nameCtrl.text.trim();
+                if (label.isEmpty) return;
+                Navigator.pop(ctx, _CategoryChoice(label, selectedIcon));
+              },
+              child: const Text('Use'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  if (created != null) {
+    setState(() {
+      _userCategory = created;
+      _selectedCategory = created;
+      categoryController.text = created.label; // keep existing save path
+    });
+  }
+}
+
+
 
   // REPLACED: old OG fields
   double? _estimatedOG;        // from GravityService
@@ -79,7 +195,6 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
   Timer? sgToAbvDebounce;
   bool showAdvanced = false;
   double? sugarNeededGrams;
-  List<Tag> tags = [];
   double? targetMustSG;
   final TextEditingController targetMustSGController = TextEditingController();
   bool useAdjustedOG = false;
@@ -111,6 +226,30 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       }
     });
 
+      categoryController.text = widget.existingRecipe?.categoryLabel ?? '';
+_defaultCategories = const [
+  _CategoryChoice('Cider', Icons.local_drink),
+  _CategoryChoice('Mead', Icons.hive_outlined),
+  _CategoryChoice('Wine', Icons.wine_bar),
+  _CategoryChoice('Fruit Wine', Icons.local_florist),
+  _CategoryChoice('Seltzer', Icons.bubble_chart),
+  _CategoryChoice('Other', Icons.category_outlined),
+];
+_customSentinel = const _CategoryChoice('Custom…', Icons.add_circle_outline);
+
+final initialLabel = categoryController.text.trim();
+final match = _defaultCategories.where((c) => c.label.toLowerCase() == initialLabel.toLowerCase());
+if (initialLabel.isNotEmpty && match.isNotEmpty) {
+  _selectedCategory = match.first;
+} else if (initialLabel.isNotEmpty) {
+  // load existing non-default as a "user category"
+  _userCategory = _CategoryChoice(initialLabel, Icons.label_outline);
+  _selectedCategory = _userCategory;
+} else {
+  // nothing set yet — leave null so the field shows placeholder
+  _selectedCategory = null;
+}
+
     measuredMustSGController.addListener(() {
       final input = measuredMustSGController.text;
       final parsed = double.tryParse(input);
@@ -126,6 +265,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
 
     if (widget.existingRecipe != null) {
       final recipe = widget.existingRecipe!;
+      fg = recipe.fg ?? fg;
+
 
       // Prefill all the regular fields
       nameController.text = recipe.name;
@@ -134,22 +275,12 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
       ingredients = List<Map<dynamic, dynamic>>.from(recipe.ingredients);
       fermentationStages = List<FermentationStage>.from(recipe.fermentationStages);
       _estimatedOG = recipe.og; // best-effort seed
-      fg = recipe.fg ?? fg;
       abv = recipe.abv ?? abv;
       yeast = List<Map<dynamic, dynamic>>.from(recipe.yeast);
 
-      // Prefer referenced tags when available; otherwise fall back to legacy list
-      try {
-        tags = List<Tag>.from(recipe.tags);
-      } catch (_) {
-        try {
-          final refs = (recipe as dynamic).tagRefs as HiveList<Tag>?;
-          tags = refs?.toList() ?? List<Tag>.from(recipe.tags);
-        } catch (_) {
-          tags = List<Tag>.from(recipe.tags);
-        }
-      }
+
     }
+    fgController.text = fg.toStringAsFixed(3);
 
     calculateStats();
 
@@ -269,48 +400,67 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     return items;
   }
 
-  void _updateMeasuredMustSGIfNotOverridden() {
-    if (!userOverrodeMeasuredSG && _estimatedOG != null) {
-      measuredMustSG = _estimatedOG;
-      measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
-    }
+void _updateMeasuredMustSGIfNotOverridden() {
+  if (!userOverrodeMeasuredSG && _estimatedOG != null) {
+    measuredMustSG = _estimatedOG;
+    measuredMustSGController.text = measuredMustSG!.toStringAsFixed(3);
+  }
+}
+
+void setFg(double value) {
+  fg = value;
+  fgController.text = value.toStringAsFixed(3);
+  calculateStats();
+  setState(() {});
+}
+
+void calculateStats() {
+  // 1) Build inputs for the corrected gravity math
+  final items = _buildItemsFromIngredients(ingredients);
+
+  // 2) Call the new API and use the new field names
+  final GravityResult result = GravityService.estimate(items);
+  _estimatedOG = result.og;                    // was result.estimatedOG
+  _totalVolGal = result.totalVolumeGal;
+
+  // 3) Mirror volume where you store it
+  batchVolumeGallons = _totalVolGal;
+
+  // 4) If the user didn’t override measured SG, prefill it from estimate
+  _updateMeasuredMustSGIfNotOverridden();
+
+  // 5) Update the visible volume field if not overridden
+  if (batchVolumeGallons != null && !userOverrodeBatchVolume) {
+    final double value =
+        (selectedVolumeUnit == VolumeUnit.ounces)
+            ? (batchVolumeGallons! * 128.0)
+            : (selectedVolumeUnit == VolumeUnit.liters)
+                ? (batchVolumeGallons! * 3.78541)
+                : batchVolumeGallons!;
+    volumeController.text = value.toStringAsFixed(2);
   }
 
-  void calculateStats() {
-    final items = _buildItemsFromIngredients(ingredients);
-    final result = GravityService.estimate(items);
-    _estimatedOG = result.estimatedOG;
-    _totalVolGal = result.totalVolumeGal;
-
-    batchVolumeGallons = _totalVolGal;
-    _updateMeasuredMustSGIfNotOverridden();
-
-    if (batchVolumeGallons != null && !userOverrodeBatchVolume) {
-      final double value = selectedVolumeUnit == VolumeUnit.ounces
-          ? batchVolumeGallons! * 128.0
-          : selectedVolumeUnit == VolumeUnit.liters
-          ? batchVolumeGallons! * 3.78541
-          : batchVolumeGallons!;
-      volumeController.text = value.toStringAsFixed(2);
-    }
-
-    if (!showAdvanced) {
-      originalGravity = _estimatedOG ?? 1.000;
-    } else {
-      originalGravity = useAdjustedOG
-          ? (targetMustSG ?? _estimatedOG ?? 1.000)
-          : (measuredMustSG ?? _estimatedOG ?? 1.000);
-    }
-
-    abv = calculateAbv(originalGravity, fg);
-
-    if (!userOverrodeAbv) {
-      desiredAbv = abv;
-      desiredAbvController.text = abv.toStringAsFixed(2);
-    }
-
-    setState(() {});
+  // 6) Choose OG (estimated vs user-adjusted/measured)
+  if (!showAdvanced) {
+    originalGravity = _estimatedOG ?? 1.000;
+  } else {
+    originalGravity = useAdjustedOG
+        ? (targetMustSG ?? _estimatedOG ?? 1.000)
+        : (measuredMustSG ?? _estimatedOG ?? 1.000);
   }
+
+  // 7) Use the new ABV helper (guards are already in GravityService)
+  final double fgValue = fg;
+  abv = GravityService.abv(og: originalGravity, fg: fgValue);
+
+  // 8) Back-fill desired ABV if the user didn’t override it
+  if (!userOverrodeAbv) {
+    desiredAbv = abv;
+    desiredAbvController.text = abv.toStringAsFixed(2);
+  }
+
+  setState(() {});
+}
 
   void addIngredient(Map<String, dynamic> ingredientMap) {
     final clean = Map<String, dynamic>.from(ingredientMap);
@@ -437,29 +587,33 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
           ElevatedButton(
             onPressed: () async {
               // 1) Build recipe (don’t pass tags here; we’ll attach via setTagsFromBox)
-              final newRecipe = RecipeModel(
-                id: (widget.existingRecipe != null && !widget.isClone)
-                    ? widget.existingRecipe!.id
-                    : generateId(),
-                name: recipeName,
-                createdAt: widget.existingRecipe?.createdAt ?? DateTime.now(),
-                fg: fg,
-                abv: abv,
-                additives: additives,
-                og: originalGravity,
-                ingredients: ingredients,
-                yeast: yeast,
-                fermentationStages: fermentationStages,
-                notes: notesController.text.trim(),
-              );
+              final rawCategory = categoryController.text.trim();
+              final category = rawCategory.isEmpty ? 'Uncategorized' : rawCategory;
+final newRecipe = RecipeModel(
+  id: (widget.existingRecipe != null && !widget.isClone)
+      ? widget.existingRecipe!.id
+      : generateId(),
+  name: recipeName,
+  createdAt: widget.existingRecipe?.createdAt ?? DateTime.now(),
+  fg: fg,
+  abv: abv,
+  additives: additives,
+  og: originalGravity,
+  ingredients: ingredients,
+  yeast: yeast,
+  category: category,
+  fermentationStages: fermentationStages,
+  notes: notesController.text.trim(),
+);
 
-              // 2) Persist to recipes FIRST, so it's a HiveObject in a box
-              final box = Hive.box<RecipeModel>(Boxes.recipes);
-              await box.put(newRecipe.id, newRecipe);
+// Save to Hive
+final box = Hive.box<RecipeModel>(Boxes.recipes);
+await box.put(newRecipe.id, newRecipe);
 
-              // 3) Now that it's in a box, canonicalize and attach tags from the picker
-              final tagBox = Hive.box<Tag>(Boxes.tags);
-              await newRecipe.setTagsFromBox(tags, tagBox);
+// ❌ Remove tag attachment completely:
+// final tagBox = Hive.box<Tag>(Boxes.tags);
+// await newRecipe.setTagsFromBox(tags, tagBox);
+
 
               if (!mounted) return;
 
@@ -570,70 +724,51 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          // ... (unchanged UI above)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: "Recipe Name",
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Text("Tags", style: Theme.of(context).textTheme.titleMedium),
-                      const Spacer(),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final result = await showTagPickerDialog(context, tags);
-                          if (result != null) setState(() => tags = result);
-                        },
-                        child: const Text("Choose Tags"),
-                      ),
-                    ],
-                  ),
-                  if (tags.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: tags.map((tag) {
-                          final icon = iconForTagKey(tag.iconKey);
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF8B5E3C),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white.withOpacity(0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(icon, size: 16, color: Colors.white),
-                                const SizedBox(width: 6),
-                                Text(
-                                  tag.name,
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+  children: [
+    // ---- Category (replaces Tags) ----
+// NEW: Recipe Name (you already capture nameController in saveRecipe)
+Padding(
+  padding: const EdgeInsets.symmetric(vertical: 8.0),
+  child: TextFormField(
+    controller: nameController,
+    decoration: const InputDecoration(
+      labelText: 'Recipe Name',
+      hintText: 'e.g., Dry Traditional Mead',
+      prefixIcon: Icon(Icons.edit),
+      border: OutlineInputBorder(),
+    ),
+    textInputAction: TextInputAction.next,
+  ),
+),
+
+// NEW: Category dropdown w/ icons + Custom option
+Padding(
+  padding: const EdgeInsets.symmetric(vertical: 8.0),
+  child: DropdownButtonFormField<_CategoryChoice>(
+    value: _selectedCategory,
+    items: _categoryItems(),
+    decoration: InputDecoration(
+      labelText: 'Category',
+      prefixIcon: Icon(
+        _selectedCategory?.icon ?? Icons.category_outlined,
+      ),
+      border: const OutlineInputBorder(),
+    ),
+    hint: const Text('Select a category'),
+    onChanged: (choice) async {
+      if (choice == null) return;
+      if (identical(choice, _customSentinel)) {
+        await _openCustomCategoryDialog();
+        return;
+      }
+      setState(() {
+        _selectedCategory = choice;
+        categoryController.text = choice.label; // keep saveRecipe unchanged
+      });
+    },
+  ),
+),
+
           _sectionTitle("Ingredients"),
           Card(
             child: Column(
@@ -643,24 +778,34 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                     padding: EdgeInsets.all(16.0),
                     child: Text("No ingredients added yet."),
                   ),
-                ...ingredients.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final f = entry.value;
-                  return ListTile(
-                    title: Text(f['name'] ?? 'Unnamed'),
-                    subtitle: Text("${f['amount'] ?? '—'} ${f['unit'] ?? ''}, OG: ${f['og']?.toStringAsFixed(3) ?? '—'}"),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(icon: const Icon(Icons.edit), onPressed: () => editIngredient(i)),
-                        IconButton(icon: const Icon(Icons.delete), onPressed: () {
-                          setState(() => ingredients.removeAt(i));
-                          calculateStats();
-                        }),
-                      ],
-                    ),
-                  );
-                }),
+...ingredients.asMap().entries.map((entry) {
+  final i = entry.key;
+  final f = entry.value;
+
+  final amount = f['amount'];
+  final unit   = f['unit'];
+  final ogRaw  = f['og'];
+  final ogVal  = (ogRaw is num) ? ogRaw.toDouble() : double.tryParse('$ogRaw');
+
+  return ListTile(
+    title: Text(f['name'] ?? 'Unnamed'),
+    subtitle: Text(
+      "${amount ?? '—'} ${unit ?? ''}, OG: ${ogVal?.toStringAsFixed(3) ?? '—'}",
+    ),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(icon: const Icon(Icons.edit), onPressed: () => editIngredient(i)),
+        IconButton(icon: const Icon(Icons.delete), onPressed: () {
+          setState(() => ingredients.removeAt(i));
+          calculateStats();
+        }),
+      ],
+    ),
+  );
+}),
+
+
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: ElevatedButton.icon(
@@ -685,7 +830,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
                               name: ingredientData['name'] as String? ?? 'Unnamed',
                               unit: ingredientData['unit'] as String? ?? 'packets',
                               unitType: inferUnitType(ingredientData['unit'] as String? ?? 'packets'),
-                              category: 'Yeast',
+                              category: 'Ingredient',
                               purchaseHistory: [purchase],
                             );
                             final box = Hive.box<InventoryItem>(Boxes.inventory);
@@ -888,35 +1033,48 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
               ),
             ),
           ),
-          _sectionTitle("Gravity & ABV"),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  if (ingredients.length > 1) ...[
-                    _buildIngredientsSummary(),
-                    const Divider(),
-                  ],
-                  _buildCalculatedABVSection(),
-                  TextFormField(
-                    initialValue: fg.toStringAsFixed(3),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: "Final Gravity"),
-                    onChanged: (val) {
-                      final parsed = double.tryParse(val);
-                      if (parsed != null && parsed >= 0.990 && parsed <= 1.200) {
-                        setState(() {
-                          fg = parsed;
-                          calculateStats();
-                        });
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
+           _sectionTitle("Gravity & ABV"),
+    Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            if (ingredients.length > 1) ...[
+              _buildIngredientsSummary(),
+              const Divider(),
+            ],
+            _buildCalculatedABVSection(),
+  TextFormField(
+  controller: fgController,
+  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+  decoration: const InputDecoration(labelText: "Final Gravity"),
+onChanged: (val) {
+  if (val.trim().isEmpty) return;
+  final parsed = double.tryParse(val);
+  if (parsed != null && parsed >= 0.990 && parsed <= 1.200) {
+    setFg(parsed);
+  }
+},
+
+  onEditingComplete: () {
+    final parsed = double.tryParse(fgController.text);
+    if (parsed != null) {
+      final clamped = parsed.clamp(0.990, 1.200);
+      setFg(double.parse(clamped.toStringAsFixed(3)));
+    }
+    FocusScope.of(context).unfocus(); // optional: dismiss keyboard
+  },
+  // optional polish:
+  textInputAction: TextInputAction.done,
+  onFieldSubmitted: (_) => FocusScope.of(context).unfocus()
+
+),
+
+          ],
+        ),
+      ),
+    ),
+
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0),
             child: Row(
@@ -927,7 +1085,7 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
               ],
             ),
           ),
-          if (showAdvanced)
+          if (showAdvanced) // Expected an identifier.
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -1049,6 +1207,8 @@ class _RecipeBuilderPageState extends State<RecipeBuilderPage> {
     notesController.dispose();
     targetMustSGController.dispose();
     volumeController.dispose();
+    categoryController.dispose(); // <- add this
+    fgController.dispose();
     sgToAbvDebounce?.cancel();
     super.dispose();
   }
