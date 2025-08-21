@@ -2,20 +2,21 @@
 
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
-import 'package:fermentacraft/recipe_detail_page.dart';
-import 'package:fermentacraft/recipe_builder_page.dart';
+import 'package:fermentacraft/pages/recipe_detail_page.dart';
+import 'package:fermentacraft/pages/recipe_builder_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:fermentacraft/utils/snacks.dart';
-import 'models/recipe_model.dart';
+import '../models/recipe_model.dart';
+
 
 // Gating / sync
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
 
-import 'utils/boxes.dart';
+import '../utils/boxes.dart';
 
 enum SortMode { dateCreated, aToZ, zToA, recentlyOpened }
 enum _RecipeAction { archiveToggle, delete }
@@ -59,32 +60,45 @@ class _RecipeListPageState extends State<RecipeListPage> {
         return Icons.label_outline;
     }
   }
-Color _colorForCategory(BuildContext context, String category) {
-  final cs = Theme.of(context).colorScheme;
-  final seed = category.hashCode;
-  final palette = <Color>[
-    cs.primary, cs.tertiary, cs.secondary,
-    cs.primaryContainer, cs.tertiaryContainer, cs.secondaryContainer,
-  ];
-  return palette[(seed.abs()) % palette.length];
-}
 
-Widget _categoryHeader(BuildContext context, String category, int count) {
-  final color = _colorForCategory(context, category);
-  return Row(
-    children: [
-      Icon(_iconForCategory(category), color: color),
-      const SizedBox(width: 8),
-      Text(category, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(width: 8),
-      Chip(
-        label: Text('$count'),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    ],
-  );
-}
+  Color _colorForCategory(BuildContext context, String category) {
+    final cs = Theme.of(context).colorScheme;
+    final seed = category.hashCode;
+    final palette = <Color>[
+      cs.primary, cs.tertiary, cs.secondary,
+      cs.primaryContainer, cs.tertiaryContainer, cs.secondaryContainer,
+    ];
+    return palette[(seed.abs()) % palette.length];
+  }
+
+  Widget _categoryHeader(BuildContext context, String category, int count) {
+    final color = _colorForCategory(context, category);
+    return Row(
+      children: [
+        Icon(_iconForCategory(category), color: color),
+        const SizedBox(width: 8),
+        Text(category, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(width: 8),
+        Chip(
+          label: Text('$count'),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ],
+    );
+  }
+
+  /// Quick stat line that matches what the builder computes.
+  String _statLine(RecipeModel r) {
+    final og = r.og?.toStringAsFixed(3);
+    final fg = r.fg?.toStringAsFixed(3);
+    final abv = r.abv?.toStringAsFixed(1);
+    final parts = <String>[];
+    if (og != null) parts.add('OG $og');
+    if (fg != null) parts.add('FG $fg');
+    if (abv != null) parts.add('ABV $abv%');
+    return parts.isEmpty ? '' : parts.join(' · ');
+  }
 
   // ----------------- Key resolution (handles legacy/null keys) ----------------
 
@@ -180,50 +194,74 @@ Widget _categoryHeader(BuildContext context, String category, int count) {
     );
     if (confirmed != true) return;
 
-    final box = Hive.box<RecipeModel>(Boxes.recipes);
-    final resolvedKey = _resolveHiveKeyFor(recipe); // robust key
-    final recipeDataBackup = recipe.toJson();
-    final recipeId = recipe.id;
-    final name = recipe.name;
+final box = Hive.box<RecipeModel>(Boxes.recipes);
+final resolvedKey = _resolveHiveKeyFor(recipe); // robust key
+final recipeDataBackup = recipe.toJson();
+final recipeId = recipe.id;
+final name = recipe.name;
 
-    // Mark remote deletion first to avoid race
-    await FirestoreSyncService.instance.markDeleted(
-      collection: Boxes.recipes,
-      id: recipeId,
-    );
+// 1) Tombstone every plausible remote doc id
+final idsToTombstone = <String>{};
 
-    // Delete locally using the resolved key
-    await box.delete(resolvedKey);
+if (recipeId.trim().isNotEmpty) idsToTombstone.add(recipeId.trim());
 
-    if (!mounted) return;
+final resolvedKeyStr = resolvedKey?.toString().trim();
+if (resolvedKeyStr != null && resolvedKeyStr.isNotEmpty) {
+  idsToTombstone.add(resolvedKeyStr);
+}
 
-    snacks
-      ..clear()
-      ..show(
-        SnackBar(
-          content: Text('Deleted "$name"'),
-          duration: const Duration(seconds: 5),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'UNDO',
-            onPressed: () async {
-              final restored = RecipeModel.fromJson(recipeDataBackup);
-              await box.put(resolvedKey, restored);
-              await FirestoreSyncService.instance.forceSync();
-              if (!mounted) return;
-              snacks
-                ..hide()
-                ..show(
-                  const SnackBar(
-                    content: Text('Recipe restored'),
-                    duration: Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-            },
-          ),
-        ),
-      );
+final objKeyStr = recipe.key?.toString().trim();
+if (objKeyStr != null && objKeyStr.isNotEmpty) {
+  idsToTombstone.add(objKeyStr);
+}
+
+for (final rid in idsToTombstone) {
+  await FirestoreSyncService.instance.markDeleted(
+    collection: Boxes.recipes,
+    id: rid,
+  );
+}
+
+// 2) Delete locally
+await box.delete(resolvedKey);
+
+// 3) Force convergence so nothing resurrects
+await FirestoreSyncService.instance.forceSync();
+
+if (!mounted) return;
+
+snacks
+  ..clear()
+  ..show(
+    SnackBar(
+      content: Text('Deleted "$name"'),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2), // shorter
+      showCloseIcon: true,                  // optional
+      action: SnackBarAction(
+        label: 'UNDO',
+        onPressed: () async {
+          final restored = RecipeModel.fromJson(recipeDataBackup);
+          await box.put(resolvedKey, restored);
+          await FirestoreSyncService.instance.forceSync();
+          if (!mounted) return;
+          snacks
+            ..hide()
+            ..show(const SnackBar(
+              content: Text('Recipe restored'),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+              showCloseIcon: true,
+            ));
+        },
+      ),
+    ),
+  );
+
+// 👇 force-hide early in case the timer stalls
+Future.delayed(const Duration(milliseconds: 1800), () {
+  if (mounted) snacks.hide();
+});
   }
 
   PopupMenuButton<_RecipeAction> _moreMenu(RecipeModel recipe) {
@@ -379,31 +417,32 @@ Widget _categoryHeader(BuildContext context, String category, int count) {
               break;
           }
 
-        final Map<String, List<RecipeModel>> grouped = {};
-        for (final recipe in filtered) {
-          final key = recipe.categoryLabel; // ✅ single category
-          grouped.putIfAbsent(key, () => []).add(recipe);
-        }
-        final sortedKeys = grouped.keys.toList()..sort();
+          // Group by single category label (builder writes `category`)
+          final Map<String, List<RecipeModel>> grouped = {};
+          for (final recipe in filtered) {
+            final key = recipe.categoryLabel;
+            grouped.putIfAbsent(key, () => []).add(recipe);
+          }
+          final sortedKeys = grouped.keys.toList()..sort();
 
           return ListView.builder(
             itemCount: sortedKeys.length,
             itemBuilder: (context, i) {
-              final tag = sortedKeys[i];
-              final recipes = grouped[tag]!;
+              final category = sortedKeys[i];
+              final recipes = grouped[category]!;
 
               return Card(
                 margin:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: ExpansionTile(
-                  title: _categoryHeader(context, tag, recipes.length),
+                  title: _categoryHeader(context, category, recipes.length),
                   initiallyExpanded: i == 0,
                   children: recipes.map((recipe) {
-                  final created = _date.format(recipe.createdAt);
-
+                    final created = _date.format(recipe.createdAt);
+                    final itemColor = _colorForCategory(context, category);
 
                     return Dismissible(
-                      // Safe, stable key (prefer id; fallbacks for legacy items)
+                      // Stable id key
                       key: ValueKey(recipe.id),
                       background: _swipeBg(
                         context,
@@ -422,7 +461,6 @@ Widget _categoryHeader(BuildContext context, String category, int count) {
                       ),
                       confirmDismiss: (direction) async {
                         snacks.hide();
-
                         if (direction == DismissDirection.startToEnd) {
                           await _toggleArchiveStatus(recipe);
                           return false; // handled
@@ -432,22 +470,31 @@ Widget _categoryHeader(BuildContext context, String category, int count) {
                         }
                       },
                       child: ListTile(
-  title: Text(recipe.name),
-  subtitle: Text('Created: $created'),
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RecipeDetailPage(
-          recipe: recipe,
-          recipeKey: _resolveHiveKeyFor(recipe),
-        ),
-      ),
-    );
-  },
-  trailing: _moreMenu(recipe),
-  onLongPress: () => _toggleArchiveStatus(recipe),
-),
+                        leading: Icon(
+                          _iconForCategory(category),
+                          color: itemColor,
+                        ),
+                        title: Text(recipe.name),
+                        subtitle: Text(
+                          [
+                            'Created: $created',
+                            _statLine(recipe),
+                          ].where((s) => s.isNotEmpty).join('\n'),
+                        ),
+                        trailing: _moreMenu(recipe),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RecipeDetailPage(
+                                recipe: recipe,
+                                recipeKey: _resolveHiveKeyFor(recipe),
+                              ),
+                            ),
+                          );
+                        },
+                        onLongPress: () => _toggleArchiveStatus(recipe),
+                      ),
                     );
                   }).toList(),
                 ),
@@ -462,6 +509,6 @@ Widget _categoryHeader(BuildContext context, String category, int count) {
         tooltip: 'New Recipe',
         child: const Icon(Icons.add),
       ),
-    );
-  }
-}
+    ); // ⬅️ close return Scaffold(...)
+  }     // ⬅️ close build()
+}       // ⬅️ close class _RecipeListPageState

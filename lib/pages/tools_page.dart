@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:fermentacraft/fsu_calculator_page.dart';
-import 'package:fermentacraft/so2_calculator_page.dart';
+import 'package:fermentacraft/pages/fsu_calculator_page.dart';
+import 'package:fermentacraft/pages/so2_calculator_page.dart';
 import 'package:fermentacraft/acid_tools/acid_tools_page.dart';
 
-import 'abv_calculator_page.dart';
+import '../abv_calculator_page.dart';
 import 'bubble_counter_page.dart';
 import 'gravity_adjuster_page.dart';
 import 'sg_correction_page.dart';

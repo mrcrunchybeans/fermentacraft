@@ -8,8 +8,8 @@ import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
 import 'package:provider/provider.dart';
 import 'package:fermentacraft/utils/snacks.dart';
-import 'utils/id.dart';
-import 'models/shopping_list_item.dart';
+import '../utils/id.dart';
+import '../models/shopping_list_item.dart';
 
 class ShoppingListPage extends StatefulWidget {
   const ShoppingListPage({super.key});

@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'package:fermentacraft/widgets/show_paywall.dart';
-import 'package:fermentacraft/batch_detail_page.dart';
+import 'package:fermentacraft/pages/batch_detail_page.dart';
 import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/widgets/add_batch_dialog.dart';
 import 'package:fermentacraft/utils/snacks.dart';
@@ -16,7 +16,7 @@ import 'package:fermentacraft/services/counts_service.dart';
 // ❌ no direct sync-service calls needed
 // import 'package:fermentacraft/services/firestore_sync_service.dart';
 
-import 'utils/boxes.dart';
+import '../utils/boxes.dart';
 
 class BatchLogPage extends StatefulWidget {
   const BatchLogPage({super.key});

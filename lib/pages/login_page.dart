@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-import '../services/auth_service.dart';
+import '../../services/auth_service.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {

@@ -7,17 +7,17 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:fermentacraft/utils/snacks.dart';
-import '../models/inventory_item.dart';
-import '../widgets/add_inventory_dialog.dart';
-import '../widgets/edit_inventory_dialog.dart';
-import '../widgets/log_purchase_dialog.dart';
-import 'inventory_item_detail_view.dart';
-import '../models/inventory_item_detail_model.dart';
+import '../../models/inventory_item.dart';
+import '../../widgets/add_inventory_dialog.dart';
+import '../../widgets/edit_inventory_dialog.dart';
+import '../../widgets/log_purchase_dialog.dart';
+import '../inventory_item_detail_view.dart';
+import '../../models/inventory_item_detail_model.dart';
 
 // NEW: gating
 import 'package:fermentacraft/services/feature_gate.dart';
 
-import 'utils/boxes.dart';
+import '../utils/boxes.dart';
 
 // Sort options
 enum SortOption { name, stock, expiration }

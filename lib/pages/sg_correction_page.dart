@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'widgets/utils.dart'; // Must contain correctedSgJolicoeur(sg, tempF)
+import '../widgets/utils.dart'; // Must contain correctedSgJolicoeur(sg, tempF)
 
 class SgCorrectionPage extends StatefulWidget {
   const SgCorrectionPage({super.key});

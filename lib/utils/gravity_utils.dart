@@ -56,3 +56,12 @@ String formatGravity(double sg) => sg.toStringAsFixed(3);
 
 /// Format Brix as 7.5°Bx
 String formatBrix(double brix) => '${brix.toStringAsFixed(1)}°Bx';
+
+/// Accepts "1.045" or "1045" and normalizes to SG (e.g., 1.045).
+double? parseUserSg(String raw) {
+  final v = double.tryParse(raw.trim());
+  if (v == null) return null;
+  if (v >= 10 && v < 200) return v / 1000.0; // "1045" -> 1.045
+  if (v > 0.9 && v < 2.0) return v;
+  return null;
+}

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:fermentacraft/utils/sugar_gravity_data.dart';
-import '../widgets/stabilization_guidance_dialog.dart';
+import '../../widgets/stabilization_guidance_dialog.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
 import 'package:fermentacraft/utils/snacks.dart';

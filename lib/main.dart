@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'bootstrap/setup.dart';
 import 'theme/app_theme.dart';
@@ -22,54 +23,61 @@ import 'services/firestore_sync_service.dart';
 import 'services/feature_gate.dart';
 import 'services/revenuecat_service.dart';
 
+// Presets (yeast/additives)
+import 'services/presets_service.dart';
+
 // Web bridge (conditional)
 import 'web_bridge_stub.dart'
-if (dart.library.html) 'web_bridge_web.dart' as wb;
+  if (dart.library.html) 'web_bridge_web.dart' as wb;
 
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Pass all uncaught "fatal" errors from the framework to Crashlytics
+    // Crashlytics: route Flutter framework errors
     FlutterError.onError = (details) {
       FirebaseCrashlytics.instance.recordFlutterFatalError(details);
     };
 
-    // --- Web-only housekeeping (safe no-ops on mobile)
+    // Web-only housekeeping (no-op on mobile)
     wb.hideHtmlSplash();
     wb.ensureFlutterRootCss();
     wb.scrubLegacyOverlays();
-
-    // Debug-only helpers for web dev
     assert(() {
       wb.disableServiceWorkers();
       wb.enableReloadDiagnostics(blockReload: true);
       return true;
     }());
 
-    // --- Core services (adapters, boxes, Firebase, etc.)
-    // IMPORTANT: ensure TagAdapter is registered before RecipeModel in setupAppServices().
+    // Core services (Hive adapters/boxes, Firebase, etc.)
     await setupAppServices();
 
+    // Pre-warm SharedPreferences to avoid channel error on first run
+    await SharedPreferences.getInstance();
 
-    // --- Cloud sync: enable from saved setting
+    // Cloud sync: enable from saved setting
     final settingsBox = Hive.box(Boxes.settings);
     final syncEnabled = settingsBox.get('syncEnabled') == true;
-    await (FirestoreSyncService.instance
-      ..isEnabled = syncEnabled)
-        .init(); // no-op internally if disabled
+    await (FirestoreSyncService.instance..isEnabled = syncEnabled).init();
 
-    // --- RevenueCat: initialize & bind to FeatureGate
+    // RevenueCat: initialize & bind to FeatureGate
     await RevenueCatService.instance.init();
 
-    // --- Build app with providers AFTER services/boxes are ready
+    // PresetsService: construct once, load persisted customs before runApp
+    final presets = PresetsService();
+    await presets.ensureLoaded();
+
+    // Build app with providers AFTER services/boxes are ready
     runApp(
       MultiProvider(
         providers: [
+          // Make presets available app-wide (yeast/additives dialogs & tiles)
+          ChangeNotifierProvider<PresetsService>.value(value: presets),
+
           ChangeNotifierProvider<SettingsModel>(
             create: (_) => SettingsModel(Hive.box(Boxes.settings)),
           ),
-          // TagManager must not touch Hive during construction; ensure it's lazy inside TagManager.
+          // TagManager must not touch Hive during construction; lazy inside TagManager.
           ChangeNotifierProvider<TagManager>(create: (_) => TagManager()),
           ChangeNotifierProvider<FeatureGate>.value(
             value: FeatureGate.instance,
@@ -90,7 +98,7 @@ void main() {
       return true;
     }());
   }, (error, stack) {
-    // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics
+    // Uncaught async errors → Crashlytics
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
 }

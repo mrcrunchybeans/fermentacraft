@@ -1,4 +1,4 @@
-// lib/widgets/additives_section.dart
+// lib/widgets/yeast_section.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,18 +6,18 @@ import 'package:provider/provider.dart';
 import 'package:fermentacraft/controllers/recipe_builder_controller.dart';
 import 'package:fermentacraft/services/presets_service.dart';
 
-class AdditivesSection extends StatelessWidget {
-  const AdditivesSection({super.key});
+class YeastSection extends StatelessWidget {
+  const YeastSection({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Ensure presets are loaded (safe to call every build).
+    // Safe to call every build; returns immediately after first load.
     context.read<PresetsService>().ensureLoaded();
 
-    return Selector<RecipeBuilderController, List<AdditiveLine>>(
-      selector: (_, c) => List<AdditiveLine>.from(c.additives),
-      builder: (ctx, adds, _) {
-        final presets = context.watch<PresetsService>().allAdditivePresets;
+    return Selector<RecipeBuilderController, List<YeastLine>>(
+      selector: (_, c) => List<YeastLine>.from(c.yeasts),
+      builder: (ctx, yeasts, _) {
+        final presets = context.watch<PresetsService>().allYeastPresets;
 
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 6),
@@ -30,28 +30,28 @@ class AdditivesSection extends StatelessWidget {
                   children: [
                     const Expanded(
                       child: Text(
-                        'Additives',
+                        'Yeast',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                       ),
                     ),
                     FilledButton.icon(
                       icon: const Icon(Icons.add),
-                      label: const Text('Add additive'),
-                      onPressed: () => _openAdditiveSheet(context, presets: presets),
+                      label: const Text('Add yeast'),
+                      onPressed: () => _openYeastSheet(context, presets: presets),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                if (adds.isEmpty)
+                if (yeasts.isEmpty)
                   Text(
-                    'No additives added yet.',
+                    'No yeast added yet.',
                     style: TextStyle(color: Colors.grey.shade600),
                   )
                 else
-                  ...adds.map(
-                    (a) => _AdditiveRow(
-                      a: a,
-                      onEdit: () => _openAdditiveSheet(context, editing: a, presets: presets),
+                  ...yeasts.map(
+                    (y) => _YeastRow(
+                      y: y,
+                      onEdit: () => _openYeastSheet(context, editing: y, presets: presets),
                     ),
                   ),
               ],
@@ -62,56 +62,55 @@ class AdditivesSection extends StatelessWidget {
     );
   }
 
-  Future<void> _openAdditiveSheet(
+  Future<void> _openYeastSheet(
     BuildContext context, {
-    AdditiveLine? editing,
+    YeastLine? editing,
     required List<String> presets,
   }) async {
     final presetService = context.read<PresetsService>();
 
-    final AdditiveLine? result = await showModalBottomSheet<AdditiveLine>(
+    final YeastLine? result = await showModalBottomSheet<YeastLine>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (sheetCtx) => _AdditiveEditorSheet(
+      builder: (sheetCtx) => _YeastEditorSheet(
         editing: editing,
         presets: presets,
-        onSavePreset: presetService.maybeAddAdditivePreset,
+        onSavePreset: presetService.maybeAddYeastPreset,
       ),
     );
 
-    // Guard the *same* BuildContext after the await.
+    // Guard the same BuildContext after awaiting the sheet.
     if (!context.mounted) return;
 
     if (result != null) {
       final ctrl = context.read<RecipeBuilderController>();
       if (editing == null) {
-        ctrl.addAdditive(result);
+        ctrl.addYeast(result);
       } else {
-        ctrl.updateAdditive(editing.id, result);
+        ctrl.updateYeast(editing.id, result);
       }
     }
   }
 }
 
-class _AdditiveRow extends StatelessWidget {
-  final AdditiveLine a;
+class _YeastRow extends StatelessWidget {
+  final YeastLine y;
   final VoidCallback onEdit;
-  const _AdditiveRow({required this.a, required this.onEdit});
+  const _YeastRow({required this.y, required this.onEdit});
 
   @override
   Widget build(BuildContext context) {
     final ctrl = context.read<RecipeBuilderController>();
-    final qty = (a.quantity == null) ? '' : '${_fmt(a.quantity!)} ${a.unit.label}';
-    final when = (a.when == null || a.when!.isEmpty) ? '' : ' • ${a.when}';
+    final qty = (y.quantity == null) ? '' : '${_fmt(y.quantity!)} ${y.unit.label}';
 
     return ListTile(
       dense: true,
-      title: Text(a.name.isEmpty ? 'Additive' : a.name),
-      subtitle: Text('${qty.isEmpty ? '' : qty}$when'),
+      title: Text(y.name.isEmpty ? 'Unnamed yeast' : y.name),
+      subtitle: Text('${y.form.label}${qty.isEmpty ? '' : '  •  $qty'}'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -123,7 +122,7 @@ class _AdditiveRow extends StatelessWidget {
           IconButton(
             tooltip: 'Remove',
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => ctrl.removeAdditive(a.id),
+            onPressed: () => ctrl.removeYeast(y.id),
           ),
         ],
       ),
@@ -136,29 +135,29 @@ class _AdditiveRow extends StatelessWidget {
   }
 }
 
-/// Dedicated widget that owns the TextEditingControllers.
-/// Avoids “controller used after dispose” races in sheets.
-class _AdditiveEditorSheet extends StatefulWidget {
-  final AdditiveLine? editing;
+/// Dedicated bottom-sheet widget that *owns* its controllers,
+/// preventing “controller used after dispose” issues.
+class _YeastEditorSheet extends StatefulWidget {
+  final YeastLine? editing;
   final List<String> presets;
   final Future<void> Function(String) onSavePreset;
 
-  const _AdditiveEditorSheet({
+  const _YeastEditorSheet({
     required this.editing,
     required this.presets,
     required this.onSavePreset,
   });
 
   @override
-  State<_AdditiveEditorSheet> createState() => _AdditiveEditorSheetState();
+  State<_YeastEditorSheet> createState() => _YeastEditorSheetState();
 }
 
-class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
+class _YeastEditorSheetState extends State<_YeastEditorSheet> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _qtyCtrl;
-  late final TextEditingController _whenCtrl;
   late final TextEditingController _notesCtrl;
 
+  late YeastForm _form;
   late QtyUnit _unit;
 
   @override
@@ -166,18 +165,20 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
     super.initState();
     final e = widget.editing;
     _nameCtrl = TextEditingController(text: e?.name ?? '')
-      ..addListener(() => setState(() {})); // Rebuild to enable/disable Save
-    _qtyCtrl = TextEditingController(text: e?.quantity == null ? '' : _trim(e!.quantity!));
-    _whenCtrl = TextEditingController(text: e?.when ?? '');
+      ..addListener(() => setState(() {})); // toggle Save enabled state
+    _qtyCtrl = TextEditingController(
+      text: e?.quantity == null ? '' : _trim(e!.quantity!),
+    );
     _notesCtrl = TextEditingController(text: e?.notes ?? '');
-    _unit = e?.unit ?? QtyUnit.g;
+
+    _form = e?.form ?? YeastForm.dry;
+    _unit = e?.unit ?? QtyUnit.packets;
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _qtyCtrl.dispose();
-    _whenCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
   }
@@ -199,7 +200,7 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Grab handle
+              // grab handle
               Container(
                 width: 48,
                 height: 5,
@@ -210,21 +211,44 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
               ),
               const SizedBox(height: 12),
 
-              // Name
-              TextField(
-                controller: _nameCtrl,
-                autofocus: true,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Additive',
-                  hintText: 'e.g., Yeast nutrient',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
+              // Row 1: Name + Form
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _nameCtrl,
+                      autofocus: true,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Yeast name',
+                        hintText: 'e.g., Lalvin EC-1118',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 140,
+                    child: DropdownButtonFormField<YeastForm>(
+                      value: _form,
+                      items: YeastForm.values
+                          .map((f) => DropdownMenuItem(value: f, child: Text(f.label)))
+                          .toList(),
+                      onChanged: (f) => setState(() => _form = f ?? _form),
+                      decoration: const InputDecoration(
+                        labelText: 'Form',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
 
-              // Quantity + Unit
+              // Row 2: Quantity + Unit
               Row(
                 children: [
                   Expanded(
@@ -263,18 +287,6 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
               ),
               const SizedBox(height: 12),
 
-              // When
-              TextField(
-                controller: _whenCtrl,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'When (e.g., primary, stabilization)',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 12),
-
               // Preset chips (built-ins + saved)
               Align(
                 alignment: Alignment.centerLeft,
@@ -300,7 +312,7 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
                 controller: _notesCtrl,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) async {
-                  if (canSave) await _commit(); // Optional: submit via keyboard
+                  if (canSave) await _commit();
                 },
                 decoration: const InputDecoration(
                   labelText: 'Notes (optional)',
@@ -322,7 +334,7 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
                   const Spacer(),
                   FilledButton.icon(
                     icon: const Icon(Icons.check),
-                    label: Text(widget.editing == null ? 'Add Additive' : 'Save'),
+                    label: Text(widget.editing == null ? 'Add Yeast' : 'Save'),
                     onPressed: canSave ? _commit : null,
                   ),
                 ],
@@ -337,21 +349,20 @@ class _AdditiveEditorSheetState extends State<_AdditiveEditorSheet> {
   Future<void> _commit() async {
     final name = _nameCtrl.text.trim();
     final qty = double.tryParse(_qtyCtrl.text.trim());
-    final when = _whenCtrl.text.trim().isEmpty ? null : _whenCtrl.text.trim();
     final notes = _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
 
-    // Save custom name for future chips
+    // Persist custom names for future chips
     await widget.onSavePreset(name);
 
     // Guard State.context right after the await
     if (!mounted) return;
 
-    final line = AdditiveLine(
+    final line = YeastLine(
       id: widget.editing?.id ?? '',
       name: name,
+      form: _form,
       quantity: qty,
       unit: _unit,
-      when: when,
       notes: notes,
     );
 

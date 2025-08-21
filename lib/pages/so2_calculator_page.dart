@@ -8,7 +8,7 @@ import 'package:fermentacraft/widgets/soft_lock_overlay.dart';
 import 'package:provider/provider.dart';
 
 // adjust this import to wherever CiderUtils lives
-import '../utils/utils.dart'; // CiderUtils.recommendedFreeSO2ppm
+import '../../utils/utils.dart'; // CiderUtils.recommendedFreeSO2ppm
 
 class So2CalculatorPage extends StatelessWidget {
   const So2CalculatorPage({super.key});

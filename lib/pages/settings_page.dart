@@ -9,9 +9,9 @@ import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../utils/boxes.dart';
-import '../utils/data_management.dart';
-import '../models/settings_model.dart';
+import '../../utils/boxes.dart';
+import '../../utils/data_management.dart';
+import '../../models/settings_model.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
 
 class SettingsPage extends StatefulWidget {

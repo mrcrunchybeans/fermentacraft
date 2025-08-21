@@ -1,7 +1,6 @@
 import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
-
 import 'tag.dart';
 
 part 'recipe_model.g.dart';
@@ -140,19 +139,22 @@ class RecipeModel extends HiveObject {
   
   // ✅ RE-ADDED: This method is called during startup migrations.
   /// Normalize in place for legacy/dirty data.
-  void normalizeInPlace() {
+ void normalizeInPlace() {
     ingredients = safeIngredients;
     additives = safeAdditives;
     yeast = safeYeast;
-
     og = _toDouble(og);
     fg = _toDouble(fg);
     abv = _toDouble(abv);
     batchVolume = _toDouble(batchVolume);
     plannedOg = _toDouble(plannedOg);
     plannedAbv = _toDouble(plannedAbv);
-    
     tagsLegacy ??= const <Tag>[];
+
+    // Backfill category from first tag if missing
+    if ((category == null || category!.trim().isEmpty) && tags.isNotEmpty) {
+      category = tags.first.name;
+    }
   }
 
   // --- JSON Serialization ---

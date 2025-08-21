@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:fermentacraft/batch_detail_page.dart';
+import 'package:fermentacraft/pages/batch_detail_page.dart';
 import 'package:fermentacraft/inventory_item_detail_view.dart';
-import 'package:fermentacraft/settings_page.dart';
+import 'package:fermentacraft/pages/settings_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import './models/inventory_item.dart';
-import 'recipe_list_page.dart';
-import 'batch_log_page.dart';
-import 'inventory_page.dart';
-import 'shopping_list_page.dart';
+import 'pages/recipe_list_page.dart';
+import 'pages/batch_log_page.dart';
+import 'pages/inventory_page.dart';
+import 'pages/shopping_list_page.dart';
 import 'models/batch_model.dart';
-import 'tools_page.dart';
+import 'pages/tools_page.dart';
 import 'widgets/empty_state_widget.dart';
 import 'widgets/dashboard_section.dart'; // Correctly imported!
 

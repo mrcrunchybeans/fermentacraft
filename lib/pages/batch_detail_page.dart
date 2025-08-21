@@ -1,5 +1,6 @@
-// ignore_for_file: deprecated_member_use
 
+// ignore_for_file: deprecated_member_use
+import 'dart:async';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:flutter/material.dart';
@@ -8,44 +9,44 @@ import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:fermentacraft/widgets/add_measurement_dialog.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'models/batch_model.dart';
-import 'models/planned_event.dart';
-import 'models/inventory_item.dart';
-import 'models/purchase_transaction.dart';
-import 'utils/boxes.dart';
-import 'utils/unit_conversion.dart';
-import 'widgets/add_ingredient_dialog.dart';
-import 'widgets/add_additive_dialog.dart';
-import 'utils/batch_utils.dart';
-import 'widgets/add_yeast_dialog.dart';
-import 'widgets/fermentation_chart.dart';
-import 'widgets/manage_stages_dialog.dart';
-import 'models/fermentation_stage.dart';
-import 'models/measurement.dart';
-import 'widgets/add_inventory_dialog.dart';
-import 'models/unit_type.dart';
+import '../models/batch_model.dart';
+import '../models/inventory_item.dart';
+import '../models/purchase_transaction.dart';
+import '../utils/boxes.dart';
+import '../utils/unit_conversion.dart';
+import '../widgets/add_ingredient_dialog.dart';
+import '../widgets/add_additive_dialog.dart';
+import '../utils/batch_utils.dart';
+import '../widgets/add_yeast_dialog.dart';
+import '../widgets/fermentation_chart.dart';
+import '../widgets/manage_stages_dialog.dart';
+import '../models/fermentation_stage.dart';
+import '../models/measurement.dart';
+import '../widgets/add_inventory_dialog.dart';
+import '../models/unit_type.dart';
 import 'package:intl/intl.dart';
-import 'models/shopping_list_item.dart';
-import 'widgets/planned_event_dialog.dart';
+import '../models/shopping_list_item.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
 import 'package:fermentacraft/services/gravity_service.dart';
 import 'package:fermentacraft/services/batch_extras_repo.dart';
 import 'package:fermentacraft/models/settings_model.dart';
 import 'package:provider/provider.dart';
-import 'utils/temp_display.dart';
+import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
 
 
 
+
+
 // Import the unique ID generator
-import 'utils/id.dart';
+import '../utils/id.dart';
+
 
 class BatchDetailPage extends StatefulWidget {
   const BatchDetailPage({super.key, required this.batchKey});
 
   final String batchKey;
-  
 
   @override
   State<BatchDetailPage> createState() => _BatchDetailPageState();
@@ -55,22 +56,41 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     with SingleTickerProviderStateMixin {
   // ---- Model / key ----
   BatchModel? _batch;
+
+  late final TextEditingController _finalNotesController;
+  late final TextEditingController _finalYieldController;
+    Timer? _finalYieldDebounce;
+  final FocusNode _finalYieldFocus = FocusNode(); 
+  String _finalYieldUnit = 'gal';
   late final Object _hiveKey;
+  bool _isBrewModeEnabled = false;
+  late final TextEditingController _prepNotesController;
  // int or String, depending on your box keys
 
   // ---- UI state ----
   late final TabController _tabController;
 
-  late final TextEditingController _prepNotesController;
-  late final TextEditingController _tastingAromaController;
   late final TextEditingController _tastingAppearanceController;
+  late final TextEditingController _tastingAromaController;
   late final TextEditingController _tastingFlavorController;
-  late final TextEditingController _finalYieldController;
-  late final TextEditingController _finalNotesController;
-
   int _tastingRating = 0;
-  String _finalYieldUnit = 'gal';
-  bool _isBrewModeEnabled = false;
+
+  @override
+  void dispose() {
+    if (_isBrewModeEnabled) {
+      WakelockPlus.disable();
+    }
+    _tabController.dispose();
+    _prepNotesController.dispose();
+    _tastingAromaController.dispose();
+    _tastingAppearanceController.dispose();
+    _tastingFlavorController.dispose();
+    _finalYieldDebounce?.cancel();
+    _finalYieldFocus.dispose();
+    _finalYieldController.dispose();
+    _finalNotesController.dispose();
+    super.dispose();
+  }
 
   // ---------------- lifecycle ----------------
 
@@ -87,25 +107,45 @@ void initState() {
   final initialTabIndex = _initialTabIndexFor(_batch?.status);
   _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
 
-  _initControllersFrom(_batch);
+_initControllersFrom(_batch);
+
+
+
+_finalYieldFocus.addListener(() {
+  if (!_finalYieldFocus.hasFocus) _persistFinalYield(); // <-- add
+});
+
 }
 
-  @override
-  void dispose() {
-    if (_isBrewModeEnabled) {
-      WakelockPlus.disable();
-    }
-    _tabController.dispose();
-    _prepNotesController.dispose();
-    _tastingAromaController.dispose();
-    _tastingAppearanceController.dispose();
-    _tastingFlavorController.dispose();
-    _finalYieldController.dispose();
-    _finalNotesController.dispose();
-    super.dispose();
-  }
+/// Recalculate batch.plannedOg from ingredients + target volume.
+Future<void> recalcPlannedOg(BatchModel batch) async {
+  final v = (batch.batchVolume ?? 0);
+  if (v <= 0) return;
+
+  final items = batch.safeIngredients;
+  final liquidOg = _blendedOgFromLiquids(items);
+  final liquidGU = (liquidOg == null ? 0.0 : (liquidOg - 1.0) * 1000.0) * v;
+  final massGU   = _sumMassFermentablesGU(items);
+
+  final totalGU  = liquidGU + massGU;
+  final newOg    = 1.0 + (totalGU / v) / 1000.0;
+
+  batch.plannedOg = double.parse(newOg.toStringAsFixed(3));
+  await batch.save();
+  if (mounted) setState(() {}); // reflect in UI immediately
+}
 
   // ---------------- helpers ----------------
+
+  Box<BatchModel> get _batchBox => Hive.box<BatchModel>(Boxes.batches);
+
+Future<void> _mutateBatch(void Function(BatchModel b) update) async {
+  final b = _batchBox.get(_hiveKey);
+  if (b == null) return;            // batch might have been deleted elsewhere
+  update(b);                        // mutate the *attached* instance
+  await b.save();                   // safe: b.isInBox == true
+  if (mounted) setState(() {});     // refresh UI
+}
 
   int _initialTabIndexFor(String? status) {
     switch (status) {
@@ -134,6 +174,20 @@ void initState() {
     _finalYieldUnit = b?.finalYieldUnit ?? 'gal';
     _finalNotesController = TextEditingController(text: b?.finalNotes ?? '');
   }
+
+void _persistFinalYield() {
+  final parsed = double.tryParse(_finalYieldController.text.trim());
+
+  // pull the freshest batch from Hive (ValueListenableBuilder may have newer)
+  final box = Hive.box<BatchModel>(Boxes.batches);
+  final b = box.get(_hiveKey);
+  if (b == null) return;
+
+  if (parsed != b.finalYield) {
+    b.finalYield = parsed;
+    b.save();
+  }
+}
 
   // ---------------- ABV math ----------------
 
@@ -183,6 +237,8 @@ Future<void> _onArchiveToggle(BatchModel batch) async {
     }
   }
 
+  
+
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
@@ -206,7 +262,6 @@ Future<void> _onArchiveToggle(BatchModel batch) async {
     SnackBar(content: Text(wantArchive ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
   );
 }
-
 
   Future<void> _editIngredientDialog(BatchModel batch, int index) async {
     final existing = batch.ingredients[index];
@@ -305,24 +360,25 @@ showPaywall(context);
     });
   }
 
-  void _updateBatchStatus(BatchModel batch, String newStatus) {
-    batch.status = newStatus;
-    batch.save();
+void _updateBatchStatus(BatchModel batch, String newStatus) {
+  _mutateBatch((b) {
+    b.status = newStatus;
+  });
 
-    int tabIndex = 0;
-    switch (newStatus) {
-      case 'Preparation':
-        tabIndex = 1;
-        break;
-      case 'Fermenting':
-        tabIndex = 2;
-        break;
-      case 'Completed':
-        tabIndex = 3;
-        break;
-    }
-    _tabController.animateTo(tabIndex);
+  int tabIndex = 0;
+  switch (newStatus) {
+    case 'Preparation':
+      tabIndex = 1;
+      break;
+    case 'Fermenting':
+      tabIndex = 2;
+      break;
+    case 'Completed':
+      tabIndex = 3;
+      break;
   }
+  _tabController.animateTo(tabIndex);
+}
 
   Future<void> _showChangeStatusDialog(BatchModel batch) async {
     String currentStatus = batch.status;
@@ -571,15 +627,7 @@ showPaywall(context);
             label: const Text('Manage Stages'),
             onPressed: () => _manageStages(batch),
           ),
-          const SizedBox(height: 16),
-          _sectionTitle('Planned Events'),
-          _plannedEventsList(batch),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add Planned Event'),
-            onPressed: () => _addPlannedEventDialog(batch),
-          ),
+          const SizedBox(height: 16),          
           _buildStatusProgressionButton(
             batch: batch,
             currentStatus: 'Planning',
@@ -916,14 +964,8 @@ return InkWell(
               children: [
                 Text('Recipe Summary',
                     style: Theme.of(context).textTheme.titleLarge),
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  tooltip: 'Edit Targets',
-                  onPressed: () => _editBatchSummary(batch),
-                ),
               ],
             ),
-            const Divider(),
             Row(
               children: [
                 Text('Status: ', style: Theme.of(context).textTheme.titleMedium),
@@ -935,27 +977,45 @@ return InkWell(
                 const Spacer(),
                 OutlinedButton(
                   onPressed: () => _showChangeStatusDialog(batch),
-                  child: const Text('Change'),
+                  child: const Text('Change Stage'),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-Text('Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
-Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
-FutureBuilder(
-  future: BatchExtrasRepo().getOrCreate(batch.id),
-  builder: (context, snapshot) {
-    if (!snapshot.hasData) return const Text('Estimated ABV: —');
-    final extras = snapshot.data!;
-    final abv = _computeAbv(
-      batch: batch,
-      useMeasured: extras.useMeasuredOg == true,
-      measuredOg: extras.measuredOg,
-    );
-    final s = (abv == null) ? '—' : abv.toStringAsFixed(1);
-    return Text('Estimated ABV: $s%');
-  },
-),
+            const Divider(),
+
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
+                    const SizedBox(height: 4),
+                    Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
+                    const SizedBox(height: 4),
+                    FutureBuilder(
+                      future: BatchExtrasRepo().getOrCreate(batch.id),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const Text('Estimated ABV: —');
+                        final extras = snapshot.data!;
+                        final abv = _computeAbv(batch: batch, useMeasured: extras.useMeasuredOg == true, measuredOg: extras.measuredOg,);
+                        final s = (abv == null) ? '—' : abv.toStringAsFixed(1);
+                        return Text('Estimated ABV: $s%');
+                      },
+                    ),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton(
+                    onPressed: () => _editBatchSummary(batch),
+                    child: const Text('Update Targets'),
+                  ),
+                ),
+              ],
+            )
 
 
 
@@ -980,50 +1040,6 @@ final tempLabel = stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? '�
           leading: const Icon(Icons.thermostat),
           title: Text(name),
 subtitle: Text('Temp: $tempLabel, Duration: $duration days'),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _plannedEventsList(BatchModel batch) {
-    if (batch.safePlannedEvents.isEmpty) {
-      return const Text('No planned events.');
-    }
-
-    return Column(
-      children: batch.safePlannedEvents.asMap().entries.map((entry) {
-        final index = entry.key;
-        final event = entry.value;
-
-        return InkWell(
-          onLongPress: () => _editPlannedEventDialog(batch, index),
-          child: ListTile(
-            leading: const Icon(Icons.event_note),
-            title: Text(event.title),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(DateFormat.yMMMd().format(event.date)),
-                if (event.notes != null && event.notes!.isNotEmpty)
-                  Text('Notes: ${event.notes}'),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  tooltip: 'Edit',
-                  onPressed: () => _editPlannedEventDialog(batch, index),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: 'Delete',
-                  onPressed: () => _deletePlannedEvent(batch, index),
-                ),
-              ],
-            ),
-          ),
         );
       }).toList(),
     );
@@ -1157,9 +1173,8 @@ ElevatedButton(
               child: const Text('Delete'),
               onPressed: () async { // CHANGE
                 Navigator.of(context).pop();
-                batch.measurements.removeWhere((x) => x.id == measurement.id); // CHANGE
-                await batch.save();                                            // CHANGE
-                if (mounted) setState(() {});                                  // CHANGE
+                await _mutateBatch((b) =>
+                    b.measurements.removeWhere((x) => x.id == measurement.id));
               },
             ),
           ],
@@ -1360,20 +1375,6 @@ plannedAbv: batch.plannedAbv,
     }
   }
 
-  Future<void> _addPlannedEventDialog(BatchModel batch) async {
-    final newEvent = await showDialog<PlannedEvent>(
-      context: context,
-      builder: (context) => const PlannedEventDialog(),
-    );
-
-    if (newEvent != null) {
-      batch.plannedEvents ??= [];
-      batch.plannedEvents!.add(newEvent);
-      await batch.save();
-      setState(() {});
-    }
-  }
-
   // ADD: safely add to the linked recipe (if any) using an ATTACHED Hive object
 Future<void> _addIngredientToLinkedRecipeIfAny(
   BatchModel batch,
@@ -1395,52 +1396,6 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
   );
 }
 
-  Future<void> _editPlannedEventDialog(BatchModel batch, int index) async {
-    final updatedEvent = await showDialog<PlannedEvent>(
-      context: context,
-      builder: (context) => PlannedEventDialog(
-        existingEvent: batch.safePlannedEvents[index],
-        onDelete: () {
-          batch.plannedEvents?.removeAt(index);
-          batch.save();
-          setState(() {});
-        },
-      ),
-    );
-
-    if (updatedEvent != null) {
-      batch.plannedEvents![index] = updatedEvent;
-      await batch.save();
-      setState(() {});
-    }
-  }
-
-  void _deletePlannedEvent(BatchModel batch, int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Delete Planned Event"),
-        content: const Text("Are you sure you want to delete this event?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              batch.plannedEvents?.removeAt(index);
-              batch.save();
-              Navigator.pop(context);
-              setState(() {});
-            },
-            child: const Text("Delete"),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _manageStages(BatchModel batch) async {
     final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
       context: context,
@@ -1451,11 +1406,9 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
       ),
     );
 
-    if (updatedStages != null) {
-      batch.fermentationStages = updatedStages;
-      await batch.save();
-      if (mounted) setState(() {});
-    }
+if (updatedStages != null) {
+  await _mutateBatch((b) => b.fermentationStages = updatedStages);
+}
   }
 
   Widget _buildPreparationTab(BatchModel batch) {
@@ -1768,6 +1721,7 @@ Widget _buildChecklistItem({
       }
     }
   }
+
 void _showCreateInventoryItemDialog(String name, String unit) {
   final box = Hive.box<InventoryItem>(Boxes.inventory); // must match where you save
 
@@ -1802,8 +1756,6 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     setState(() {}); // refresh “Not in inventory” -> “In stock …”
   });
 }
-
-
 
   Future<void> _handleDeductionChange({
     required BatchModel batch,
@@ -1907,11 +1859,9 @@ void _showCreateInventoryItemDialog(String name, String unit) {
                               ? sortedMeasurements.first.timestamp
                               : null,
                         ));
-                if (newMeasurement != null) {
-                  batch.measurements.add(newMeasurement);
-                  await batch.save();
-                  if (mounted) setState(() {});
-                }
+               if (newMeasurement != null) {
+              await _mutateBatch((b) => b.measurements.add(newMeasurement));
+              }
               },
             ),
           ],
@@ -1936,15 +1886,13 @@ FermentationChartWidget(
       ),
     );
 
-    if (updated != null) {
-      final originalIndex =
-          batch.measurements.indexWhere((m) => m.id == updated.id);
-      if (originalIndex != -1) {
-        batch.measurements[originalIndex] = updated;
-        await batch.save();
-        if (mounted) setState(() {});
-      }
-    }
+if (updated != null) {
+  await _mutateBatch((b) {
+    final i = b.measurements.indexWhere((m) => m.id == updated.id);
+    if (i != -1) b.measurements[i] = updated;
+  });
+}
+
   },
   onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
   onManageStages: () => _manageStages(batch),
@@ -1972,12 +1920,12 @@ FermentationChartWidget(
 }
 
 void _syncCompletedControllersFrom(BatchModel b) {
-  _syncTextController(_finalYieldController, b.finalYield?.toString() ?? '');
+  // DO NOT sync _finalYieldController here; it breaks typing
   _syncTextController(_tastingAromaController, b.tastingNotes?['aroma'] ?? '');
   _syncTextController(_tastingAppearanceController, b.tastingNotes?['appearance'] ?? '');
   _syncTextController(_tastingFlavorController, b.tastingNotes?['flavor'] ?? '');
+  _syncTextController(_finalNotesController, b.finalNotes ?? ''); // optional: move notes sync here
 }
-
 
   Widget _buildCompletedTab(BatchModel batch) {
     _tastingRating = batch.tastingRating ?? 0;
@@ -2154,14 +2102,22 @@ FutureBuilder(
                 children: [
                   Expanded(
                     child: TextField(
-                       controller: _finalYieldController, // <- no cascade here
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: 'Final Yield'),
-                          onChanged: (v) {
-                            batch.finalYield = double.tryParse(v);
-                            batch.save();
-                          },
-                        ),
+                      controller: _finalYieldController,
+                      focusNode: _finalYieldFocus, // <-- add
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Final Yield'),
+                      onChanged: (v) {
+                        // Update computed chips live
+                        setState(() {});
+
+                        // Debounce a lightweight persist so paste/typing is captured soon
+                        _finalYieldDebounce?.cancel();
+                        _finalYieldDebounce = Timer(const Duration(milliseconds: 500), _persistFinalYield);
+                      },
+                      onSubmitted: (_) => _persistFinalYield(), // quick persist on IME action
+                      // Optional: restrict to digits + dot
+                      // inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                    ),
                   ),
                   const SizedBox(width: 12),
                   DropdownButton<String>(
@@ -2208,8 +2164,8 @@ FutureBuilder(
               ),
               const SizedBox(height: 12),
               Builder(builder: (_) {
-                final fy = batch.finalYield;
-                final u = batch.finalYieldUnit ?? 'gal';
+              final fy = double.tryParse(_finalYieldController.text.trim()) ?? batch.finalYield;
+              final u  = batch.finalYieldUnit ?? _finalYieldUnit;
                 if (fy == null) return const SizedBox.shrink();
 
                 final n12 = _bottlesFromYield(
@@ -2246,21 +2202,6 @@ FutureBuilder(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                const Text('Overall'),
-                const SizedBox(width: 8),
-                _starRow(
-                  value: _tastingRating,
-                  onChanged: (v) {
-                    setState(() {
-                      _tastingRating = v;
-                      batch.tastingRating = v;
-                      batch.save();
-                    });
-                  },
-                ),
-              ]),
-              const SizedBox(height: 8),
               TextField(
                   controller: _tastingAromaController,
   decoration: const InputDecoration(labelText: 'Aroma'),
@@ -2324,7 +2265,7 @@ FutureBuilder(
         _sectionCard(
           title: 'Lessons Learned',
           child: TextField(
-            controller: _finalNotesController..text = batch.finalNotes ?? '',
+            controller: _finalNotesController,
             maxLines: 5,
             decoration: const InputDecoration(
               hintText:
@@ -2575,25 +2516,6 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
   return gu;
 }
 
-/// Recalculate batch.plannedOg from ingredients + target volume.
-Future<void> recalcPlannedOg(BatchModel batch) async {
-  final v = (batch.batchVolume ?? 0);
-  if (v <= 0) return;
-
-  final items = batch.safeIngredients;
-  final liquidOg = _blendedOgFromLiquids(items);
-  final liquidGU = (liquidOg == null ? 0.0 : (liquidOg - 1.0) * 1000.0) * v;
-  final massGU   = _sumMassFermentablesGU(items);
-
-  final totalGU  = liquidGU + massGU;
-  final newOg    = 1.0 + (totalGU / v) / 1000.0;
-
-  batch.plannedOg = double.parse(newOg.toStringAsFixed(3));
-  await batch.save();
-  if (mounted) setState(() {}); // reflect in UI immediately
-}
-
-
   Widget _sectionCard({
     required String title,
     Widget? trailing,
@@ -2794,5 +2716,4 @@ Widget build(BuildContext context) {
     },
   );
 }
-
 }
