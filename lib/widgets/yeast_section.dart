@@ -78,7 +78,6 @@ class YeastSection extends StatelessWidget {
       ),
       builder: (sheetCtx) => _YeastEditorSheet(
         editing: editing,
-        presets: presets,
         onSavePreset: presetService.maybeAddYeastPreset,
       ),
     );
@@ -139,12 +138,10 @@ class _YeastRow extends StatelessWidget {
 /// preventing “controller used after dispose” issues.
 class _YeastEditorSheet extends StatefulWidget {
   final YeastLine? editing;
-  final List<String> presets;
   final Future<void> Function(String) onSavePreset;
 
   const _YeastEditorSheet({
     required this.editing,
-    required this.presets,
     required this.onSavePreset,
   });
 
@@ -185,6 +182,7 @@ class _YeastEditorSheetState extends State<_YeastEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final livePresets = context.watch<PresetsService>().allYeastPresets;
     final viewInsets = MediaQuery.of(context).viewInsets;
     final height = MediaQuery.of(context).size.height;
     final maxH = height * 0.9;
@@ -288,23 +286,28 @@ class _YeastEditorSheetState extends State<_YeastEditorSheet> {
               const SizedBox(height: 12),
 
               // Preset chips (built-ins + saved)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final n in widget.presets)
-                      ActionChip(
-                        label: Text(n, overflow: TextOverflow.ellipsis),
-                        onPressed: () {
-                          _nameCtrl.text = n;                 // autopopulate
-                          FocusScope.of(context).nextFocus();  // move to qty
-                        },
-                      ),
-                  ],
-                ),
-              ),
+              // Preset chips (built-ins + saved)
+Align(
+  alignment: Alignment.centerLeft,
+  child: Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final n in livePresets)
+        GestureDetector(
+          onLongPress: () => _onManagePresetLongPress(context, n),
+          child: ActionChip(
+            label: Text(n, overflow: TextOverflow.ellipsis),
+            onPressed: () {
+              _nameCtrl.text = n;                 // autofill
+              FocusScope.of(context).nextFocus();  // move to qty
+            },
+          ),
+        ),
+    ],
+  ),
+),
+
               const SizedBox(height: 12),
 
               // Notes
@@ -345,6 +348,106 @@ class _YeastEditorSheetState extends State<_YeastEditorSheet> {
       ),
     );
   }
+Future<void> _onManagePresetLongPress(BuildContext context, String name) async {
+  final svc = context.read<PresetsService>();
+
+  if (svc.isBuiltInYeastName(name)) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Built-in preset—cannot edit'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    return;
+  }
+
+  final action = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetCtx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(leading: const Icon(Icons.edit), title: const Text('Rename'),
+            onTap: () => Navigator.pop(sheetCtx, 'rename')),
+          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Delete'),
+            onTap: () => Navigator.pop(sheetCtx, 'delete')),
+        ],
+      ),
+    ),
+  );
+if (!context.mounted) return;    
+if (action == null) return;
+
+  if (action == 'rename') {
+    final newName = await _promptText(
+      context, title: 'Rename preset', label: 'New name', initial: name,
+    );
+    if (!context.mounted) return;               // <<< add this
+    if (newName == null) return;
+
+    final ok = await svc.renameYeastPreset(from: name, to: newName);
+    if (!mounted || !context.mounted) return;               // <<< add this
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name exists or invalid'), duration: Duration(seconds: 2)),
+      );
+    } else {
+      setState(() {});                  // refresh chips
+    }
+  } else if (action == 'delete') {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Delete preset?'),
+        content: Text('Remove "$name" from your yeast presets?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogCtx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (!mounted) return;               // <<< add this
+    if (yes == true) {
+      await svc.removeYeastPreset(name);
+      if (!mounted) return;             // <<< add this
+      setState(() {});                  // refresh chips
+    }
+  }
+}
+
+Future<String?> _promptText(
+  BuildContext ctx, {
+  required String title,
+  required String label,
+  String? initial,
+}) async {
+  final ctrl = TextEditingController(text: initial ?? '');
+// in _promptText
+return showDialog<String?>(
+  context: ctx,
+  builder: (dialogCtx) => AlertDialog(
+    title: Text(title),
+    content: TextField(
+      controller: ctrl,
+      autofocus: true,
+      decoration: InputDecoration(labelText: label),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(dialogCtx, null), child: const Text('Cancel')),
+      FilledButton(
+        onPressed: () {
+          final v = ctrl.text.trim();
+          Navigator.pop(dialogCtx, v.isEmpty ? null : v);
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  ),
+);
+
+}
 
   Future<void> _commit() async {
     final name = _nameCtrl.text.trim();

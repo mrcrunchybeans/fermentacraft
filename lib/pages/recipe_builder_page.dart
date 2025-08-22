@@ -358,6 +358,8 @@ if (er != null) {
         'syncWeightVolume': f.syncWeightVolume,
         'usdaBacked': f.usdaBacked,
         'usdaFdcId': f.usdaFdcId,
+        'fruitCategory': f.fruitCategory?.name,        // e.g. "berries"
+        'fruitYieldGalPerLb': f.fruitYieldGalPerLb,   // optional per-line override
       };
     }).toList();
 

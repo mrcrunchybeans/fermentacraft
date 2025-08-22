@@ -86,30 +86,32 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       orElse: () => FermentableType.sugar,
     );
 
-    // Inputs (nullable)
     final double? brix = (m['brix'] as num?)?.toDouble();
     final double? density = (m['density'] as num?)?.toDouble();
     final double? weightG = (m['weightG'] as num?)?.toDouble();
     final double? volumeMl = (m['volumeMl'] as num?)?.toDouble();
 
-    // Normalize density to g/mL
+    // Normalize density to g/mL (same heuristics as Builder)
     final double dens = _normDensity(
       density ?? type.defaultDensity,
       fallback: type.defaultDensity,
     );
 
-    // Use line volume directly if present, else derive from weight / density
+    // ---- Volume: match Builder’s FermentableLine.liquidMl() ----
     double lineMl = 0.0;
     if (volumeMl != null && volumeMl > 0) {
+      // If user explicitly set a volume, always respect it
       lineMl = volumeMl;
-    } else if (weightG != null && weightG > 0) {
-      lineMl = weightG / dens; // g / (g/mL) => mL
+    } else if (weightG != null && weightG > 0 && type.isLiquid) {
+      // Liquids: derive from weight via density
+      lineMl = weightG / dens;
+    } else if (type == FermentableType.fruit) {
+      // Fruit solids: estimate if no explicit volume
+      lineMl = _estimateFruitMlFromMap(m, weightG);
     }
 
-    // Sugar fraction (brix as fraction)
+    // ---- Sugar grams: match Builder’s sugarGrams() ----
     final double b = (brix ?? type.defaultBrix) / 100.0;
-
-    // Sugar contribution: if weight given, b * weight; else b * (volume * density)
     double lineSugarG = 0.0;
     if (weightG != null && weightG > 0) {
       lineSugarG = b * weightG;
@@ -125,6 +127,36 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   final double sgOut = gu.brixToSg(brixOut);
 
   return (sugarG: totalSugarG, volumeMl: totalMl, brix: brixOut, sg: sgOut);
+}
+
+// Estimate fruit volume (same idea as Builder)
+double _estimateFruitMlFromMap(Map<String, dynamic> m, double? weightG) {
+  if ((weightG ?? 0) <= 0) return 0.0;
+
+  // Try saved per-line override first
+  final double? overrideGalPerLb = (m['fruitYieldGalPerLb'] as num?)?.toDouble();
+
+  // Parse saved category if present; else default to berries (matches Builder default)
+  FruitCategory cat;
+  final fc = (m['fruitCategory'] ?? '').toString();
+  switch (fc) {
+    case 'stone':     cat = FruitCategory.stone; break;
+    case 'pome':      cat = FruitCategory.pome; break;
+    case 'tropical':  cat = FruitCategory.tropical; break;
+    case 'other':     cat = FruitCategory.other; break;
+    case 'berries':
+    default:          cat = FruitCategory.berries; break;
+  }
+
+  final double baseGalPerLb = overrideGalPerLb ?? cat.defaultGalPerLb;
+  // Clamp like Builder: 0.05–0.20 gal/lb
+  final double galPerLb = baseGalPerLb.clamp(0.05, 0.20);
+
+  const double lbsPerGram = 0.00220462262185;
+  const double mlPerGal = 3785.411784;
+
+  final pounds = (weightG ?? 0.0) * lbsPerGram;
+  return pounds * galPerLb * mlPerGal;
 }
 
 

@@ -25,9 +25,9 @@ class _AppShellState extends State<AppShell> {
   // Keep pages alive with IndexedStack
   static final List<Widget> _pages = <Widget>[
     const HomePage(),
+    const RecipeListPage(),
     const BatchLogPage(),
     const InventoryPage(),
-    const RecipeListPage(),
     const MorePage(),
   ];
 

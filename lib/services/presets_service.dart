@@ -124,4 +124,26 @@ class PresetsService extends ChangeNotifier {
     final v = value.toLowerCase();
     list.removeWhere((e) => e.toLowerCase() == v);
   }
+
+bool isBuiltInYeastName(String name) =>
+      builtInYeasts.any((e) => e.toLowerCase() == name.toLowerCase());
+
+  Future<bool> renameYeastPreset({required String from, required String to}) async {
+    final f = _clean(from);
+    final t = _clean(to);
+    if (t.isEmpty) return false;
+    if (isBuiltInYeastName(f)) return false;                 // don't rename built-ins
+    if (isBuiltInYeastName(t)) return false;                 // can't collide with built-ins
+    if (_containsCaseInsensitive(_userYeasts, t)) return false;
+
+    final i = _userYeasts.indexWhere((e) => e.toLowerCase() == f.toLowerCase());
+    if (i < 0) return false;
+
+    _userYeasts[i] = t;
+    await _save();
+    notifyListeners();
+    return true;
+  }
+
+  
 }
