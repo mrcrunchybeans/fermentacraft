@@ -30,6 +30,14 @@ import 'services/presets_service.dart';
 import 'web_bridge_stub.dart'
   if (dart.library.html) 'web_bridge_web.dart' as wb;
 
+// import 'package:fermentacraft/acid_tools/strip_reader_tab.dart';
+// void registerAdapters() {
+//   if (!Hive.isAdapterRegistered(41)) {
+//     Hive.registerAdapter(PHStripAdapter());
+//   if (!Hive.isAdapterRegistered(41)) Hive.registerAdapter(PHStripAdapter());
+// }
+// }
+
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
