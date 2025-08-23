@@ -13,6 +13,9 @@ import 'pages/settings_page.dart';
 import 'pages/tools_page.dart';
 import 'pages/shopping_list_page.dart';
 import 'widgets/plan_badge.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'services/review_prompter.dart';
+
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -184,6 +187,15 @@ class MorePage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+  const SizedBox(height: 12),
+  FilledButton.icon(
+    icon: const Icon(Icons.thumb_up_alt_outlined),
+    onPressed: () => ReviewPrompter.instance.openRateFromSettings(),
+    label: const Text('Rate FermentaCraft'),
+  ),
+],
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [

@@ -194,11 +194,14 @@ class TapSquareOverlay extends StatelessWidget {
   final Offset location;
   final Color color;
   final Color borderColor;
+  final VoidCallback? onTap;
+
   const TapSquareOverlay({
     super.key,
     required this.location,
     required this.color,
     this.borderColor = Colors.white,
+    this.onTap,
   });
 
   @override
@@ -206,19 +209,23 @@ class TapSquareOverlay extends StatelessWidget {
     return Positioned(
       left: location.dx - 10,
       top: location.dy - 10,
-      child: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: borderColor, width: 2.0),
-          borderRadius: BorderRadius.circular(2),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: color,
+            border: Border.all(color: borderColor, width: 2.0),
+            borderRadius: BorderRadius.circular(2),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+          ),
         ),
       ),
     );
   }
 }
+
 
 /// --------------------------------------
 /// Magnifier (loupe) painter
@@ -1071,14 +1078,16 @@ _buildControlsRow(context),
                           .map((r) => TapSquareOverlay(location: r.location!, color: r.color!, borderColor: Colors.white)),
 
                       if (_testPoint?.location != null)
-                        GestureDetector(
-                          onTap: () => setState(() { _testPoint = null; _updatePH(); }),
-                          child: TapSquareOverlay(
-                            location: _testPoint!.location!,
-                            color: _testPoint!.color!,
-                            borderColor: Colors.greenAccent,
-                          ),
+                        TapSquareOverlay(
+                          location: _testPoint!.location!,
+                          color: _testPoint!.color!,
+                          borderColor: Colors.greenAccent,
+                          onTap: () => setState(() {
+                            _testPoint = null;
+                            _updatePH();
+                          }),
                         ),
+
 
                       if (_showLoupe)
                         Positioned(

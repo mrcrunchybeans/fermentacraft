@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fermentacraft/utils/platforms.dart';
+
 
 import 'package:fermentacraft/utils/snacks.dart';
 import '../services/feature_gate.dart';
@@ -451,8 +453,15 @@ class _RestoreRowContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-    final restoreLabel = isAndroid ? 'Refresh Google Play purchases' : 'Restore Purchases';
-    final inProgress = isAndroid ? 'Refreshing purchases…' : 'Restoring purchases…';
+    final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+    final canUseRevenueCat = isAndroid || isIOS;
+    final restoreLabel = canUseRevenueCat
+        ? (isAndroid ? 'Refresh Google Play purchases' : 'Restore Purchases')
+        : 'Restore purchases (mobile only)';
+    final inProgress = canUseRevenueCat
+        ? (isAndroid ? 'Refreshing purchases…' : 'Restoring purchases…')
+        : 'Checking account…';
+
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -460,58 +469,83 @@ class _RestoreRowContent extends StatelessWidget {
         final children = <Widget>[
           _SmallTonalButton(
             label: restoreLabel,
-            onPressed: () async {
-              try {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(inProgress)));
+           onPressed: () async {
+  try {
+    if (!context.mounted) return;
 
-                if (isAndroid) {
-                  await RevenueCatService.instance.sync();
-                } else {
-                  await RevenueCatService.instance.restore();
-                }
-
-                final refreshed = await RevenueCatService.instance.refreshCustomerInfo();
-                final hasPremium = (refreshed.entitlements
-                            .all[RevenueCatService.entitlementId]
-                            ?.isActive ??
-                        false);
-
-                if (!context.mounted) return;
-
-                if (hasPremium) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Purchases restored.')));
-                  Navigator.of(context).maybePop(true);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('No previous purchases found.')),
-                  );
-                }
-              } on PlatformException catch (e) {
-                if (!context.mounted) return;
-                final code = PurchasesErrorHelper.getErrorCode(e);
-                if (code == PurchasesErrorCode.purchaseCancelledError) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
-                );
-              } catch (e) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore error: $e')));
-              }
-            },
+    if (!canUseRevenueCat) {
+      // Desktop: RevenueCat restore doesn’t apply. Tell user what to do.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Restore is only for App Store/Google Play purchases. '
+            'If you bought via Stripe on web/desktop, use “Refresh status”.',
           ),
-          _SmallTextButton(
-            label: 'Already upgraded? Refresh status',
-            onPressed: () async {
-              final messenger = snacks;
-              try {
-                final active = await refreshPremiumStatusUnified();
-                messenger.show(SnackBar(content: Text(active ? 'Premium active ✅' : 'No premium found')));
-              } catch (e) {
-                messenger.show(SnackBar(content: Text('Couldn’t refresh: $e')));
-              }
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(inProgress)));
+
+    if (isAndroid) {
+      await RevenueCatService.instance.sync();
+    } else {
+      await RevenueCatService.instance.restore();
+    }
+
+    final refreshed = await RevenueCatService.instance.refreshCustomerInfo();
+    final hasPremium = (refreshed.entitlements
+                .all[RevenueCatService.entitlementId]
+                ?.isActive ??
+            false);
+
+    if (!context.mounted) return;
+
+    if (hasPremium) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Purchases restored.')));
+      Navigator.of(context).maybePop(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No previous purchases found.')),
+      );
+    }
+  } on PlatformException catch (e) {
+    if (!context.mounted) return;
+    final code = PurchasesErrorHelper.getErrorCode(e);
+    if (code == PurchasesErrorCode.purchaseCancelledError) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Restore error: $e')));
+  }
             },
-          ),
+          ),  
+_SmallTextButton(
+  label: 'Already upgraded? Refresh status',
+  onPressed: () async {
+    final messenger = snacks;
+    try {
+      final active = await refreshPremiumStatusUnified();
+      messenger.show(SnackBar(
+        content: Text(
+          active
+              ? 'Premium active ✅'
+              : (supportsFirebaseFunctionsClient
+                  ? 'No premium found'
+                  : 'No premium found. If you purchased on Google Play/App Store, open the mobile app and use Restore.'),
+        ),
+      ));
+    } catch (e) {
+      messenger.show(SnackBar(content: Text('Couldn’t refresh: $e')));
+    }
+  },
+),
+
         ];
 
         if (stack) {
@@ -542,14 +576,25 @@ class _RestoreRowContent extends StatelessWidget {
    ============================ */
 
 /// Unified refresh:
-/// - Calls `syncPremiumFromRC` (checks RC; if allowlisted, grants promo; mirrors Firestore)
-/// - Reads Firestore mirror and updates FeatureGate
+/// - Mobile/web/macOS: call callable Function to sync RC, then read Firestore mirror
+/// - Windows/Linux: skip callable (unsupported); just read Firestore mirror
 Future<bool> refreshPremiumStatusUnified() async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) throw Exception('Not signed in');
 
-  final fn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('syncPremiumFromRC');
-  await fn.call(<String, dynamic>{});
+  if (supportsFirebaseFunctionsClient) {
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('syncPremiumFromRC');
+      await fn.call(<String, dynamic>{});
+    } catch (e) {
+      // Don’t crash the user if the callable flaked; we still read the mirror.
+      debugPrint('syncPremiumFromRC callable failed: $e');
+    }
+  } else {
+    // Windows/Linux: callable isn't available; rely on the Firestore mirror only.
+    debugPrint('Skipping syncPremiumFromRC on this platform (no client impl).');
+  }
 
   final snap = await FirebaseFirestore.instance
       .collection('users')

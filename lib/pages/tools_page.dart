@@ -8,14 +8,31 @@ import 'bubble_counter_page.dart';
 import 'gravity_adjuster_page.dart';
 import 'sg_correction_page.dart';
 import 'unit_converter_page.dart';
+import 'package:fermentacraft/services/review_prompter.dart';
 
 
 
-class ToolsPage extends StatelessWidget {
+class ToolsPage extends StatefulWidget {
   const ToolsPage({super.key});
 
   @override
+  State<ToolsPage> createState() => _ToolsPageState();
+}
+
+class _ToolsPageState extends State<ToolsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Log that the Tools page was used today (idempotent per day)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ReviewPrompter.instance.fireToolsUsedToday(context);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+
     final tools = [
       ToolData("ABV Calculator", Icons.percent, const ABVCalculatorPage()),
       ToolData("SG Correction", Icons.device_thermostat, const SgCorrectionPage()),

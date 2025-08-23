@@ -34,6 +34,7 @@ import 'package:fermentacraft/models/settings_model.dart';
 import 'package:provider/provider.dart';
 import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
+import 'package:fermentacraft/services/review_prompter.dart';
 
 
 
@@ -361,6 +362,23 @@ showPaywall(context);
   }
 
 void _updateBatchStatus(BatchModel batch, String newStatus) {
+  // Detect FIRST EVER "Completed" (exclude the current batch)
+  bool shouldFireFirstCompleted = false;
+  if (newStatus == 'Completed') {
+    try {
+      final box = Hive.box<BatchModel>(Boxes.batches);
+      final anyCompletedBefore = box.values.any(
+        (b) => b.id != batch.id && (b.status == 'Completed'),
+      );
+      // If none were completed before, this is the user's first completion.
+      if (!anyCompletedBefore) {
+        shouldFireFirstCompleted = true;
+      }
+    } catch (_) {
+      // If box not open yet or any error, fail safe: don't trigger.
+    }
+  }
+
   _mutateBatch((b) {
     b.status = newStatus;
   });
@@ -378,7 +396,15 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
       break;
   }
   _tabController.animateTo(tabIndex);
+
+  // After UI settles, fire the review event if applicable.
+  if (shouldFireFirstCompleted && mounted) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReviewPrompter.instance.fireFirstBatchCompleted(context);
+    });
+  }
 }
+
 
   Future<void> _showChangeStatusDialog(BatchModel batch) async {
     String currentStatus = batch.status;

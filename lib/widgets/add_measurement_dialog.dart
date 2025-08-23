@@ -2,12 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 
 import '../models/measurement.dart';
 import '../models/settings_model.dart';
 import '../utils/gravity_utils.dart';
 import '../utils/fsu_utils.dart';
 import '../utils/hydrometer_correction.dart';
+import 'package:fermentacraft/services/review_prompter.dart';
+
 
 class AddMeasurementDialog extends StatefulWidget {
   final Measurement? existingMeasurement;
@@ -257,8 +260,20 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
       interventions: _selectedInterventions,
     );
 
-    widget.onSave?.call(measurement);
-    Navigator.of(context).pop(measurement);
+widget.onSave?.call(measurement);
+
+// ✅ We may have awaited earlier in this method; guard context usage:
+if (!mounted) return;
+
+// Fire review trigger without awaiting (no need to hold the dialog)
+unawaited(ReviewPrompter.instance.fireMeasurementLogged(context));
+
+// Close safely
+if (Navigator.canPop(context)) {
+  Navigator.of(context).pop(measurement);
+}
+
+
   }
 
   Future<void> _pickDate() async {
