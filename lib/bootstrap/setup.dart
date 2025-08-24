@@ -1,11 +1,15 @@
 // lib/bootstrap/setup.dart
-import 'package:firebase_core/firebase_core.dart';
+// Initializes Firebase + Hive, registers adapters, opens boxes,
+// scrubs unreadable legacy rows (web-safe), then runs idempotent migrations.
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+// For HiveList
 import 'package:hive_flutter/hive_flutter.dart';
-import '../utils/data_management.dart';
 
 import '../firebase_options.dart';
 import '../utils/boxes.dart';
+import '../utils/data_management.dart';
 import 'package:fermentacraft/utils/tag_icons.dart';
 
 // Adapters / models
@@ -25,46 +29,63 @@ import 'package:fermentacraft/models/shopping_list_item.dart';
 
 /// Call this once before runApp().
 Future<void> setupAppServices() async {
-  // --- Firebase
+  // ---------------------------
+  // Firebase
+  // ---------------------------
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   try {
     FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
   } catch (_) {
-    // Already applied / not supported.
+    // Already set or not supported (e.g., web).
   }
 
-  // --- Hive
+  // ---------------------------
+  // Hive
+  // ---------------------------
   await Hive.initFlutter();
   _registerHiveAdapters();
   await _openHiveBoxes();
 
+  // ---------------------------
+  // Pre-scrub (web-safe, keeps native behavior)
+  // Remove ONLY rows that cannot decode with current adapters.
+  // Run BEFORE any typed reads or migrations.
+  // ---------------------------
+  await _scrubUnreadableTagRows();
+  await _scrubUnreadableRecipeRows();
+  await _scrubUnreadableBatchRows();
+  await _scrubUnreadableInventoryRows();
 
-  // 🚨 IMPORTANT: re-key first so downstream migrations see canonical keys
+  // ---------------------------
+  // Stable ID re-key (after scrubs, before other migrations)
+  // ---------------------------
   await DataManagementService.migrateHiveKeysToStableIds();
 
-  // --- Migrations / sanitizers (idempotent via settings flags)
+  // ---------------------------
+  // Migrations / sanitizers (idempotent via settings flags)
+  // ---------------------------
   final settings = Hive.box(Boxes.settings);
 
-  // v2: fix Tag.iconKey + sanitize embedded tags in recipes
+  // v2: fix Tag.iconKey + sanitize embedded recipe tags
   if (settings.get('migrated.tags.v2') != true) {
     await _sanitizeTagBox();
     await _sanitizeRecipeEmbeddedTags();
     await settings.put('migrated.tags.v2', true);
   }
 
-  // v4a: normalize Tag keys to string names and repoint recipes to canonical refs
+  // v4a: normalize Tag keys to string names + repoint recipes to canonical refs
   if (settings.get('migrated.tags.v4_fix_keys') != true) {
     await _normalizeTagKeysAndRepointRecipes();
     await settings.put('migrated.tags.v4_fix_keys', true);
   }
 
-  // v4: migrate RecipeModel embedded tags -> HiveList<Tag> (noop if already repointed)
+  // v4: migrate embedded recipe tags -> HiveList<Tag> (noop if already repointed)
   if (settings.get('migrated.tags.v4_refs') != true) {
     await _migrateRecipeEmbeddedToRefs();
     await settings.put('migrated.tags.v4_refs', true);
   }
 
-  // v3: sanitize embedded tags in batches (safe after v2/v4)
+  // v3: sanitize embedded tags in batches + light recipe recheck
   if (settings.get('migrated.tags.v3') != true) {
     await _sanitizeBatchEmbeddedTags();
     await _lightRecheckRecipes();
@@ -72,9 +93,9 @@ Future<void> setupAppServices() async {
   }
 }
 
-/* ----------------------------------------------------------------------------
+/* ============================================================================
  * Registration / Boxes
- * ---------------------------------------------------------------------------*/
+ * ==========================================================================*/
 
 void _registerHiveAdapters() {
   void reg<T>(TypeAdapter<T> a) {
@@ -95,7 +116,7 @@ void _registerHiveAdapters() {
   reg<FermentationStage>(FermentationStageAdapter());
   reg<ShoppingListItem>(ShoppingListItemAdapter());
 
-  // 👉 Tag FIRST (others embed Tag)
+  // Tag FIRST (others embed Tag)
   reg<Tag>(TagAdapter());
 
   // Models that embed Tag (must come AFTER TagAdapter)
@@ -118,16 +139,162 @@ Future<void> _openHiveBoxes() async {
   ]);
 }
 
-/* ----------------------------------------------------------------------------
- * v2: Sanitize icon keys + embedded recipe tags
- * ---------------------------------------------------------------------------*/
+/* ============================================================================
+ * Pre-scrub (web-safe): remove unreadable rows BEFORE any typed reads
+ * ==========================================================================*/
+
+/// Deletes only entries in `tags` that cannot decode with the current Tag adapter.
+/// Opens the box untyped to avoid crashing during iteration.
+Future<void> _scrubUnreadableTagRows() async {
+  final box = Hive.box(Boxes.tags); // untyped
+  final badKeys = <dynamic>[];
+
+  for (final key in box.keys.toList()) {
+    try {
+      final v = box.get(key); // forces decode
+      if (v is! Tag) badKeys.add(key);
+    } catch (_) {
+      badKeys.add(key);
+    }
+  }
+
+  if (badKeys.isNotEmpty) {
+    for (final k in badKeys) {
+      try { await box.delete(k); } catch (_) {}
+    }
+    _log('[startup] Pruned ${badKeys.length} unreadable rows from "${Boxes.tags}".');
+  }
+}
+
+/// Deletes only recipe rows that fail to decode; also strips any non-Tag entries
+/// from embedded tag lists so downstream migrations never choke.
+Future<void> _scrubUnreadableRecipeRows() async {
+  final box = Hive.box(Boxes.recipes); // untyped
+  final badKeys = <dynamic>[];
+  int fixedEmbedded = 0;
+
+  for (final key in box.keys.toList()) {
+    try {
+      final v = box.get(key); // force decode
+      if (v is! RecipeModel) {
+        badKeys.add(key);
+        continue;
+      }
+
+      // Use dynamic list so type checks are meaningful
+      final embeddedDyn = _getEmbeddedTagsDynamic(v);
+      if (embeddedDyn.isNotEmpty && embeddedDyn.any((e) => e is! Tag)) {
+        final cleaned = <Tag>[
+          for (final e in embeddedDyn)
+            if (e is Tag) e,
+        ];
+        _setEmbeddedTags(v, cleaned);
+        try { await v.save(); } catch (_) {}
+        fixedEmbedded++;
+      }
+    } catch (_) {
+      badKeys.add(key);
+    }
+  }
+
+  if (badKeys.isNotEmpty) {
+    for (final k in badKeys) {
+      try { await box.delete(k); } catch (_) {}
+    }
+    _log('[startup] Pruned ${badKeys.length} unreadable rows from "${Boxes.recipes}".');
+  }
+  if (fixedEmbedded > 0) {
+    _log('[startup] Stripped invalid embedded tag entries in $fixedEmbedded recipe(s).');
+  }
+}
+
+/// Deletes undecodable batches and strips invalid embedded tags.
+Future<void> _scrubUnreadableBatchRows() async {
+  final box = Hive.box(Boxes.batches); // untyped
+  final badKeys = <dynamic>[];
+  int fixed = 0;
+
+  for (final key in box.keys.toList()) {
+    try {
+      final v = box.get(key);
+      if (v is! BatchModel) { badKeys.add(key); continue; }
+
+      final tagsDyn = _getBatchEmbeddedTagsDynamic(v);
+      if (tagsDyn.isNotEmpty && tagsDyn.any((e) => e is! Tag)) {
+        final cleaned = <Tag>[
+          for (final e in tagsDyn)
+            if (e is Tag) e,
+        ];
+        _setBatchEmbeddedTags(v, cleaned);
+        try { await v.save(); } catch (_) {}
+        fixed++;
+      }
+    } catch (_) {
+      badKeys.add(key);
+    }
+  }
+
+  if (badKeys.isNotEmpty) {
+    for (final k in badKeys) { try { await box.delete(k); } catch (_) {} }
+    _log('[startup] Pruned ${badKeys.length} unreadable rows from "${Boxes.batches}".');
+  }
+  if (fixed > 0) {
+    _log('[startup] Stripped invalid embedded tag entries in $fixed batch(es).');
+  }
+}
+
+/// Deletes undecodable rows from inventory and inventory_actions.
+Future<void> _scrubUnreadableInventoryRows() async {
+  // Inventory items
+  {
+    final box = Hive.box(Boxes.inventory);
+    final badKeys = <dynamic>[];
+    for (final k in box.keys.toList()) {
+      try {
+        if (box.get(k) is! InventoryItem) badKeys.add(k);
+      } catch (_) {
+        badKeys.add(k);
+      }
+    }
+    if (badKeys.isNotEmpty) {
+      for (final k in badKeys) { try { await box.delete(k); } catch (_) {} }
+      _log('[startup] Pruned ${badKeys.length} unreadable rows from "${Boxes.inventory}".');
+    }
+  }
+  // Inventory actions
+  {
+    final box = Hive.box(Boxes.inventoryActions);
+    final badKeys = <dynamic>[];
+    for (final k in box.keys.toList()) {
+      try {
+        if (box.get(k) is! InventoryAction) badKeys.add(k);
+      } catch (_) {
+        badKeys.add(k);
+      }
+    }
+    if (badKeys.isNotEmpty) {
+      for (final k in badKeys) { try { await box.delete(k); } catch (_) {} }
+      _log('[startup] Pruned ${badKeys.length} unreadable rows from "${Boxes.inventoryActions}".');
+    }
+  }
+}
+
+/* ============================================================================
+ * v2: Sanitize Tag.iconKey + embedded recipe tags
+ * ==========================================================================*/
 
 Future<void> _sanitizeTagBox() async {
   final tagBox = Hive.box<Tag>(Boxes.tags);
-  for (final t in tagBox.values) {
-    if (!kTagIconMap.containsKey(t.iconKey)) {
-      t.iconKey = keyFromLegacy(t.iconCodePoint, t.iconFontFamily);
-      await t.save();
+  for (final key in tagBox.keys.toList()) {
+    try {
+      final t = tagBox.get(key);
+      if (t == null) continue;
+      if (!kTagIconMap.containsKey(t.iconKey)) {
+        t.iconKey = keyFromLegacy(t.iconCodePoint, t.iconFontFamily);
+        await t.save();
+      }
+    } catch (_) {
+      try { await tagBox.delete(key); } catch (_) {}
     }
   }
 }
@@ -141,7 +308,6 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
 
       bool dirty = false;
 
-      // Sanitize whichever embedded list exists
       final embedded = _getEmbeddedTags(r);
       for (final t in embedded) {
         if (!kTagIconMap.containsKey(t.iconKey)) {
@@ -150,9 +316,7 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
         }
       }
 
-      
-
-      // Normalize any custom fields if your model supports it
+      // Optional normalization if available on your model
       try {
         // ignore: invalid_use_of_visible_for_testing_member
         r.normalizeInPlace();
@@ -161,7 +325,7 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
 
       if (dirty) await r.save();
     } catch (_) {
-      // If unrecoverable, try strip tags; else delete row
+      // Best-effort salvage: strip tags; else delete row
       try {
         final r = recipeBox.get(key);
         if (r != null) {
@@ -175,24 +339,25 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
   }
 }
 
-/* ----------------------------------------------------------------------------
- * v4a: Normalize Tags box keys to string names + repoint recipes
- * ---------------------------------------------------------------------------*/
+/* ============================================================================
+ * v4a: Normalize Tag keys to string names + repoint recipes to canonical refs
+ * ==========================================================================*/
 
 Future<void> _normalizeTagKeysAndRepointRecipes() async {
   final tagBox = Hive.box<Tag>(Boxes.tags);
   final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
 
-  // 1) Build canonical map and move any numeric/mismatched keys to string key = name
-  final Map<String, Tag> canonByName = {};
+  // 1) Build canonical map (keyed by lowercased name) and move entries to name keys
+  final Map<String, Tag> canonByLowerName = {};
   final List<dynamic> toDelete = [];
 
   for (final dynamic oldKey in tagBox.keys.toList()) {
     final Tag? t = tagBox.get(oldKey);
     if (t == null) continue;
 
-    final nameKey = t.name.trim();                // preferred key
+    final nameKey = t.name.trim();
     final lower = nameKey.toLowerCase();
+
     final normalizedIcon = kTagIconMap.containsKey(t.iconKey)
         ? t.iconKey
         : keyFromLegacy(t.iconCodePoint, t.iconFontFamily);
@@ -200,21 +365,19 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
     Tag? canon = tagBox.get(nameKey);
     if (canon == null) {
       if (oldKey == nameKey) {
-        // Already at correct key
         if (t.iconKey != normalizedIcon) {
           t.iconKey = normalizedIcon;
           await t.save();
         }
         canon = t;
       } else {
-        // 👇 Clone to a FRESH instance at the proper key (never reuse same instance under 2 keys)
+        // Write a fresh instance at the proper key (never reuse the same object under 2 keys)
         final fresh = Tag(name: t.name, iconKey: normalizedIcon);
         await tagBox.put(nameKey, fresh);
         canon = fresh;
         toDelete.add(oldKey);
       }
     } else {
-      // Ensure canonical icon sane
       if (!kTagIconMap.containsKey(canon.iconKey) && kTagIconMap.containsKey(normalizedIcon)) {
         canon.iconKey = normalizedIcon;
         await canon.save();
@@ -222,12 +385,15 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
       if (oldKey != nameKey) toDelete.add(oldKey);
     }
 
-    canonByName[lower] = canon;
+    canonByLowerName[lower] = canon;
   }
 
-  // 2) Repoint every recipe to canonical Tag instances (HiveList<Tag> if available)
-  for (final r in recipeBox.values) {
+  // 2) Repoint recipes to canonical Tag instances
+  for (final key in recipeBox.keys.toList()) {
     try {
+      final r = recipeBox.get(key);
+      if (r == null) continue;
+
       final embedded = _getEmbeddedTags(r);
       if (embedded.isEmpty) {
         _setRefs(r, const <Tag>[]);
@@ -240,20 +406,20 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
       for (final t in embedded) {
         final k = t.name.trim().toLowerCase();
         if (seen.add(k)) {
-          final Tag? canon = canonByName[k] ?? tagBox.get(t.name.trim());
+          final Tag? canon = canonByLowerName[k] ?? tagBox.get(t.name.trim());
           if (canon != null) canonList.add(canon);
         }
       }
 
-      _setRefs(r, canonList);       // safe no-op if model lacks tagRefs
-      _setEmbeddedTags(r, canonList); // also try to write embedded list if supported
+      _setRefs(r, canonList);         // safe no-op if tagRefs not present
+      _setEmbeddedTags(r, canonList); // try to write embedded list if supported
       await r.save();
     } catch (_) {
       // ignore broken rows
     }
   }
 
-  // 3) Remove old numeric / duplicate entries AFTER repointing
+  // 3) Remove obsolete numeric/duplicate keys AFTER repointing
   for (final k in toDelete) {
     if (tagBox.containsKey(k)) {
       await tagBox.delete(k);
@@ -261,17 +427,19 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
   }
 }
 
-/* ----------------------------------------------------------------------------
+/* ============================================================================
  * v4: Migrate embedded recipe tags to HiveList<Tag>
- * (Mostly a no-op after v4a, but kept for safety across model versions)
- * ---------------------------------------------------------------------------*/
+ * ==========================================================================*/
 
 Future<void> _migrateRecipeEmbeddedToRefs() async {
   final tagBox = Hive.box<Tag>(Boxes.tags);
   final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
 
-  for (final r in recipeBox.values) {
+  for (final key in recipeBox.keys.toList()) {
     try {
+      final r = recipeBox.get(key);
+      if (r == null) continue;
+
       final refs = _getRefs(r);
       final embedded = _getEmbeddedTags(r);
 
@@ -284,8 +452,8 @@ Future<void> _migrateRecipeEmbeddedToRefs() async {
         continue;
       }
 
-      // Canonicalize by name (dedupe) and ensure each Tag exists under proper string key
-      final byName = <String, Tag>{};
+      // Canonicalize by name (dedupe) and ensure each Tag exists under string key
+      final byLower = <String, Tag>{};
       for (final t in embedded) {
         final nameKey = t.name.trim();
         var canon = tagBox.get(nameKey);
@@ -294,25 +462,24 @@ Future<void> _migrateRecipeEmbeddedToRefs() async {
               ? t.iconKey
               : keyFromLegacy(t.iconCodePoint, t.iconFontFamily);
           canon = Tag(name: t.name, iconKey: icon);
-          // IMPORTANT: write a FRESH object; never reuse an instance at a second key
-          await tagBox.put(nameKey, canon);
+          await tagBox.put(nameKey, canon); // fresh object at proper key
         }
-        byName[nameKey.toLowerCase()] = canon;
+        byLower[nameKey.toLowerCase()] = canon;
       }
 
-      final canonList = byName.values.toList();
+      final canonList = byLower.values.toList();
       _setRefs(r, canonList);
-      _setEmbeddedTags(r, canonList); // harmless no-op if fields are final/missing
+      _setEmbeddedTags(r, canonList); // harmless if fields are final/missing
       await r.save();
     } catch (_) {
-      // ignore and let previous sanitizers handle
+      // ignore; earlier sanitizers handle edge cases
     }
   }
 }
 
-/* ----------------------------------------------------------------------------
+/* ============================================================================
  * v3: Sanitize batches + light recheck of recipes
- * ---------------------------------------------------------------------------*/
+ * ==========================================================================*/
 
 Future<void> _sanitizeBatchEmbeddedTags() async {
   final batchBox = Hive.box<BatchModel>(Boxes.batches);
@@ -332,11 +499,11 @@ Future<void> _sanitizeBatchEmbeddedTags() async {
         }
       }
       if (dirty) {
-        _setBatchEmbeddedTags(b, tags); // write back to whichever field exists
+        _setBatchEmbeddedTags(b, tags);
         await b.save();
       }
     } catch (_) {
-      // skip deleting batches by default
+      // don't delete batches by default
     }
   }
 }
@@ -362,13 +529,11 @@ Future<void> _lightRecheckRecipes() async {
   }
 }
 
-
-/* ----------------------------------------------------------------------------
- * Small cross-version helpers (never assume fields exist / are mutable)
- * ---------------------------------------------------------------------------*/
+/* ============================================================================
+ * Cross-version helpers (typed) — for normal operations/migrations
+ * ==========================================================================*/
 
 List<Tag> _getEmbeddedTags(RecipeModel r) {
-  // Prefer explicit legacy list if present; else current embedded list; else empty.
   try {
     final legacy = (r as dynamic).tagsLegacy as List<Tag>?;
     if (legacy != null) return legacy;
@@ -381,7 +546,6 @@ List<Tag> _getEmbeddedTags(RecipeModel r) {
 }
 
 void _setEmbeddedTags(RecipeModel r, List<Tag> tags) {
-  // Try to write both; ignore if field is final or absent.
   try { (r as dynamic).tagsLegacy = tags; } catch (_) {}
   try { (r as dynamic).tags = tags; } catch (_) {}
 }
@@ -395,13 +559,12 @@ void _setRefs(RecipeModel r, List<Tag> canon) {
     final tagBox = Hive.box<Tag>(Boxes.tags);
     (r as dynamic).tagRefs = HiveList<Tag>(tagBox, objects: canon);
   } catch (_) {
-    // ignore on models without tagRefs
+    // models without tagRefs
   }
 }
 
-// ---- Batch tag helpers (cross-version safe) ----
+// ---- Batch helpers (typed) ----
 List<Tag> _getBatchEmbeddedTags(BatchModel b) {
-  // Prefer legacy field if present; else current field; else empty.
   try {
     final legacy = (b as dynamic).tagsLegacy as List<Tag>?;
     if (legacy != null) return legacy;
@@ -414,7 +577,43 @@ List<Tag> _getBatchEmbeddedTags(BatchModel b) {
 }
 
 void _setBatchEmbeddedTags(BatchModel b, List<Tag> tags) {
-  // Try to write both; ignore if field is absent or final on this version.
   try { (b as dynamic).tagsLegacy = tags; } catch (_) {}
   try { (b as dynamic).tags = tags; } catch (_) {}
+}
+
+/* ============================================================================
+ * Dynamic helpers — used ONLY during pre-scrub to avoid static type assumptions
+ * ==========================================================================*/
+
+List<dynamic> _getEmbeddedTagsDynamic(RecipeModel r) {
+  try {
+    final legacy = (r as dynamic).tagsLegacy as List<dynamic>?;
+    if (legacy != null) return legacy;
+  } catch (_) {}
+  try {
+    final current = (r as dynamic).tags as List<dynamic>?;
+    if (current != null) return current;
+  } catch (_) {}
+  return const <dynamic>[];
+}
+
+List<dynamic> _getBatchEmbeddedTagsDynamic(BatchModel b) {
+  try {
+    final legacy = (b as dynamic).tagsLegacy as List<dynamic>?;
+    if (legacy != null) return legacy;
+  } catch (_) {}
+  try {
+    final current = (b as dynamic).tags as List<dynamic>?;
+    if (current != null) return current;
+  } catch (_) {}
+  return const <dynamic>[];
+}
+
+/* ============================================================================
+ * Logging
+ * ==========================================================================*/
+
+void _log(String msg) {
+  // ignore: avoid_print
+  print(msg);
 }

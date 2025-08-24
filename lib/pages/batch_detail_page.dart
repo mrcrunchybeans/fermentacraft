@@ -35,6 +35,7 @@ import 'package:provider/provider.dart';
 import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/review_prompter.dart';
+import 'package:fermentacraft/utils/recipe_to_batch.dart';
 
 
 
@@ -1352,54 +1353,146 @@ plannedAbv: batch.plannedAbv,
     );
 
     if (confirmed != true || !mounted) return;
-    final recipe = selectedRecipe;
-    if (recipe == null) return;
+final recipe = selectedRecipe;
+if (recipe == null) return;
 
-    
-    if (syncYeast) {
-      batch.yeast = List<Map<String, dynamic>>.from(recipe.yeast);
-    }
-    if (syncIngredients) {
-      batch.ingredients = List<Map<String, dynamic>>.from(recipe.ingredients);
-    }
-    if (syncAdditives) {
-      batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
-    }
-    if (syncStages) {
-      batch.fermentationStages =
-          List<FermentationStage>.from(recipe.fermentationStages);
-    }
+// --- helpers (no leading underscores to satisfy lint) ---
+Map<String, dynamic> sm(dynamic x) {
+  if (x is Map<String, dynamic>) return x;
+  if (x is Map) return x.map((k, v) => MapEntry(k.toString(), v));
+  return <String, dynamic>{};
+}
 
-    if (batch.fermentationStages.isNotEmpty) {
-      DateTime nextStageStartDate = batch.startDate;
-      for (var stage in batch.fermentationStages) {
-        stage.startDate = nextStageStartDate;
-        nextStageStartDate =
-            nextStageStartDate.add(Duration(days: stage.durationDays));
-      }
-    }
+Map<String, dynamic> mapIngredient(dynamic e) {
+  try {
+    return recipeIngredientToBatch(sm(e));
+  } catch (_) {
+    // Already batch-shaped? pass through.
+    return sm(e);
+  }
+}
 
-    if (syncTargets) {
-      batch.batchVolume = recipe.batchVolume;
-      batch.plannedOg = recipe.plannedOg;
-      batch.plannedAbv = recipe.plannedAbv;
-    }
-    batch.save();
+Map<String, dynamic> mapAdditive(dynamic e) {
+  try {
+    return recipeAdditiveToBatch(sm(e));
+  } catch (_) {
+    return sm(e);
+  }
+}
 
-    if (!syncTargets) {
-      await recalcPlannedOg(batch);
-    }
-    if (mounted) setState(() {});
+Map<String, dynamic> mapYeast(dynamic e) {
+  try {
+    return recipeYeastToBatch(sm(e));
+  } catch (_) {
+    return sm(e);
+  }
+}
 
-    if (mounted) {
-      snacks.show(
-        const SnackBar(
-          content: Text('Batch synced from recipe'),
-          duration: Duration(seconds: 3),
-        ),
-      );
+FermentationStage cloneStage(dynamic s) {
+  if (s is FermentationStage) {
+    // deep copy via JSON round-trip
+    return FermentationStage.fromJson(s.toJson());
+  }
+  if (s is Map) {
+    return FermentationStage.fromJson(Map<String, dynamic>.from(s));
+  }
+  // Fallback: construct with only the fields your model surely supports.
+  // (Removed temperature/temperatureUnit named params that don't exist in your class.)
+  return FermentationStage(
+    name: 'Stage',
+    durationDays: 7,
+  );
+}
+
+// === Deep copy & convert ===
+// NOTE: if your RecipeModel lists are non-nullable, don't use `?? []`.
+if (syncYeast) {
+  batch.yeast = recipe.yeast
+      .map<Map<String, dynamic>>(mapYeast)
+      .toList(growable: true);
+}
+
+if (syncIngredients) {
+  batch.ingredients = recipe.ingredients
+      .map<Map<String, dynamic>>(mapIngredient)
+      .toList(growable: true);
+}
+
+if (syncAdditives) {
+  batch.additives = recipe.additives
+      .map<Map<String, dynamic>>(mapAdditive)
+      .toList(growable: true);
+}
+
+if (syncStages) {
+  batch.fermentationStages = recipe.fermentationStages
+      .map<FermentationStage>(cloneStage)
+      .toList(growable: true);
+
+  // Re-anchor stage start dates sequentially from batch.startDate
+  if (batch.fermentationStages.isNotEmpty) {
+    DateTime nextStageStartDate = batch.startDate;
+    for (final stage in batch.fermentationStages) {
+      stage.startDate = nextStageStartDate;
+      nextStageStartDate =
+          nextStageStartDate.add(Duration(days: stage.durationDays));
     }
   }
+}
+
+// Planned targets
+if (syncTargets) {
+  batch.batchVolume = recipe.batchVolume;
+  batch.plannedOg   = recipe.plannedOg;
+  batch.plannedAbv  = recipe.plannedAbv;
+}
+
+// Link back to the source recipe
+batch.recipeId = recipe.id;
+
+// Persist & recalc if needed
+await batch.save();
+if (!syncTargets) {
+  await recalcPlannedOg(batch);
+}
+
+if (!mounted) return;
+setState(() {});
+snacks.show(
+  const SnackBar(
+    content: Text('Batch synced from recipe'),
+    duration: Duration(seconds: 3),
+  ),
+);
+
+
+// Planned targets
+if (syncTargets) {
+  batch.batchVolume = recipe.batchVolume;
+  batch.plannedOg   = recipe.plannedOg;
+  batch.plannedAbv  = recipe.plannedAbv;
+}
+
+// Link back to the source recipe for future “keep in sync” actions
+batch.recipeId = recipe.id;
+
+// Persist & recalc if needed
+await batch.save();
+if (!syncTargets) {
+  await recalcPlannedOg(batch);
+}
+
+if (!mounted) return;
+setState(() {});
+snacks.show(
+  const SnackBar(
+    content: Text('Batch synced from recipe'),
+    duration: Duration(seconds: 3),
+  ),
+  );
+}
+
+
 
   // ADD: safely add to the linked recipe (if any) using an ATTACHED Hive object
 Future<void> _addIngredientToLinkedRecipeIfAny(
