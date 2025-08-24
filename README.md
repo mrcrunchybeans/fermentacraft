@@ -291,17 +291,14 @@ The software is not open-source. Distribution, copying, or modification without 
 For quick builds without scrolling the full workflow:
 
 ```bash
-# Android App Bundle for Play Store
-flutter build appbundle --release
-
 # Split APKs for each ABI (arm64, armeabi-v7a, x86_64)
 flutter build apk --release --split-per-abi
 
+# Android App Bundle for Play Store
+flutter build appbundle --release
+
 # Windows portable executable
 flutter build windows
-
-# Web App for browser access
-flutter build web --release --base-href "/" 
 ```
 
 

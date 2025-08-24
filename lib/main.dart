@@ -1,6 +1,5 @@
 // lib/main.dart
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -31,55 +30,62 @@ import 'services/presets_service.dart';
 import 'web_bridge_stub.dart'
   if (dart.library.html) 'web_bridge_web.dart' as wb;
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+// import 'package:fermentacraft/acid_tools/strip_reader_tab.dart';
+// void registerAdapters() {
+//   if (!Hive.isAdapterRegistered(41)) {
+//     Hive.registerAdapter(PHStripAdapter());
+//   if (!Hive.isAdapterRegistered(41)) Hive.registerAdapter(PHStripAdapter());
+// }
+// }
 
-  // Web-only housekeeping (no-op on mobile)
-  wb.hideHtmlSplash();
-  wb.ensureFlutterRootCss();
-  wb.scrubLegacyOverlays();
-  assert(() {
-    wb.disableServiceWorkers();              // dev-only; safe no-op in release
-    wb.enableReloadDiagnostics(blockReload: true);
-    return true;
-  }());
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Core services (Firebase/Hive/boxes/etc.)
-  await setupAppServices();
+    // Crashlytics: route Flutter framework errors
+    FlutterError.onError = (details) {
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    };
 
-  // Now that Firebase is ready, wire Crashlytics handlers.
-  FlutterError.onError = (details) {
-    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true; // handled
-  };
+    // Web-only housekeeping (no-op on mobile)
+    wb.hideHtmlSplash();
+    wb.ensureFlutterRootCss();
+    wb.scrubLegacyOverlays();
+    assert(() {
+      wb.disableServiceWorkers();
+      wb.enableReloadDiagnostics(blockReload: true);
+      return true;
+    }());
 
-  // Pre-warm SharedPreferences to avoid first-run channel hiccup
-  await SharedPreferences.getInstance();
+    // Core services (Hive adapters/boxes, Firebase, etc.)
+    await setupAppServices();
 
-  // Cloud sync: enable from saved setting
-  final settingsBox = Hive.box(Boxes.settings);
-  final syncEnabled = settingsBox.get('syncEnabled') == true;
-  await (FirestoreSyncService.instance..isEnabled = syncEnabled).init();
+    // Pre-warm SharedPreferences to avoid channel error on first run
+    await SharedPreferences.getInstance();
 
-  // RevenueCat: initialize & bind to FeatureGate
-  await RevenueCatService.instance.init();
+    // Cloud sync: enable from saved setting
+    final settingsBox = Hive.box(Boxes.settings);
+    final syncEnabled = settingsBox.get('syncEnabled') == true;
+    await (FirestoreSyncService.instance..isEnabled = syncEnabled).init();
 
-  // PresetsService: construct once, load persisted customs before runApp
-  final presets = PresetsService();
-  await presets.ensureLoaded();
+    // RevenueCat: initialize & bind to FeatureGate
+    await RevenueCatService.instance.init();
 
-  // Build app with providers AFTER services/boxes are ready
-  runZonedGuarded(() {
+    // PresetsService: construct once, load persisted customs before runApp
+    final presets = PresetsService();
+    await presets.ensureLoaded();
+
+    // Build app with providers AFTER services/boxes are ready
     runApp(
       MultiProvider(
         providers: [
+          // Make presets available app-wide (yeast/additives dialogs & tiles)
           ChangeNotifierProvider<PresetsService>.value(value: presets),
+
           ChangeNotifierProvider<SettingsModel>(
             create: (_) => SettingsModel(Hive.box(Boxes.settings)),
           ),
+          // TagManager must not touch Hive during construction; lazy inside TagManager.
           ChangeNotifierProvider<TagManager>(create: (_) => TagManager()),
           ChangeNotifierProvider<FeatureGate>.value(
             value: FeatureGate.instance,
@@ -100,6 +106,7 @@ Future<void> main() async {
       return true;
     }());
   }, (error, stack) {
+    // Uncaught async errors → Crashlytics
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
 }

@@ -68,37 +68,6 @@
     <link rel="apple-touch-startup-image" href="icons/apple-splash-1136-640.jpg" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)">
   </head>
   <body>
-    <!-- Put this just before flutter_bootstrap.js -->
-<script>
-(async () => {
-  const p = new URLSearchParams(location.search);
-  if (!p.has('reset')) return;
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const r of regs) await r.unregister();
-    }
-    if (window.caches) {
-      const names = await caches.keys();
-      await Promise.all(names.map(n => caches.delete(n)));
-    }
-    // Optional: wipe old IndexedDB app caches
-    if (indexedDB && indexedDB.databases) {
-      const dbs = await indexedDB.databases();
-      await Promise.all((dbs || []).map(db => new Promise(res => {
-        const req = indexedDB.deleteDatabase(db.name);
-        req.onsuccess = req.onerror = req.onblocked = () => res();
-      })));
-    }
-    console.log('✨ Web reset complete. Reloading…');
-  } finally {
-    const u = new URL(location.href);
-    u.searchParams.delete('reset');
-    location.replace(u.toString());
-  }
-})();
-</script>
-
     <script src="flutter_bootstrap.js" async=""></script>
   </body>
 </html>
