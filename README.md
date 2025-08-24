@@ -270,11 +270,21 @@ The software is not open-source. Distribution, copying, or modification without 
 
 ---
 
+## 📝 Build Cheat Sheet
+
+For quick builds without scrolling the full workflow:
+
+```bash
+# Split APKs for each ABI (arm64, armeabi-v7a, x86_64)
+flutter build apk --release --split-per-abi
+
+# Android App Bundle for Play Store
+flutter build appbundle --release
+
+# Windows portable executable
+flutter build windows
+```
+
+
 🚀 *Codename: Cider-Craft → Public app name: FermentaCraft*
 
-```
-
----
-
-Do you also want me to add a **fast “cheat sheet” block at the bottom** with just the three main build commands (APK split, AAB, Windows) so you don’t have to scroll the workflow every time?
-```
