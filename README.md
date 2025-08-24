@@ -6,6 +6,22 @@ It’s a Flutter-based app designed for homebrewers who focus on **cider, mead, 
 Think **Brewfather**, but crafted specifically for fruit fermenters.  
 Cider-Craft combines recipe design, fermentation tracking, inventory, and tools in a modern, local-first package.
 
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.fermentacraft">
+    <img src="https://img.shields.io/badge/Google_Play-Download-brightgreen?logo=googleplay&logoColor=white" alt="Get it on Google Play">
+  </a>
+  <a href="https://github.com/mrcrunchybeans/FermentaCraft/releases/latest">
+    <img src="https://img.shields.io/github/v/release/mrcrunchybeans/FermentaCraft?label=Latest%20Release&color=blue" alt="Latest Release">
+  </a>
+  <a href="https://github.com/mrcrunchybeans/FermentaCraft/releases/latest">
+    <img src="https://img.shields.io/badge/Windows-.exe-blue?logo=windows" alt="Windows Download">
+  </a>
+  <a href="https://github.com/mrcrunchybeans/cider-craft/issues">
+    <img src="https://img.shields.io/badge/Issues-Welcome-orange" alt="Issues Welcome">
+  </a>
+</p>
+
+
 ---
 
 ## 🎯 Why Cider-Craft?
