@@ -1,102 +1,306 @@
-# 🍎 FementaCaft
+# 🍎 Cider-Craft (Codename)
 
-**FementaCaft** is an open-source Flutter app designed specifically for homebrewers who focus on **cider, mead, and fruit wine**. It combines the power of precision tracking with beautiful design and user-friendly tools. Inspired by Brewfather—but crafted for fruit fermenters—FementaCaft helps you master every batch from recipe design to bottling.
+**Cider-Craft** is the codename for the **FermentaCraft** source project.  
+It’s a Flutter-based app designed for homebrewers who focus on **cider, mead, kombucha, and fruit wines**.  
+
+Think **Brewfather**, but crafted specifically for fruit fermenters.  
+Cider-Craft combines recipe design, fermentation tracking, inventory, and tools in a modern, local-first package.
+
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.fermentacraft">
+    <img src="https://img.shields.io/badge/Google_Play-Download-brightgreen?logo=googleplay&logoColor=white" alt="Get it on Google Play">
+  </a>
+  <a href="https://github.com/mrcrunchybeans/FermentaCraft/releases/latest">
+    <img src="https://img.shields.io/github/v/release/mrcrunchybeans/FermentaCraft?label=Latest%20Release&color=blue" alt="Latest Release">
+  </a>
+  <a href="https://github.com/mrcrunchybeans/FermentaCraft/releases/latest">
+    <img src="https://img.shields.io/badge/Windows-.exe-blue?logo=windows" alt="Windows Download">
+  </a>
+  <a href="https://github.com/mrcrunchybeans/cider-craft/issues">
+    <img src="https://img.shields.io/badge/Issues-Welcome-orange" alt="Issues Welcome">
+  </a>
+</p>
+
 
 ---
 
-## 🎯 Why FementaCaft?
+## 🎯 Why Cider-Craft?
 
-Most brewing software focuses on beer. FementaCaft fills the gap for makers of:
-- 🍏 Hard cider
-- 🍯 Mead
-- 🍓 Fruit wines and blends
+Most brewing software focuses on beer. Cider-Craft fills the gap for makers of:
 
-It’s built from the ground up with support for:
-- Juice/concentrate-based ingredients
-- Additive tracking (e.g., pectic enzyme, sulfites, nutrients)
-- Advanced gravity, pH, acidity, and SO₂ calculations
-- Batch and fermentation chart tracking
-- Inventory & planned event management
-- Local-first storage with upcoming cloud sync
+- 🍏 Hard cider  
+- 🍯 Mead  
+- 🍓 Fruit wines, melomels, cysers, pyments, and blends  
+- 🍵 Kombucha and experimental ferments  
+
+It’s built from the ground up with:
+
+- Juice/concentrate/honey/fruit-based fermentables  
+- Additive tracking (pectic enzyme, sulfites, nutrients, tannin, etc.)  
+- Advanced gravity, pH, acidity, and SO₂ calculators  
+- Batch + fermentation chart tracking with FSU metrics  
+- Inventory management & event logging  
+- Local-first Hive storage with optional cloud sync (planned)
 
 ---
 
-## 🧰 Features At-a-Glance
+## 🧰 Features at a Glance
 
 ### 🧪 Recipe Builder
-- Ingredients: juice, fruit, sugar, concentrate, honey, etc.
-- Additives: pectic enzyme, acid blend, tannin, Campden, etc.
-- Yeast: Select from common strains or enter your own
-- Fermentation profile builder with multi-stage temperature/duration control
-- Tags for organizing recipes (e.g., "sweet", "session", "apple-only")
+- Ingredients: juice, fruit, concentrate, honey, sugar  
+- Additives: pectic enzyme, acid blend, tannin, Campden, nutrients, custom  
+- Yeast: select from common strains or define your own  
+- Targets: OG, FG, ABV, pH input with **acidity classification**  
+- Fermentation profile builder with multi-stage schedules  
+- Tagging system to organize recipes (e.g. “sweet”, “session”, “apple-only”)
 
 ### 📐 Smart Calculators
-- OG, FG, ABV estimator
-- pH input with **acidity classification** (malic acid scale)
-- SO₂ dosage estimator (Campden or grams, by pH/volume)
-- Gravity adjustment (sugar addition or dilution based on target SG)
-- Hydrometer temperature correction (°F or °C)
-- FSU (Fermentation Speed Units) tracker
+- OG, FG, ABV estimator  
+- Gravity adjustment (sugar addition or dilution by batch size + sugar type)  
+- Hydrometer temperature correction (60 °F baseline)  
+- SO₂ dosage estimator by pH & volume (grams or Campden tablets)  
+- Acidity classifier (TA/malic acid scale)  
+- FSU (Fermentation Speed Units) tracker  
 
 ### 📊 Fermentation Charting
-- Plot SG and temperature data over time
-- Visual fermentation stages with annotations
-- Color-coded day/date labels and tooltips
-- FSU overlay for evaluating fermentation activity
+- Plot SG and temperature over time  
+- Stage overlays (primary, secondary, cold crash, conditioning)  
+- Day/date labels, tooltips, and annotations  
+- FSU overlay for fermentation speed analysis  
 
 ### 🧾 Inventory Management
-- Track ingredient amounts, units, cost, expiration
-- Categorize by type (e.g., yeast, juice, additive)
-- Add notes, cost per unit, and purchase history
+- Track ingredient amounts, units, and categories  
+- Cost-per-unit + purchase history  
+- Expiration reminders  
+- Notes + adjustments for real-time stock  
 
 ### 🧪 Measurement & Batch Tracking
-- View and log readings: SG, temperature, notes
-- Batch-specific additives, yeast, and events
-- Clone recipes into new batches
-- Record planned and completed events (racking, bottling, etc.)
+- Record SG, temperature, and notes (each optional)  
+- Manage batch-specific yeast, additives, and events  
+- Plan vs. actual stages (racking, bottling, conditioning)  
+- Clone recipes into new batches  
 
-### ⚙️ Customization & Settings
-- Choose temperature units (°C or °F)
-- Choose volume/weight units (oz, ml, gal, grams, etc.)
-- Dark mode support
-- Persistent settings via Hive
-- Planned: pH rounding, advanced inventory toggles, and cloud backup
+### ⚙️ Customization
+- Settings for temperature (°C/°F), weight/volume units, pH rounding  
+- Dark & light themes  
+- Persistent settings via Hive  
+- Planned: cloud backup + device sync  
 
 ---
 
 ## 🧪 Tools Suite
 
-A standalone **Tools Page** gives you access to cider-specific calculators:
+The standalone **Tools Page** provides cider-first calculators:
 
-- ✅ ABV Calculator
-- ✅ Gravity Adjustment Tool
-- ✅ SO₂ Estimator by pH
-- ✅ Campden Tablet Converter
-- ✅ Acidity Classifier (TA-based)
-- ✅ Temperature Converter (°C/°F/K)
-- ✅ Unit Converter (volume and weight)
-- ✅ Bubble Counter for fermentation activity
+- ✅ ABV Calculator  
+- ✅ Gravity Adjustment  
+- ✅ SO₂ Estimator by pH  
+- ✅ Campden Tablet Converter  
+- ✅ Acidity Classifier (TA-based)  
+- ✅ Hydrometer Correction (temp-based)  
+- ✅ Temperature Converter (°C/°F/K)  
+- ✅ Unit Converter (volume + weight)  
+- ✅ Bubble Counter (fermentation activity)  
 
 ---
 
 ## 📸 Screenshots
 
-_Coming soon!_ Expect clean, modern UI inspired by the best brewing software, with tabs, collapsible sections, charts, and smart inputs.
+_(internal only — not included in this repo)_  
+UI inspired by Brewfather, with collapsible sections, structured inputs, fermentation charts, and modern theming.
 
 ---
 
 ## 🛠 Installation
 
 ### Prerequisites
-- Flutter 3.x or later
-- Dart SDK
-- Hive (handled via `pubspec.yaml`)
-- Android Studio / VS Code
+- [Flutter 3.x](https://flutter.dev)  
+- Dart SDK  
+- Android Studio or VS Code  
+- Emulator or physical device (iOS + Android)  
+- Packages managed via `pubspec.yaml` (Hive, Provider, fl_chart, RevenueCat, Firebase, etc.)
 
-### Local Setup
+### Setup
 
 ```bash
 git clone https://github.com/mrcrunchybeans/cider-craft.git
 cd cider-craft
 flutter pub get
 flutter run
+````
+
+---
+
+## 📂 Repository Structure
+
+```
+/lib
+  models/        # Hive-backed data models (Recipe, Batch, Inventory, Tags, etc.)
+  pages/         # UI pages (Recipes, Batches, Tools, Inventory, Settings)
+  widgets/       # Shared widgets (dialogs, forms, chart components)
+  utils/         # Calculation logic (ABV, SG correction, SO₂, acidity, FSU, etc.)
+  services/      # Sync, feature gating, Firebase/RevenueCat integrations
+```
+
+---
+
+## ✅ Developer Onboarding Checklist
+
+For new developers joining the project:
+
+1. **Clone & install dependencies**
+
+   ```bash
+   git clone https://github.com/mrcrunchybeans/cider-craft.git
+   cd cider-craft
+   flutter pub get
+   ```
+
+2. **Flutter environment**
+
+   * Install Flutter 3.x (stable channel).
+   * Confirm with `flutter doctor`.
+
+3. **Local configuration**
+
+   * Create a `.env` file (not committed) with any local keys if needed.
+   * Example placeholders:
+
+     ```
+     FIREBASE_API_KEY=your-key-here
+     REVENUECAT_API_KEY=your-key-here
+     ```
+   * Android/iOS builds will reference Firebase config JSON/Plist (ask repo owner).
+
+4. **Firebase setup**
+
+   * Download `google-services.json` (Android) and `GoogleService-Info.plist` (iOS).
+   * Place them in the appropriate `/android/app` and `/ios/Runner` directories.
+   * Required for analytics, crash reporting, and optional sync features.
+
+5. **RevenueCat setup**
+
+   * Ensure the correct `REVENUECAT_API_KEY` is in place.
+   * Matches in-app purchase setup for FermentaCraft Pro.
+
+6. **Hive & build runner**
+
+   * Run:
+
+     ```bash
+     flutter packages pub run build_runner build --delete-conflicting-outputs
+     ```
+   * Ensures all Hive adapters are generated.
+
+7. **Run the app**
+
+   * On Android: `flutter run`
+   * On iOS: open with Xcode or run via `flutter run`
+
+8. **Coding conventions**
+
+   * Use `feature/branch-name` for new features.
+   * Commit with clear messages.
+   * PR into `main` after review.
+
+---
+
+## 🚀 Release Workflow
+
+When preparing a new release for the **public FermentaCraft repo**:
+
+1. **Update versioning**
+
+   * Update `pubspec.yaml` with the new version number.
+   * Update changelog if needed.
+
+2. **Build Android APKs**
+
+   ```bash
+   flutter build apk --release --split-per-abi
+   ```
+
+   Produces:
+
+   * `arm64-v8a` (most devices)
+   * `armeabi-v7a` (older devices)
+   * `x86_64` (emulators/rare Intel devices)
+
+3. **Build Android App Bundle (AAB) for Google Play**
+
+   ```bash
+   flutter build appbundle --release
+   ```
+
+   Produces:
+
+   * `app-release.aab` in `/build/app/outputs/bundle/release/`
+   * Upload this to the **Google Play Console** for Play Store distribution.
+
+4. **Build Windows portable app**
+
+   ```bash
+   flutter build windows
+   ```
+
+   Then zip the `build/windows/runner/Release` folder into a portable `.exe` package.
+
+5. **Test locally**
+
+   * Install the `.apk` files on a physical Android device.
+   * Run the `.exe` on Windows to confirm portable execution.
+
+6. **Publish artifacts**
+
+   * Copy the built `.apk` files, `.aab`, and Windows `.exe` package into the [FermentaCraft public repo releases](https://github.com/mrcrunchybeans/FermentaCraft/releases).
+   * Draft a new release with proper version tag (`vX.Y.Z`).
+   * Attach the binaries.
+
+7. **Verify Play Store build**
+
+   * Upload the `.aab` to the Google Play Console.
+   * Ensure version codes match and rollout completes.
+
+---
+
+## 👥 Contributing
+
+This repository is private and invite-only.
+If you’re on the dev team:
+
+* Use feature branches (`feature/xyz`)
+* Open pull requests for review before merging
+* Keep commits scoped and descriptive
+
+Bug reports, ideas, and feature discussions happen in Issues and project boards.
+
+---
+
+## 📜 License
+
+**Cider-Craft (codename)**
+© 2025 Brian Petry. All rights reserved.
+
+This repository contains the **private source code** for FermentaCraft.
+The software is not open-source. Distribution, copying, or modification without explicit permission is prohibited.
+
+---
+
+## 📝 Build Cheat Sheet
+
+For quick builds without scrolling the full workflow:
+
+```bash
+# Split APKs for each ABI (arm64, armeabi-v7a, x86_64)
+flutter build apk --release --split-per-abi
+
+# Android App Bundle for Play Store
+flutter build appbundle --release
+
+# Windows portable executable
+flutter build windows
+```
+
+
+🚀 *Codename: Cider-Craft → Public app name: FermentaCraft*
+
