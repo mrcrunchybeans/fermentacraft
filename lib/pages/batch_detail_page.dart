@@ -35,6 +35,8 @@ import 'package:provider/provider.dart';
 import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/review_prompter.dart';
+import 'package:fermentacraft/utils/recipe_to_batch.dart';
+
 
 
 
@@ -1356,15 +1358,34 @@ plannedAbv: batch.plannedAbv,
     if (recipe == null) return;
 
     
-    if (syncYeast) {
-      batch.yeast = List<Map<String, dynamic>>.from(recipe.yeast);
-    }
-    if (syncIngredients) {
-      batch.ingredients = List<Map<String, dynamic>>.from(recipe.ingredients);
-    }
-    if (syncAdditives) {
-      batch.additives = List<Map<String, dynamic>>.from(recipe.additives);
-    }
+if (syncYeast) {
+  final mappedYeast = recipe.yeast
+      .map<Map<String, dynamic>>((y) => recipeYeastToBatch(y as Map<String, dynamic>))
+      .toList();
+  // preserve currently selected yeast by name if present
+  if (batch.yeast.isNotEmpty) {
+    final selectedName = (batch.yeast.first['name'] ?? '').toString();
+    final preserved = mappedYeast.firstWhere(
+      (y) => (y['name'] ?? '') == selectedName,
+      orElse: () => mappedYeast.isNotEmpty ? mappedYeast.first : <String, dynamic>{},
+    );
+    batch.yeast = [preserved];
+  } else {
+    batch.yeast = mappedYeast.isNotEmpty ? [mappedYeast.first] : <Map<String, dynamic>>[];
+  }
+}
+
+if (syncIngredients) {
+  batch.ingredients = recipe.ingredients
+      .map<Map<String, dynamic>>((ing) => recipeIngredientToBatch(ing as Map<String, dynamic>))
+      .toList();
+}
+
+if (syncAdditives) {
+  batch.additives = recipe.additives
+      .map<Map<String, dynamic>>((a) => recipeAdditiveToBatch(a as Map<String, dynamic>))
+      .toList();
+}
     if (syncStages) {
       batch.fermentationStages =
           List<FermentationStage>.from(recipe.fermentationStages);
