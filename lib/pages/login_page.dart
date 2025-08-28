@@ -1,10 +1,10 @@
 // lib/pages/login_page.dart
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+
 import '../../services/auth_service.dart';
 import 'register_page.dart';
 
@@ -22,7 +22,10 @@ class _LoginPageState extends State<LoginPage> {
   String? errorMessage;
   bool isLoading = false;
 
-  bool get _rcSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _rcSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+       defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
   void dispose() {
@@ -48,25 +51,23 @@ class _LoginPageState extends State<LoginPage> {
       isLoading = true;
     });
 
-    User? user;
     try {
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-      user = cred.user;
-      await _logInRevenueCat(user);
+      await _logInRevenueCat(cred.user);
       // AuthGate will navigate on auth state change.
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() => errorMessage = e.message);
+    } catch (_) {
+      if (mounted) setState(() => errorMessage = 'Login failed. Please try again.');
     } finally {
-      if (mounted && user == null) {
-        setState(() => isLoading = false);
-      }
+      // If AuthGate navigates away, this setState is harmless; otherwise it stops the spinner.
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
-  // ✅ THIS FUNCTION IS NOW FIXED
   Future<void> loginWithGoogle() async {
     if (!mounted) return;
     setState(() {
@@ -74,35 +75,100 @@ class _LoginPageState extends State<LoginPage> {
       isLoading = true;
     });
 
-    User? user;
     try {
-      // Uses web popup→redirect fallback internally on web.
+      // New AuthService always returns a UserCredential on success, or throws.
       final cred = await AuthService.instance.signInWithGoogle();
-      user = cred?.user;
+      await _logInRevenueCat(cred.user);
+      // AuthGate will navigate after auth state change.
+      if (mounted) setState(() => isLoading = false);
+    } on AuthFlowException catch (e) {
+      // Map friendly messages per error code.
+      if (!mounted) return;
 
-      if (kIsWeb && cred == null) {
-        // On web, null here likely means we triggered a redirect.
-        // Don’t show an error; the page will reload and complete via getRedirectResult().
-        return;
-      }
+      switch (e.code) {
+        case AuthFlowCode.redirecting:
+          // Web: popup fell back to redirect; page will reload and complete.
+          // Keep spinner on and do NOT show an error.
+          return;
 
-      if (user != null) {
-        // Force a reload of the user's profile to ensure the email is available.
-        await user.reload();
-        // Get the most up-to-date user object after the reload.
-        final freshUser = FirebaseAuth.instance.currentUser;
-        await _logInRevenueCat(freshUser);
-      } else if (mounted) {
-        setState(() => errorMessage = 'Google sign-in failed or was cancelled.');
+        case AuthFlowCode.canceled:
+          setState(() {
+            errorMessage = 'Sign-in canceled.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.busy:
+          setState(() {
+            errorMessage = 'Sign-in already in progress.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.network:
+          setState(() {
+            errorMessage = 'Network error. Please check your connection and try again.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.browserOpenFailed:
+          setState(() {
+            errorMessage = 'Could not open your browser for Google sign-in.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.misconfigured:
+          setState(() {
+            errorMessage = 'Google sign-in is not configured correctly.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.rateLimited:
+          setState(() {
+            errorMessage = 'Too many attempts. Please try again later.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.security:
+          setState(() {
+            errorMessage = 'Security check failed. Please try again.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.unsupported:
+          setState(() {
+            errorMessage = 'This platform is not supported for Google sign-in.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.accountExistsDifferentCred:
+          setState(() {
+            errorMessage = 'This email is already linked to a different sign-in method. '
+                           'Use your original method, then link Google in Settings.';
+            isLoading = false;
+          });
+          break;
+
+        case AuthFlowCode.unknown:
+        setState(() {
+            errorMessage = e.message.isNotEmpty ? e.message : 'Google sign-in failed.';
+            isLoading = false;
+          });
+          break;
       }
-    } catch (e) {
-      if (mounted) setState(() => errorMessage = 'Google sign-in failed.');
-    } finally {
-      if (mounted && user == null && !kIsWeb) {
-        // If we’re not redirecting (mobile) and no user, stop spinner.
-        setState(() => isLoading = false);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          errorMessage = 'Google sign-in failed.';
+          isLoading = false;
+        });
       }
-      // On web redirect path, we intentionally leave the spinner alone since the page is navigating.
     }
   }
 

@@ -11,6 +11,9 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+# Local secrets (never commit)
+.secrets/
+
 
 # IntelliJ related
 *.iml

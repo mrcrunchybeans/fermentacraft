@@ -1,18 +1,19 @@
 name: fermentacraft
 description: A new Flutter project for tracking fermentation recipes.
 publish_to: 'none'
-version: 1.0.0+36
+version: 1.0.0+37
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
 
 msix_config:
   display_name: FermentaCraft
-  publisher_display_name: Brian Petry
-  identity_name: com.fermentacraft
-  publisher: CN=Brian Petry
-  msix_version: 1.0.0.0
+  publisher_display_name: Brian Petry 
+  identity_name: BrianPetry.FermentaCraft
+  publisher: CN=115FAB00-DFE0-4774-9445-C1D4196A50C4
+  msix_version: 1.0.3.0
   logo_path: assets/images/logo.png
+  store: true
 
 
 dependencies:
@@ -40,7 +41,7 @@ dependencies:
   flutter_svg: ^2.0.7
   firebase_auth: ^6.0.0
   firebase_core: ^4.0.0
-  google_sign_in: ^6.1.4
+  google_sign_in: ^6.2.1
   cloud_firestore: ^6.0.0
   connectivity_plus: ^6.1.4
   purchases_flutter: ^9.2.0
@@ -51,6 +52,7 @@ dependencies:
   firebase_crashlytics: ^5.0.0
   shared_preferences: ^2.2.3
   in_app_review: ^2.0.8
+  crypto: ^3.0.6
 
 
 
