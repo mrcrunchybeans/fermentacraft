@@ -12,7 +12,8 @@ import 'pages/shopping_list_page.dart';
 import 'models/batch_model.dart';
 import 'pages/tools_page.dart';
 import 'widgets/empty_state_widget.dart';
-import 'widgets/dashboard_section.dart'; // Correctly imported!
+import 'widgets/dashboard_section.dart';
+import 'widgets/expiry_alerts_section.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -104,8 +105,7 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 24),
         const ActiveBatchesSection(),
-        const SizedBox(height: 24),
-        const ExpiringSoonSection(),
+        const ExpiryAlertsSection(expiringWindowDays: 14, maxExpiredToShow: 6),
       ],
     );
   }

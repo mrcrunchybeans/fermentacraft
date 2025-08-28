@@ -23,9 +23,15 @@ import '../utils/boxes.dart';
 enum SortOption { name, stock, expiration }
 // Row menu actions
 enum _InvAction { archiveToggle, delete }
+enum InventoryPresetFilter { none, expired }
+
 
 class InventoryPage extends StatefulWidget {
-  const InventoryPage({super.key});
+  const InventoryPage({
+    super.key,
+    this.presetFilter = InventoryPresetFilter.none,
+  });
+  final InventoryPresetFilter presetFilter;
 
   @override
   State<InventoryPage> createState() => _InventoryPageState();
@@ -39,15 +45,21 @@ class _InventoryPageState extends State<InventoryPage> {
   final Set<String> _selectedItemKeys = <String>{};
 
   bool _showArchived = false;
+  bool _showExpiredOnly = false;
+
 
   @override
   void initState() {
     super.initState();
-    // Make sure the sidecar archive box is open so isArchived works.
-    InventoryArchiveStore.ensureOpen().then((_) {
-      if (mounted) setState(() {});
-    });
-  }
+ // Sidecar archive store is already being ensured open here; keep that.
+  InventoryArchiveStore.ensureOpen().then((_) {
+    if (mounted) setState(() {});
+  });
+  // Apply preset
+  _showExpiredOnly = widget.presetFilter == InventoryPresetFilter.expired;
+}
+
+  
 
   // ---------- Navigation ----------
 
@@ -302,6 +314,22 @@ showPaywall(context);
                         onChanged: (_) => setState(() {}),
                       ),
                     ),
+                    // Filter pills row
+Padding(
+  padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+  child: Wrap(
+    spacing: 8,
+    children: [
+      FilterChip(
+        avatar: const Icon(Icons.event_busy),
+        label: const Text('Expired'),
+        selected: _showExpiredOnly,
+        onSelected: (v) => setState(() => _showExpiredOnly = v),
+      ),
+    ],
+  ),
+),
+
                     const SizedBox(width: 12),
                     DropdownButton<SortOption>(
                       value: _sortOption,
@@ -365,11 +393,21 @@ floatingActionButton: ValueListenableBuilder<Box<InventoryItem>>(
 
     final searchTerm = _searchController.text.toLowerCase();
 
-    final List<InventoryItem> filteredItems = box.values
-        .where((item) =>
-            item.isArchived == _showArchived &&
-            item.name.toLowerCase().contains(searchTerm))
-        .toList();
+final now = DateTime.now();
+final List<InventoryItem> filteredItems = box.values
+    .where((item) {
+      if (item.isArchived != _showArchived) return false;
+      if (!item.name.toLowerCase().contains(searchTerm)) return false;
+
+      if (_showExpiredOnly) {
+        final exp = item.expirationDate;
+        if (exp == null) return false;
+        return exp.isBefore(now);
+      }
+      return true;
+    })
+    .toList();
+
 
     if (filteredItems.isEmpty) {
       return Center(
