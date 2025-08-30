@@ -38,7 +38,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       batchVolume: fields[13] as double?,
       plannedOg: fields[14] as double?,
       plannedAbv: fields[15] as double?,
-      isArchived: fields[16] as bool,
+      isArchived: fields[16] == null ? false : fields[16] as bool,
       category: fields[18] as String?,
     )
       ..tagsLegacy = (fields[3] as List?)?.cast<Tag>()

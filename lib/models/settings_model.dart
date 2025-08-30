@@ -21,7 +21,7 @@ class SettingsModel extends ChangeNotifier {
 
   // --- Constructor (inject the already-opened settings box) ---
   SettingsModel(Box settingsBox) : _box = settingsBox {
-    _useCelsius = _box.get(_kUseCelsius, defaultValue: true) as bool;
+    _useCelsius = _box.get(_kUseCelsius, defaultValue: true) == true;
     _currencySymbol = _box.get(_kCurrencySymbol, defaultValue: r'$') as String;
 
     final themeName = _box.get(_kThemeMode, defaultValue: 'system') as String;

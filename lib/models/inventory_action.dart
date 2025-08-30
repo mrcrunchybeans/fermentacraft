@@ -15,8 +15,8 @@ class InventoryAction extends HiveObject {
   @HiveField(2)
   String unit;
 
-  @HiveField(3)
-  bool wasDeducted; // true = deducted, false = restored
+  @HiveField(3, defaultValue: false)
+  bool wasDeducted;
 
   @HiveField(4)
   DateTime timestamp;

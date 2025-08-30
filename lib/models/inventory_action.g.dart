@@ -20,7 +20,7 @@ class InventoryActionAdapter extends TypeAdapter<InventoryAction> {
       itemName: fields[0] as String,
       amount: fields[1] as double,
       unit: fields[2] as String,
-      wasDeducted: fields[3] as bool,
+      wasDeducted: fields[3] == null ? false : fields[3] as bool,
       timestamp: fields[4] as DateTime,
       reason: fields[5] as String?,
     );

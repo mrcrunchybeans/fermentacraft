@@ -104,6 +104,9 @@ class FeatureGate extends ChangeNotifier {
   bool get allowSO2 => isPremium;
   bool get allowAcidTA => isPremium;
   bool get allowStripReader => isPremium;
+  bool get allowDevices => isPremium;               // show device UI, attach/link
+  bool get allowDeviceStreaming => isPremium;       // read live Firestore measurements
+  bool get allowDeviceExport => isPremium;          // export raw CSV
 
   // ---- Always-free tools ----
   bool get allowABV => true;

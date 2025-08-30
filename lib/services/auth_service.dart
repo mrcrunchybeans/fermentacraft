@@ -9,9 +9,11 @@ import 'package:flutter/foundation.dart'
     show debugPrint, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:fermentacraft/services/firestore_user.dart';
+// if not already present elsewhere
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
 
 /// Toggle verbose logging (never enable in production builds).
 const bool kAuthDebugLogs = false;
@@ -85,11 +87,14 @@ class AuthService {
           );
         }
         try {
-          final cred = GoogleAuthProvider.credential(
-            idToken: tokens.idToken,
-            accessToken: tokens.accessToken,
-          );
-          return await _auth.signInWithCredential(cred);
+        final cred = GoogleAuthProvider.credential(
+          idToken: tokens.idToken,
+          accessToken: tokens.accessToken,
+        );
+        final userCred = await _auth.signInWithCredential(cred);
+        await FirestoreUser.instance.ensureUserDoc(userCred.user!);
+        return userCred;
+
         } on FirebaseAuthException catch (e) {
           _handleFirebaseAuthErrors(e); // will throw AuthFlowException
           rethrow;
@@ -110,7 +115,10 @@ class AuthService {
             idToken: googleAuth.idToken,
             accessToken: googleAuth.accessToken,
           );
-          return await _auth.signInWithCredential(cred);
+          final userCred = await _auth.signInWithCredential(cred);
+          await FirestoreUser.instance.ensureUserDoc(userCred.user!);
+          return userCred;
+
         } on FirebaseAuthException catch (e) {
           _handleFirebaseAuthErrors(e);
           rethrow;
@@ -152,7 +160,9 @@ class AuthService {
       ..addScope('email')
       ..setCustomParameters({'prompt': 'select_account'});
     try {
-      return await _auth.signInWithPopup(provider);
+      final userCred = await _auth.signInWithPopup(provider);
+      await FirestoreUser.instance.ensureUserDoc(userCred.user!);
+      return userCred;
     } on FirebaseAuthException catch (e) {
       if (kAuthDebugLogs) debugPrint('[AUTH] Web popup failed: ${e.code}');
       const fallback = {

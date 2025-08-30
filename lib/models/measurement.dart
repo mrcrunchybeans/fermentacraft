@@ -40,6 +40,9 @@ class Measurement {
   @HiveField(10)
   double? fsuspeed;
 
+  @HiveField(11, defaultValue: false)
+  final bool fromDevice;
+
   Measurement({
     String? id,
     required this.timestamp,
@@ -52,35 +55,40 @@ class Measurement {
     this.brix,
     this.sgCorrected,
     this.fsuspeed,
+    this.fromDevice = false,
+
   }) : id = id ?? const Uuid().v4();
 
-  Measurement copyWith({
-    String? id,
-    DateTime? timestamp,
-    double? gravity,
-    double? temperature,
-    String? notes,
-    String? gravityUnit,
-    List<String>? interventions,
-    double? ta,
-    double? brix,
-    double? sgCorrected,
-    double? fsuspeed,
-  }) {
-    return Measurement(
-      id: id ?? this.id,
-      timestamp: timestamp ?? this.timestamp,
-      gravity: gravity ?? this.gravity,
-      temperature: temperature ?? this.temperature,
-      notes: notes ?? this.notes,
-      gravityUnit: gravityUnit ?? this.gravityUnit,
-      interventions: interventions ?? this.interventions,
-      ta: ta ?? this.ta,
-      brix: brix ?? this.brix,
-      sgCorrected: sgCorrected ?? this.sgCorrected,
-      fsuspeed: fsuspeed ?? this.fsuspeed,
-    );
-  }
+Measurement copyWith({
+  String? id,
+  DateTime? timestamp,
+  double? gravity,
+  double? temperature,
+  String? notes,
+  String? gravityUnit,
+  List<String>? interventions,
+  double? ta,
+  double? brix,
+  double? sgCorrected,
+  double? fsuspeed,
+  bool? fromDevice, // <- add
+}) {
+  return Measurement(
+    id: id ?? this.id,
+    timestamp: timestamp ?? this.timestamp,
+    gravity: gravity ?? this.gravity,
+    temperature: temperature ?? this.temperature,
+    notes: notes ?? this.notes,
+    gravityUnit: gravityUnit ?? this.gravityUnit,
+    interventions: interventions ?? this.interventions,
+    ta: ta ?? this.ta,
+    brix: brix ?? this.brix,
+    sgCorrected: sgCorrected ?? this.sgCorrected,
+    fsuspeed: fsuspeed ?? this.fsuspeed,
+    fromDevice: fromDevice ?? this.fromDevice, // <- keep it
+  );
+}
+
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -94,6 +102,7 @@ class Measurement {
         'brix': brix,
         'sgCorrected': sgCorrected,
         'fsuspeed': fsuspeed,
+        'fromDevice': fromDevice,
       };
 
   factory Measurement.fromJson(Map<String, dynamic> json) => Measurement(
@@ -110,6 +119,8 @@ class Measurement {
         brix: (json['brix'] as num?)?.toDouble(),
         sgCorrected: (json['sgCorrected'] as num?)?.toDouble(),
         fsuspeed: (json['fsuspeed'] as num?)?.toDouble(),
+        fromDevice: (json['fromDevice'] as bool?) ?? (json['source'] == 'device'),
+
       );
 
   @override

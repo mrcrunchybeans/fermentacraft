@@ -53,6 +53,7 @@ dependencies:
   shared_preferences: ^2.2.3
   in_app_review: ^2.0.8
   crypto: ^3.0.6
+  qr_flutter: ^4.1.0
 
 
 

@@ -50,17 +50,24 @@ class _FermentationChartWidgetState extends State<FermentationChartWidget> {
     }
   }
 
-  // Add this helper method inside your _FermentationChartWidgetState class
-String _formatTemperature(double tempCelsius, String unitSetting) {
-  final isFahrenheit = unitSetting.contains('F');
-  final displayUnit = isFahrenheit ? 'F' : 'C';
-
-  final tempValue = isFahrenheit
-      ? (tempCelsius * 9 / 5) + 32  // Convert to F
-      : tempCelsius;                // Already C
-
-  return "${tempValue.toStringAsFixed(1)}°$displayUnit";
+  Widget _buildMeasurementToggle() {
+  return Align(
+    alignment: Alignment.centerLeft,
+    child: TextButton.icon(
+      onPressed: () => setState(() => _showMeasurements = !_showMeasurements),
+      icon: Icon(_showMeasurements ? Icons.expand_less : Icons.expand_more),
+      label: Text(_showMeasurements ? "Hide Measurements" : "Show Measurements"),
+    ),
+  );
 }
+
+
+  String _formatTemperature(double tempCelsius, String unitSetting) {
+    final isFahrenheit = unitSetting.contains('F');
+    final displayUnit = isFahrenheit ? 'F' : 'C';
+    final tempValue = isFahrenheit ? (tempCelsius * 9 / 5) + 32 : tempCelsius;
+    return "${tempValue.toStringAsFixed(1)}°$displayUnit";
+  }
 
   void _handleTap(
       TapUpDetails details, List<Measurement> sortedMeasurements, double maxX) {
@@ -164,8 +171,7 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
           ),
         const SizedBox(height: 8),
         _buildMeasurementToggle(),
-        if (_showMeasurements)
-          _buildMeasurementList(sortedMeasurements),
+        if (_showMeasurements) _buildMeasurementList(sortedMeasurements),
       ],
     );
   }
@@ -178,9 +184,9 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
     final temps = sortedMeasurements
         .map((m) => m.temperature)
         .whereType<double>()
-        .map((t) => settings.unit == 'F' ? (t * 9 / 5) + 32 : t) // FIXED
+        .map((t) => settings.unit == 'F' ? (t * 9 / 5) + 32 : t)
         .toList();
-        
+
     final sgs = sortedMeasurements
         .map((m) => m.sgCorrected ?? m.gravity)
         .whereType<double>()
@@ -191,9 +197,12 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
         .whereType<double>()
         .toList();
 
-    final minTemp = temps.isNotEmpty ? temps.reduce(min) : (settings.unit == 'F' ? 60 : 15);
-    final maxTemp = temps.isNotEmpty ? temps.reduce(max) : (settings.unit == 'F' ? 80 : 27);
-    final tempPadding = (maxTemp - minTemp).abs() < 1.0 ? 5.0 : (maxTemp - minTemp) * 0.1;
+    final minTemp =
+        temps.isNotEmpty ? temps.reduce(min) : (settings.unit == 'F' ? 60 : 15);
+    final maxTemp =
+        temps.isNotEmpty ? temps.reduce(max) : (settings.unit == 'F' ? 80 : 27);
+    final tempPadding =
+        (maxTemp - minTemp).abs() < 1.0 ? 5.0 : (maxTemp - minTemp) * 0.1;
     final chartMinY = (minTemp - tempPadding).floorToDouble();
     final chartMaxY = (maxTemp + tempPadding).ceilToDouble();
     final chartMidY = chartMinY + (chartMaxY - chartMinY) / 2;
@@ -206,25 +215,38 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
     final tempSpots = <FlSpot>[];
     final gravitySpots = <FlSpot>[];
     final fsuSpots = <FlSpot>[];
+    final gravityMs = <Measurement>[]; // aligned with gravitySpots
 
     for (final m in sortedMeasurements) {
       final x = m.timestamp.difference(startDate).inHours.toDouble();
-      if (m.temperature != null) {
-        final tempValue = settings.unit == 'F' ? (m.temperature! * 9 / 5) + 32 : m.temperature!; // FIXED
-        tempSpots.add(FlSpot(x, tempValue));
+
+      // Temperature
+      final t = m.temperature;
+      if (t != null) {
+        tempSpots.add(FlSpot(x, settings.unit == 'F' ? (t * 9 / 5) + 32 : t));
       }
+
+      // SG
       final sgValue = m.sgCorrected ?? m.gravity;
       if (sgValue != null) {
         gravitySpots.add(
-            FlSpot(x, _normalize(sgValue, minSg, maxSg, chartMinY, chartMidY)));
+          FlSpot(x, _normalize(sgValue, minSg, maxSg, chartMinY, chartMidY)),
+        );
+        gravityMs.add(m);
       }
-      if (m.fsuspeed != null) {
-        fsuSpots.add(FlSpot(
-            x, _normalize(m.fsuspeed!, minFsu, maxFsu, chartMidY, chartMaxY)));
+
+      // FSU
+      final fsu = m.fsuspeed;
+      if (fsu != null) {
+        fsuSpots.add(
+          FlSpot(x, _normalize(fsu, minFsu, maxFsu, chartMidY, chartMaxY)),
+        );
       }
     }
 
-    final maxX = sortedMeasurements.last.timestamp.difference(startDate).inHours.toDouble();
+    double maxX =
+        sortedMeasurements.last.timestamp.difference(startDate).inHours.toDouble();
+    if (maxX <= 0) maxX = 1;
 
     return Column(
       children: [
@@ -232,11 +254,14 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
           height: 350,
           child: GestureDetector(
             onTapUp: (details) => _handleTap(details, sortedMeasurements, maxX),
-            onPanDown: (details) => _updateTouchPosition(details.localPosition, maxX),
-            onPanUpdate: (details) => _updateTouchPosition(details.localPosition, maxX),
+            onPanDown: (details) =>
+                _updateTouchPosition(details.localPosition, maxX),
+            onPanUpdate: (details) =>
+                _updateTouchPosition(details.localPosition, maxX),
             onPanEnd: (details) => _clearTouchPosition(),
             child: MouseRegion(
-              onHover: (event) => _updateTouchPosition(event.localPosition, maxX),
+              onHover: (event) =>
+                  _updateTouchPosition(event.localPosition, maxX),
               onExit: (event) => _clearTouchPosition(),
               child: Stack(
                 clipBehavior: Clip.none,
@@ -245,32 +270,94 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
                     key: _chartAreaKey,
                     builder: (context, constraints) {
                       const reservedSpaceForYLabels = 40.0 + 40.0;
-                      final plotAreaWidth = constraints.maxWidth - reservedSpaceForYLabels;
-                      final xInterval = _getDynamicXInterval(maxX, plotAreaWidth);
+                      final plotAreaWidth =
+                          constraints.maxWidth - reservedSpaceForYLabels;
+                      final xInterval =
+                          _getDynamicXInterval(maxX, plotAreaWidth);
 
                       return LineChart(
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.linear,
                         LineChartData(
-                          minY: chartMinY, maxY: chartMaxY, minX: 0, maxX: maxX,
+                          minY: chartMinY,
+                          maxY: chartMaxY,
+                          minX: 0,
+                          maxX: maxX,
                           lineTouchData: const LineTouchData(enabled: false),
-                          titlesData: _buildTitlesData(chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu, startDate, xInterval),
+                          titlesData: _buildTitlesData(
+                            chartMinY,
+                            chartMaxY,
+                            chartMidY,
+                            minSg,
+                            maxSg,
+                            minFsu,
+                            maxFsu,
+                            startDate,
+                            xInterval,
+                          ),
                           gridData: _buildGridData(),
-                          borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade400)),
-                          rangeAnnotations: _buildStageAnnotations(widget.stages, startDate),
+                          borderData: FlBorderData(
+                            show: true,
+                            border:
+                                Border.all(color: Colors.grey.shade400),
+                          ),
+                          rangeAnnotations:
+                              _buildStageAnnotations(widget.stages, startDate),
                           lineBarsData: [
-                            _buildLineBarData(tempSpots, Colors.blueAccent),
-                            _buildLineBarData(
-                              gravitySpots,
-                              Colors.green,
-                              getDotPainter: (spot, percent, barData, index) {
-                                if (sortedMeasurements[index].interventions!.isNotEmpty) {
-                                  return FlDotCirclePainter(radius: 6, color: Colors.orange.shade700, strokeWidth: 2, strokeColor: Colors.white);
-                                }
-                                return FlDotCirclePainter(radius: 3, color: Colors.green, strokeWidth: 1.5, strokeColor: Colors.white);
-                              },
+                            _simpleSeries(tempSpots, Colors.blueAccent),
+                            // Gravity series with dot logic that needs gravityMs
+                            LineChartBarData(
+                              spots: gravitySpots.where((e) => e.y.isFinite).toList(),
+                              isCurved: true,
+                              barWidth: 2.5,
+                              color: Colors.green,
+                              dotData: FlDotData(
+                                show: true,
+                                checkToShowDot: (spot, barData) {
+                                  final i = barData.spots.indexOf(spot);
+                                  if (i < 0 || i >= gravityMs.length) return true;
+                                  final m = gravityMs[i];
+                                  // Hide plain device points to reduce clutter
+                                  return (m.fromDevice != true) ||
+                                      (m.interventions?.isNotEmpty == true);
+                                },
+                                getDotPainter: (spot, percent, barData, index) {
+                                  if (index < 0 || index >= gravityMs.length) {
+                                    return FlDotCirclePainter(
+                                      radius: 3,
+                                      color: Colors.green,
+                                      strokeWidth: 1.5,
+                                      strokeColor: Colors.white,
+                                    );
+                                  }
+                                  final m = gravityMs[index];
+
+                                  if (m.fromDevice == true) {
+                                    return FlDotCirclePainter(
+                                      radius: 2,
+                                      color: Colors.green.shade900,
+                                      strokeWidth: 0,
+                                      strokeColor: Colors.transparent,
+                                    );
+                                  }
+                                  if ((m.interventions ?? const []).isNotEmpty) {
+                                    return FlDotCirclePainter(
+                                      radius: 6,
+                                      color: Colors.orange.shade700,
+                                      strokeWidth: 2,
+                                      strokeColor: Colors.white,
+                                    );
+                                  }
+                                  return FlDotCirclePainter(
+                                    radius: 3,
+                                    color: Colors.green,
+                                    strokeWidth: 1.5,
+                                    strokeColor: Colors.white,
+                                  );
+                                },
+                              ),
                             ),
-                            _buildLineBarData(fsuSpots, Colors.purple),
+                            _simpleSeries(fsuSpots, Colors.purple),
                           ],
                         ),
                       );
@@ -278,15 +365,41 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
                   ),
                   if (_touchedX != null && _touchPosition != null)
                     Positioned(
-                      left: _touchPosition!.dx, top: 0, bottom: 0,
-                      child: Container(width: 1.5, color: Colors.redAccent.withAlpha(150)),
+                      left: _touchPosition!.dx,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 1.5,
+                        color: Colors.redAccent.withAlpha(150),
+                      ),
                     ),
                   if (_touchedX != null && _touchPosition != null)
                     Positioned(
-                      left: _touchPosition!.dx > MediaQuery.of(context).size.width / 2 ? null : _touchPosition!.dx + 12,
-                      right: _touchPosition!.dx > MediaQuery.of(context).size.width / 2 ? MediaQuery.of(context).size.width - _touchPosition!.dx + 12 : null,
+                      left: _touchPosition!.dx >
+                              MediaQuery.of(context).size.width / 2
+                          ? null
+                          : _touchPosition!.dx + 12,
+                      right: _touchPosition!.dx >
+                              MediaQuery.of(context).size.width / 2
+                          ? MediaQuery.of(context).size.width -
+                              _touchPosition!.dx +
+                              12
+                          : null,
                       top: _touchPosition!.dy - 20,
-                      child: _buildCustomTooltip(startDate, _touchedX!, tempSpots, gravitySpots, fsuSpots, chartMinY, chartMaxY, chartMidY, minSg, maxSg, minFsu, maxFsu),
+                      child: _buildCustomTooltip(
+                        startDate,
+                        _touchedX!,
+                        tempSpots,
+                        gravitySpots,
+                        fsuSpots,
+                        chartMinY,
+                        chartMaxY,
+                        chartMidY,
+                        minSg,
+                        maxSg,
+                        minFsu,
+                        maxFsu,
+                      ),
                     ),
                 ],
               ),
@@ -296,6 +409,25 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
         const SizedBox(height: 12),
         _buildLegend(),
       ],
+    );
+  }
+
+  // simple series helper (no custom dot logic needed)
+  LineChartBarData _simpleSeries(List<FlSpot> spots, Color color) {
+    return LineChartBarData(
+      spots: spots.where((spot) => spot.y.isFinite).toList(),
+      isCurved: true,
+      barWidth: 2.5,
+      color: color,
+      dotData: FlDotData(
+        show: true,
+        getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+          radius: 3,
+          color: color,
+          strokeWidth: 1.5,
+          strokeColor: Colors.white,
+        ),
+      ),
     );
   }
 
@@ -314,7 +446,9 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
 
     return Column(
       children: measurements.reversed.map((m) {
-        final temp = m.temperature != null ? _formatTemperature(m.temperature!, settings.unit) : "—";
+        final temp = m.temperature != null
+            ? _formatTemperature(m.temperature!, settings.unit)
+            : "—";
         final ta = m.ta?.toStringAsFixed(1) ?? "—";
         final sgRaw = m.gravity?.toStringAsFixed(3) ?? "—";
         final sgCorr = m.sgCorrected?.toStringAsFixed(3) ?? "—";
@@ -331,7 +465,8 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
                   children: [
                     Text(
                       dateFormat.format(m.timestamp),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     SizedBox(
                       width: 40,
@@ -345,8 +480,8 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
                           }
                         },
                         itemBuilder: (context) => const [
-                           PopupMenuItem(value: 'edit', child: Text('Edit')),
-                           PopupMenuItem(value: 'delete', child: Text('Delete')),
+                          PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
                     ),
@@ -362,12 +497,14 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
                     _DataPoint(label: 'TA', value: ta),
                   ],
                 ),
-                if (m.interventions!.isNotEmpty) ...[
+                if ((m.interventions ?? const []).isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 6.0,
                     runSpacing: 4.0,
-                    children: m.interventions!.map((i) => Chip(label: Text(i))).toList(),
+                    children: (m.interventions ?? const [])
+                        .map((i) => Chip(label: Text(i)))
+                        .toList(),
                   )
                 ]
               ],
@@ -381,7 +518,8 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
   Widget _buildHeader() {
     return Row(
       children: [
-        const Text("Fermentation Chart", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text("Fermentation Chart",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const Spacer(),
         if (widget.onManageStages != null)
           TextButton.icon(
@@ -402,19 +540,31 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
         const _LegendItem(color: Colors.blueAccent, label: "Temperature"),
         const _LegendItem(color: Colors.green, label: "Corrected SG"),
         const _LegendItem(color: Colors.purple, label: "FSU"),
+        _LegendItem(color: Colors.green.shade900, label: "Device (SG)"),
         _LegendItem(color: Colors.orange.shade700, label: "Intervention"),
       ],
     );
   }
 
-  // FIXED: Restored the tooltip implementation
   Widget _buildCustomTooltip(
-    DateTime startDate, double touchedX, List<FlSpot> tempSpots, List<FlSpot> gravitySpots, List<FlSpot> fsuSpots,
-    double chartMinY, double chartMaxY, double chartMidY, double minSg, double maxSg, double minFsu, double maxFsu,
+    DateTime startDate,
+    double touchedX,
+    List<FlSpot> tempSpots,
+    List<FlSpot> gravitySpots,
+    List<FlSpot> fsuSpots,
+    double chartMinY,
+    double chartMaxY,
+    double chartMidY,
+    double minSg,
+    double maxSg,
+    double minFsu,
+    double maxFsu,
   ) {
     final settings = context.read<SettingsModel>();
-    final time = startDate.add(Duration(microseconds: (touchedX * Duration.microsecondsPerHour).round()));
-    final timeLabel = "${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+    final time = startDate.add(Duration(
+        microseconds: (touchedX * Duration.microsecondsPerHour).round()));
+    final timeLabel =
+        "${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
 
     final tempY = _getInterpolatedY(tempSpots, touchedX);
     final sgYNormalized = _getInterpolatedY(gravitySpots, touchedX);
@@ -430,60 +580,52 @@ String _formatTemperature(double tempCelsius, String unitSetting) {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(timeLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+            Text(timeLabel,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12)),
             const SizedBox(height: 4),
             if (tempY != null)
               Text(
-                  "Temp: ${tempY.toStringAsFixed(1)}°${settings.unit.toUpperCase().replaceAll('°', '')}", // Safely remove any extra °
-                  style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                "Temp: ${tempY.toStringAsFixed(1)}°${settings.unit.toUpperCase().replaceAll('°', '')}",
+                style: const TextStyle(
+                    color: Colors.lightBlueAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
+              ),
             if (sgYNormalized != null)
               Text(
-                  "SG: ${_deNormalize(sgYNormalized, minSg, maxSg, chartMinY, chartMidY).toStringAsFixed(3)}",
-                  style: const TextStyle(color: Colors.lightGreenAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                "SG: ${_deNormalize(sgYNormalized, minSg, maxSg, chartMinY, chartMidY).toStringAsFixed(3)}",
+                style: const TextStyle(
+                    color: Colors.lightGreenAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
+              ),
             if (fsuYNormalized != null)
               Text(
-                  "FSU: ${_deNormalize(fsuYNormalized, minFsu, maxFsu, chartMidY, chartMaxY).toStringAsFixed(1)}",
-                  style: const TextStyle(color: Colors.purpleAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                "FSU: ${_deNormalize(fsuYNormalized, minFsu, maxFsu, chartMidY, chartMaxY).toStringAsFixed(1)}",
+                style: const TextStyle(
+                    color: Colors.purpleAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMeasurementToggle() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton.icon(
-        onPressed: () => setState(() => _showMeasurements = !_showMeasurements),
-        icon: Icon(_showMeasurements ? Icons.expand_less : Icons.expand_more),
-        label: Text(_showMeasurements ? "Hide Measurements" : "Show Measurements"),
-      ),
-    );
-  }
-
-  // FIXED: Changed the type from the non-existent FlDotPainterCallback to the correct function signature
-  LineChartBarData _buildLineBarData(List<FlSpot> spots, Color color, {FlDotPainter Function(FlSpot, double, LineChartBarData, int)? getDotPainter}) {
-    return LineChartBarData(
-      spots: spots.where((spot) => spot.y.isFinite).toList(),
-      isCurved: true,
-      barWidth: 2.5,
-      color: color,
-      dotData: FlDotData(
-        show: true,
-        getDotPainter: getDotPainter ?? (spot, percent, barData, index) => FlDotCirclePainter(
-            radius: 3,
-            color: color,
-            strokeWidth: 1.5,
-            strokeColor: Colors.white),
-      ),
-    );
-  }
-
-RangeAnnotations _buildStageAnnotations(
+  RangeAnnotations _buildStageAnnotations(
       List<FermentationStage> stages, DateTime startDate) {
     final List<Color> stageColors = [
-      Colors.orange, Colors.blue, Colors.green, Colors.purple,
-      Colors.pink, Colors.teal, Colors.yellow
+      Colors.orange,
+      Colors.blue,
+      Colors.green,
+      Colors.purple,
+      Colors.pink,
+      Colors.teal,
+      Colors.yellow
     ];
     return RangeAnnotations(
       verticalRangeAnnotations: stages.asMap().entries.map((entry) {
@@ -498,20 +640,28 @@ RangeAnnotations _buildStageAnnotations(
       }).whereType<VerticalRangeAnnotation>().toList(),
     );
   }
-  
+
   FlGridData _buildGridData() {
     return FlGridData(
-        show: true,
-        drawVerticalLine: true,
-        getDrawingHorizontalLine: (value) =>
-            FlLine(color: Colors.grey.withAlpha(50), strokeWidth: 1),
-        getDrawingVerticalLine: (value) =>
-            FlLine(color: Colors.grey.withAlpha(50), strokeWidth: 1));
+      show: true,
+      drawVerticalLine: true,
+      getDrawingHorizontalLine: (value) =>
+          FlLine(color: Colors.grey.withAlpha(50), strokeWidth: 1),
+      getDrawingVerticalLine: (value) =>
+          FlLine(color: Colors.grey.withAlpha(50), strokeWidth: 1),
+    );
   }
-  
+
   FlTitlesData _buildTitlesData(
-    double chartMinY, double chartMaxY, double chartMidY, double minSg, double maxSg,
-    double minFsu, double maxFsu, DateTime startDate, double xInterval,
+    double chartMinY,
+    double chartMaxY,
+    double chartMidY,
+    double minSg,
+    double maxSg,
+    double minFsu,
+    double maxFsu,
+    DateTime startDate,
+    double xInterval,
   ) {
     final settings = context.read<SettingsModel>();
     return FlTitlesData(
@@ -540,8 +690,8 @@ RangeAnnotations _buildStageAnnotations(
         ),
       ),
       leftTitles: AxisTitles(
-        axisNameWidget:
-            Text("Temp (${settings.unit.toUpperCase()})", style: const TextStyle(fontSize: 12)),
+        axisNameWidget: Text("Temp (${settings.unit.toUpperCase()})",
+            style: const TextStyle(fontSize: 12)),
         axisNameSize: 24,
         sideTitles: SideTitles(
             showTitles: true,
@@ -549,8 +699,7 @@ RangeAnnotations _buildStageAnnotations(
             interval: (chartMaxY - chartMinY) / 4),
       ),
       rightTitles: AxisTitles(
-        axisNameWidget:
-            const Text("SG / FSU", style: TextStyle(fontSize: 12)),
+        axisNameWidget: const Text("SG / FSU", style: TextStyle(fontSize: 12)),
         axisNameSize: 24,
         sideTitles: SideTitles(
           showTitles: true,
@@ -564,14 +713,12 @@ RangeAnnotations _buildStageAnnotations(
               final deNormalizedSg =
                   _deNormalize(value, minSg, maxSg, chartMinY, chartMidY);
               return Text(deNormalizedSg.toStringAsFixed(3),
-                  style:
-                      const TextStyle(color: Colors.green, fontSize: 10));
+                  style: const TextStyle(color: Colors.green, fontSize: 10));
             } else {
               final deNormalizedFsu =
                   _deNormalize(value, minFsu, maxFsu, chartMidY, chartMaxY);
               return Text(deNormalizedFsu.toStringAsFixed(0),
-                  style:
-                      const TextStyle(color: Colors.purple, fontSize: 10));
+                  style: const TextStyle(color: Colors.purple, fontSize: 10));
             }
           },
         ),

@@ -62,7 +62,7 @@ class RecipeModel extends HiveObject {
   @HiveField(15)
   double? plannedAbv;
 
-  @HiveField(16)
+  @HiveField(16, defaultValue: false)
   bool isArchived;
 
   // ✅ NEW: category used for sorting/grouping

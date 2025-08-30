@@ -1,10 +1,13 @@
 // lib/main.dart
 import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import 'bootstrap/setup.dart';
 import 'theme/app_theme.dart';
@@ -30,22 +33,25 @@ import 'services/presets_service.dart';
 import 'web_bridge_stub.dart'
   if (dart.library.html) 'web_bridge_web.dart' as wb;
 
-// import 'package:fermentacraft/acid_tools/strip_reader_tab.dart';
-// void registerAdapters() {
-//   if (!Hive.isAdapterRegistered(41)) {
-//     Hive.registerAdapter(PHStripAdapter());
-//   if (!Hive.isAdapterRegistered(41)) Hive.registerAdapter(PHStripAdapter());
-// }
-// }
+bool get _crashlyticsSupported =>
+    !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+
+Future<void> _wireCrashlytics() async {
+  if (!_crashlyticsSupported) return;
+
+  // Enable/disable collection (off in debug by default)
+  await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
+
+  // Forward Flutter framework errors
+  FlutterError.onError = (details) {
+    FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+  };
+}
 
 void main() {
+  // Only install a zone error handler that calls Crashlytics on supported platforms
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
-
-    // Crashlytics: route Flutter framework errors
-    FlutterError.onError = (details) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
-    };
 
     // Web-only housekeeping (no-op on mobile)
     wb.hideHtmlSplash();
@@ -57,8 +63,12 @@ void main() {
       return true;
     }());
 
-    // Core services (Hive adapters/boxes, Firebase, etc.)
+    // Core services (Firebase init, Hive, adapters, boxes, etc.)
+    // IMPORTANT: This must initialize Firebase before we touch Crashlytics.
     await setupAppServices();
+
+    // Now it’s safe to wire Crashlytics (and only on supported platforms)
+    await _wireCrashlytics();
 
     // Pre-warm SharedPreferences to avoid channel error on first run
     await SharedPreferences.getInstance();
@@ -71,43 +81,41 @@ void main() {
     // RevenueCat: initialize & bind to FeatureGate
     await RevenueCatService.instance.init();
 
-    // PresetsService: construct once, load persisted customs before runApp
+    // Presets: construct & load before runApp
     final presets = PresetsService();
     await presets.ensureLoaded();
 
-    // Build app with providers AFTER services/boxes are ready
     runApp(
       MultiProvider(
         providers: [
-          // Make presets available app-wide (yeast/additives dialogs & tiles)
           ChangeNotifierProvider<PresetsService>.value(value: presets),
-
           ChangeNotifierProvider<SettingsModel>(
             create: (_) => SettingsModel(Hive.box(Boxes.settings)),
           ),
-          // TagManager must not touch Hive during construction; lazy inside TagManager.
           ChangeNotifierProvider<TagManager>(create: (_) => TagManager()),
-          ChangeNotifierProvider<FeatureGate>.value(
-            value: FeatureGate.instance,
-          ),
+          ChangeNotifierProvider<FeatureGate>.value(value: FeatureGate.instance),
         ],
         child: const FermentaCraftApp(),
       ),
     );
 
     // After first frame: finish splash cleanup.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      wb.postSplashComplete();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => wb.postSplashComplete());
 
     // Optional watchdog (debug-only)
     assert(() {
       wb.startSplashWatchdog(timeout: const Duration(minutes: 2));
       return true;
     }());
-  }, (error, stack) {
-    // Uncaught async errors → Crashlytics
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+  }, (error, stack) async {
+    // Only call Crashlytics on supported platforms (and after init above)
+    if (_crashlyticsSupported) {
+      await FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    } else {
+      // Fallback for web/Windows/Linux
+      // ignore: avoid_print
+      print('Uncaught error: $error\n$stack');
+    }
   });
 }
 

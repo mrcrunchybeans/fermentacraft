@@ -57,7 +57,7 @@ class BatchModelAdapter extends TypeAdapter<BatchModel> {
       packagingMethod: fields[28] as String?,
       finalYield: fields[29] as double?,
       finalYieldUnit: fields[32] as String?,
-      isArchived: fields[33] as bool,
+      isArchived: fields[33] == null ? false : fields[33] as bool,
       category: fields[34] as String?,
       tagsLegacy: (fields[19] as List?)?.cast<Tag>(),
     );

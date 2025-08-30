@@ -22,7 +22,7 @@ class ShoppingListItem extends HiveObject {
   @HiveField(4)
   String recipeName;
 
-  @HiveField(5)
+  @HiveField(5, defaultValue: false)
   bool isChecked;
 
   /// Primary constructor — requires an id. Use [ShoppingListItem.newItem] to create with a fresh UUID.

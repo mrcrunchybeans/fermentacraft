@@ -22,7 +22,7 @@ class ShoppingListItemAdapter extends TypeAdapter<ShoppingListItem> {
       amount: fields[2] as double,
       unit: fields[3] as String,
       recipeName: fields[4] as String,
-      isChecked: fields[5] as bool,
+      isChecked: fields[5] == null ? false : fields[5] as bool,
     );
   }
 

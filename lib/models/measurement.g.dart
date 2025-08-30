@@ -28,13 +28,14 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
       brix: fields[8] as double?,
       sgCorrected: fields[9] as double?,
       fsuspeed: fields[10] as double?,
+      fromDevice: fields[11] == null ? false : fields[11] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Measurement obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -56,7 +57,9 @@ class MeasurementAdapter extends TypeAdapter<Measurement> {
       ..writeByte(9)
       ..write(obj.sgCorrected)
       ..writeByte(10)
-      ..write(obj.fsuspeed);
+      ..write(obj.fsuspeed)
+      ..writeByte(11)
+      ..write(obj.fromDevice);
   }
 
   @override

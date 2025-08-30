@@ -36,6 +36,12 @@ import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
 import 'package:fermentacraft/services/review_prompter.dart';
 import 'package:fermentacraft/utils/recipe_to_batch.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fermentacraft/services/firestore_paths.dart';
+import 'package:fermentacraft/utils/export_csv.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fermentacraft/widgets/attach_device_sheet.dart';
+
 
 
 
@@ -47,9 +53,14 @@ import '../utils/id.dart';
 
 
 class BatchDetailPage extends StatefulWidget {
-  const BatchDetailPage({super.key, required this.batchKey});
+  const BatchDetailPage({
+    super.key,
+    required this.batchKey,
+    this.firebaseUid,
+  });
 
   final String batchKey;
+  final String? firebaseUid;
 
   @override
   State<BatchDetailPage> createState() => _BatchDetailPageState();
@@ -76,7 +87,107 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   late final TextEditingController _tastingAppearanceController;
   late final TextEditingController _tastingAromaController;
   late final TextEditingController _tastingFlavorController;
+
+  // How "recent" to consider a device online
+static const _onlineGrace = Duration(minutes: 10);
+
+Future<String?> _currentDeviceIdForBatch(String uid, String batchId) async {
+  final snap = await FirestorePaths
+      .devicesColl(uid)
+      .where('linkedBatchId', isEqualTo: batchId)
+      .limit(1)
+      .get();
+
+  if (snap.docs.isEmpty) return null;
+  return snap.docs.first.id;
+}
+
+Future<List<DevicePickItem>> _fetchDevicePickItems({
+  required String uid,
+  required String batchId,
+}) async {
+  final qs = await FirestorePaths.devicesColl(uid).get();
+  final now = DateTime.now();
+  final batchBox = Hive.box<BatchModel>(Boxes.batches);
+
+  String? nameForBatchId(String? id) {
+    if (id == null || id.isEmpty) return null;
+    final local = batchBox.get(id);
+    if (local != null) return local.name;
+    return 'Batch $id';
+  }
+
+  return qs.docs.map((doc) {
+    final data = doc.data();
+    final name = (data['name'] as String?) ?? 'Device';
+    final linkedBatchId = data['linkedBatchId'] as String?;
+    final lastSeenTs = data['lastSeen'];
+    DateTime? lastSeen;
+    if (lastSeenTs is Timestamp) lastSeen = lastSeenTs.toDate();
+
+    final online = lastSeen != null && now.difference(lastSeen) <= _onlineGrace;
+    final assignedElsewhere =
+        linkedBatchId != null && linkedBatchId.isNotEmpty && linkedBatchId != batchId;
+
+    return DevicePickItem(
+      id: doc.id,
+      name: name,
+      online: online,
+      assignedElsewhere: assignedElsewhere,
+      assignedBatchName: assignedElsewhere
+          ? (nameForBatchId(linkedBatchId) ?? 'Another batch')
+          : (linkedBatchId == batchId ? 'This batch' : null),
+    );
+  }).toList();
+}
+
+Future<void> _attachDeviceToBatch({
+  required String uid,
+  required String batchId,
+  required String? deviceId, // null = detach
+}) async {
+  // Detach any currently linked device first
+  final currentId = await _currentDeviceIdForBatch(uid, batchId);
+  if (currentId != null) {
+    await FirestorePaths.deviceDoc(uid, currentId).update({'linkedBatchId': FieldValue.delete()});
+  }
+
+  // Attach the chosen one (unless we're just detaching)
+  if (deviceId != null) {
+    await FirestorePaths.deviceDoc(uid, deviceId).update({'linkedBatchId': batchId});
+  }
+}
+
+  /// The page reads UID itself when needed. If the constructor-provided UID exists,
+/// it wins; otherwise we fall back to FirebaseAuth.
+String? get _uid => widget.firebaseUid ?? FirebaseAuth.instance.currentUser?.uid;
+/// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
+Widget ifSignedIn(Widget Function(String uid) builder) {
+  final uid = _uid;
+  if (uid == null) return const SizedBox.shrink();
+  return builder(uid);
+}
+
   int _tastingRating = 0;
+
+IconData _batteryIconForPercent(double? pct) {
+  final p = (pct ?? -1).toDouble();
+  if (p < 0) return Icons.battery_unknown;
+  if (p >= 0.95) return Icons.battery_full;
+  if (p >= 0.75) return Icons.battery_5_bar;
+  if (p >= 0.55) return Icons.battery_4_bar;
+  if (p >= 0.35) return Icons.battery_3_bar;
+  if (p >= 0.15) return Icons.battery_2_bar;
+  return Icons.battery_alert;
+}
+
+String _timeAgoShort(DateTime t) {
+  final d = DateTime.now().difference(t);
+  if (d.inSeconds < 60) return '${d.inSeconds}s ago';
+  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+  if (d.inHours < 24) return '${d.inHours}h ago';
+  return '${d.inDays}d ago';
+}
 
   @override
   void dispose() {
@@ -1874,87 +1985,228 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     batch.save();
     inventoryItem.save();
   }
+/// Small row showing the linked device’s battery and last-seen.
+/// We consider the first device where linkedBatchId == batchId.
+Widget _deviceStatusRow({required String uid, required String batchId}) {
+  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: FirestorePaths
+        .devicesColl(uid)
+        .where('linkedBatchId', isEqualTo: batchId)
+        .limit(1)
+        .snapshots(),
+    builder: (context, snap) {
+      final doc = (snap.data?.docs.isNotEmpty ?? false) ? snap.data!.docs.first : null;
+      if (doc == null) return const SizedBox.shrink();
 
-  Widget _buildFermentingTab(BatchModel batch) {
-      final sortedForChart = [...batch.measurements]
-    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      final data     = doc.data();
+      final name     = (data['name'] as String?) ?? 'Device';
+      final battery  = (data['battery'] as num?)?.toDouble();
+      final lastSeen = (data['lastSeen'] as Timestamp?)?.toDate();
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
           children: [
-            Expanded(
-              child: Text(
-                'Fermentation Progress',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('Add Measurement'),
-              onPressed: () async {
-                final sortedMeasurements = batch.measurements.toList()
-                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-                final newMeasurement = await showDialog<Measurement>(
-                    context: context,
-                    builder: (_) => AddMeasurementDialog(
-                          previousMeasurement: sortedMeasurements.isNotEmpty
-                              ? sortedMeasurements.last
-                              : null,
-                          firstMeasurementDate: sortedMeasurements.isNotEmpty
-                              ? sortedMeasurements.first.timestamp
-                              : null,
-                        ));
-               if (newMeasurement != null) {
-              await _mutateBatch((b) => b.measurements.add(newMeasurement));
-              }
-              },
+            Icon(_batteryIconForPercent(battery)),
+            const SizedBox(width: 8),
+            Text(name),
+            const SizedBox(width: 12),
+            Text(
+              lastSeen == null ? 'Seen —' : 'Seen ${_timeAgoShort(lastSeen)}',
+              style: const TextStyle(color: Colors.grey),
             ),
           ],
         ),
-        const SizedBox(height: 16),
-FermentationChartWidget(
-  measurements: sortedForChart,
-  stages: batch.safeFermentationStages,
-  onEditMeasurement: (measurementToEdit) async {
-    // Find the item in the same (sorted) list shown in the chart
-    final idx = sortedForChart.indexWhere((m) => m.id == measurementToEdit.id);
-    final previous = (idx > 0) ? sortedForChart[idx - 1] : null;
-    final firstDate =
-        sortedForChart.isNotEmpty ? sortedForChart.first.timestamp : null;
+      );
+    },
+  );
+}
+Measurement _fromRemoteDoc(Map<String, dynamic> m) {
+  final ts    = (m['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
+  final sg    = (m['sg'] as num?)?.toDouble();
+  final tempC = (m['tempC'] as num?)?.toDouble();
 
-    final updated = await showDialog<Measurement>(
-      context: context,
-      builder: (_) => AddMeasurementDialog(
-        existingMeasurement: measurementToEdit,
-        previousMeasurement: previous,         // used for FSU preview
-        firstMeasurementDate: firstDate,       // used for "Day N"
-      ),
-    );
-
-if (updated != null) {
-  await _mutateBatch((b) {
-    final i = b.measurements.indexWhere((m) => m.id == updated.id);
-    if (i != -1) b.measurements[i] = updated;
-  });
+  return Measurement(
+    id: 'device_${ts.millisecondsSinceEpoch}',
+    timestamp: ts,
+    gravity: sg,
+    temperature: tempC,
+    fromDevice: true,
+    notes: 'device',
+  );
 }
 
+/// Merge lists preferring local (manual) points if within +/- 5 minutes of a device point.
+List<Measurement> _mergeDeviceAndLocal({
+  required List<Measurement> local,
+  required List<Measurement> remote,
+}) {
+  final merged = <Measurement>[];
+  int i = 0, j = 0;
+  const fiveMin = Duration(minutes: 5);
+
+  final l = [...local]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  final r = [...remote]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+  while (i < l.length && j < r.length) {
+    final a = l[i], b = r[j];
+    if (a.timestamp.isBefore(b.timestamp.subtract(fiveMin))) {
+      merged.add(a); i++;
+    } else if (b.timestamp.isBefore(a.timestamp.subtract(fiveMin))) {
+      merged.add(b); j++;
+    } else {
+      merged.add(a); // close in time -> prefer local
+      i++; j++;
+    }
+  }
+  while (i < l.length) {
+    merged.add(l[i++]);
+  }
+  while (j < r.length) {
+    merged.add(r[j++]);
+  }
+  return merged;
+}
+
+Widget _buildFermentingTab(BatchModel batch) {
+  final localSorted = [...batch.measurements]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+final uid = _uid;               
+final batchId = batch.id;
+
+  return ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text('Fermentation Progress',
+                style: Theme.of(context).textTheme.titleLarge),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('Add Measurement'),
+            onPressed: () async {
+              final sorted = [...batch.measurements]
+                ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+              final newM = await showDialog<Measurement>(
+                context: context,
+                builder: (_) => AddMeasurementDialog(
+                  previousMeasurement: sorted.isNotEmpty ? sorted.last : null,
+                  firstMeasurementDate: sorted.isNotEmpty ? sorted.first.timestamp : null,
+                ),
+              );
+              if (newM != null) {
+                await _mutateBatch((b) => b.measurements.add(newM));
+              }
+            },
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+
+// ---- Device status row (only when signed-in) ----
+// ---- Device status row (only when signed-in AND Premium) ----
+if (uid != null && context.read<FeatureGate>().allowDevices)
+  _deviceStatusRow(uid: uid, batchId: batchId),
+const SizedBox(height: 4),
+
+Builder(
+  builder: (context) {
+    final fg = context.read<FeatureGate>();
+
+    // Not signed in -> show local-only chart
+    if (uid == null) {
+      return FermentationChartWidget(
+        measurements: localSorted,
+        stages: batch.safeFermentationStages,
+        onEditMeasurement: (m) async { /* unchanged */ },
+        onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
+        onManageStages: () => _manageStages(batch),
+      );
+    }
+
+    // Signed in but not Premium -> upsell + local-only chart
+    if (!fg.allowDeviceStreaming) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.6),
+            borderRadius: BorderRadius.circular(12),
+            child: ListTile(
+              dense: true,
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Live device data is Premium'),
+              subtitle: const Text('Upgrade to view iSpindel / device readings on the chart.'),
+              trailing: TextButton(
+                onPressed: () => showPaywall(context),
+                child: const Text('UPGRADE'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          FermentationChartWidget(
+            measurements: localSorted,
+            stages: batch.safeFermentationStages,
+            onEditMeasurement: (m) async { /* unchanged */ },
+            onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
+            onManageStages: () => _manageStages(batch),
+          ),
+        ],
+      );
+    }
+
+    // Signed in + Premium -> merge device + local in realtime
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirestorePaths
+          .batchMeasurements(uid, batchId)
+          .orderBy('timestamp', descending: false)
+          .snapshots(),
+      builder: (context, snap) {
+        final remote = (snap.data?.docs ?? const [])
+            .map((d) => _fromRemoteDoc(d.data()))
+            .where((m) => m.gravity != null)
+            .toList();
+
+        final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+
+        return FermentationChartWidget(
+          measurements: combined,
+          stages: batch.safeFermentationStages,
+          onEditMeasurement: (m) async {
+            if (m.fromDevice == true) return; // keep your rule
+            // ... unchanged edit code ...
+          },
+          onDeleteMeasurement: (m) {
+            if (m.fromDevice == true) return;
+            _handleDeleteMeasurement(batch, m);
+          },
+          onManageStages: () => _manageStages(batch),
+        );
+      },
+    );
   },
-  onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
-  onManageStages: () => _manageStages(batch),
 ),
 
-        _buildStatusProgressionButton(
-          batch: batch,
-          currentStatus: 'Fermenting',
-          nextStatus: 'Completed',
-          buttonText: 'Mark as Completed',
-          icon: Icons.check_circle_outline,
-        ),
-      ],
-    );
-  }
+
+
+      _buildStatusProgressionButton(
+        batch: batch,
+        currentStatus: 'Fermenting',
+        nextStatus: 'Completed',
+        buttonText: 'Mark as Completed',
+        icon: Icons.check_circle_outline,
+      ),
+    ],
+  );
+}
+
+
+
 
   void _syncTextController(TextEditingController c, String text) {
   if (c.text != text) {
@@ -2689,25 +2941,98 @@ Widget build(BuildContext context) {
       final width = media.size.width;
       final double scale = MediaQuery.textScalerOf(context).scale(1.0);
       final bool needsScroll = width < 380 || scale > 1.0;
+      final fg = context.watch<FeatureGate>();
 
       return Scaffold(
         appBar: AppBar(
           title: Text(batch.name),
           actions: [
-            IconButton(
-              icon: Icon(
-                _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
-                color: _isBrewModeEnabled ? Colors.amber : null,
-              ),
-              tooltip: 'Toggle Brew Mode',
-              onPressed: _toggleBrewMode,
-            ),
-            IconButton(
-              tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
-              icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
-              onPressed: () => _onArchiveToggle(batch),
-            ),
-          ],
+  IconButton(
+    icon: Icon(
+      _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
+      color: _isBrewModeEnabled ? Colors.amber : null,
+    ),
+    tooltip: 'Toggle Brew Mode',
+    onPressed: _toggleBrewMode,
+  ),
+  IconButton(
+    tooltip: _batch?.isArchived == true ? 'Unarchive' : 'Archive',
+    icon: Icon(_batch?.isArchived == true ? Icons.unarchive : Icons.archive_outlined),
+    onPressed: () {
+      final b = _batch;
+      if (b != null) _onArchiveToggle(b);
+    },
+  ),
+
+  // ---- Device: Link to this batch (Premium) ----
+  ifSignedIn((uid) => IconButton(
+        tooltip: 'Attach / change device',
+        icon: const Icon(Icons.sensors),
+        onPressed: () async {
+          // 🔒 Premium gate
+          if (!fg.allowDevices) {
+            showPaywall(context);
+            return;
+          }
+
+          final messenger = snacks;
+          final batchId = _batch?.id ?? widget.batchKey;
+          final dialogContext = context; // capture early
+
+          final currentId = await _currentDeviceIdForBatch(uid, batchId);
+          if (!dialogContext.mounted) return;
+
+          final result = await showAttachDeviceSheet(
+            context: dialogContext,
+            currentlyAttachedDeviceId: currentId,
+            fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batchId),
+            showAssignedToo: true,
+            batchId: batchId,
+          );
+          if (result == null) return;
+
+          await _attachDeviceToBatch(
+            uid: uid,
+            batchId: batchId,
+            deviceId: result.deviceId, // null => detach
+          );
+
+          if (!mounted) return;
+          messenger.show(SnackBar(
+            content: Text(result.deviceId == null ? 'Device detached' : 'Device attached'),
+          ));
+          setState(() {});
+        },
+      )),
+
+  // ---- Device: Export CSV of raw device points (Premium) ----
+  ifSignedIn((uid) => IconButton(
+        tooltip: 'Export CSV (device raw)',
+        icon: const Icon(Icons.download),
+        onPressed: () async {
+          // 🔒 Premium gate
+          if (!fg.allowDeviceExport) {
+            showPaywall(context);
+            return;
+          }
+
+          final dialogContext = context;                   // for promptSaveCsv
+          final messenger = ScaffoldMessenger.of(context); // for snackbar
+          final batchName = _batch?.name ?? 'batch';
+          final batchId   = _batch?.id ?? widget.batchKey;
+
+          String safe(String s) => s.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
+          final filename = 'device_data_${safe(batchName)}_${DateTime.now().toIso8601String()}.csv';
+
+          final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batchId);
+          if (!dialogContext.mounted) return;
+
+          await promptSaveCsv(context: dialogContext, filename: filename, csv: csv);
+          messenger.showSnackBar(SnackBar(content: Text('Exported ${csv.length} chars of CSV.')));
+        },
+      )),
+],
+
           bottom: TabBar(
             controller: _tabController,
             isScrollable: needsScroll,

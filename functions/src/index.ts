@@ -535,3 +535,5 @@ export const purgeSoftDeletes = onSchedule(
     logger.info("purgeSoftDeletes complete", { totalDeleted, usersScanned: userRefs.length });
   }
 );
+export { ingestDevice } from "./ingestDevice";
+export { ingest } from "./ingest";

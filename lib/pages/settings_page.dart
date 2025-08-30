@@ -13,6 +13,8 @@ import '../../utils/boxes.dart';
 import '../../utils/data_management.dart';
 import '../../models/settings_model.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
+import 'package:fermentacraft/widgets/devices_selection.dart';
+
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -48,6 +50,33 @@ class _SettingsPageState extends State<SettingsPage> {
     'R\$',
     '₱',
   ];
+
+  Widget _devicesCard(FeatureGate fg) {
+  final baseCard = Card(
+    child: Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.sensors),
+          title: const Text('Devices'),
+          subtitle: const Text('Link, unlink, and view device ingest details.'),
+          onTap: () {
+            // Will be wrapped by gate; here it’s the real action when Premium
+            DevicesSelection.openWithCurrentUser(context);
+          },
+        ),
+      ],
+    ),
+  );
+
+  if (fg.allowDevices) return baseCard;
+
+  // Free tier → dim + paywall on tap
+  return _PremiumGate(
+    child: baseCard,
+    onTap: () => showPaywall(context),
+  );
+}
+
 
   // Prompts user for a custom currency symbol (1–4 visible chars is reasonable).
   Future<void> _promptCustomCurrencySymbol(SettingsModel settings) async {
@@ -399,6 +428,9 @@ class _SettingsPageState extends State<SettingsPage> {
           _sectionTitle("Cloud Sync", context),
           _cloudSyncCard(fg: fg, sync: sync, user: user),
 
+          _sectionTitle("Devices", context),
+          _devicesCard(fg),
+
           _sectionTitle("Units", context),
           _unitsCard(settings),
 
@@ -415,6 +447,48 @@ class _SettingsPageState extends State<SettingsPage> {
           _dangerZoneCard(),
         ],
       ),
+    );
+  }
+}
+class _PremiumGate extends StatelessWidget {
+  const _PremiumGate({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Stack(
+      children: [
+        Opacity(opacity: 0.45, child: child),
+        Positioned.fill(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: onTap,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: theme.dividerColor.withOpacity(.35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.lock_outline, size: 18),
+                      SizedBox(width: 8),
+                      Text('Premium only – Tap to upgrade'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

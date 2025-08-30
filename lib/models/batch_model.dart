@@ -115,7 +115,7 @@ class BatchModel extends HiveObject {
   @HiveField(32)
   String? finalYieldUnit;
 
-  @HiveField(33)
+  @HiveField(33, defaultValue: false)
   bool isArchived;
 
 
