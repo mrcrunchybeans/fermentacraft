@@ -1,5 +1,4 @@
 
-// ignore_for_file: deprecated_member_use
 import 'dart:async';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:fermentacraft/widgets/show_paywall.dart';
@@ -41,7 +40,7 @@ import 'package:fermentacraft/services/firestore_paths.dart';
 import 'package:fermentacraft/utils/export_csv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fermentacraft/widgets/attach_device_sheet.dart';
-
+import 'package:fermentacraft/utils/gravity_utils.dart';
 
 
 
@@ -50,6 +49,60 @@ import 'package:fermentacraft/widgets/attach_device_sheet.dart';
 
 // Import the unique ID generator
 import '../utils/id.dart';
+
+// ---- Top-level: visible to both pages ----
+Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
+  final ts = (m['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+  // ----- Gravity -----
+  double? sg = (m['sg'] as num?)?.toDouble()
+            ?? (m['corrSG'] as num?)?.toDouble()
+            ?? (m['corr_gravity'] as num?)?.toDouble()
+            ?? (m['corr-gravity'] as num?)?.toDouble();
+
+  double? brix = (m['brix'] as num?)?.toDouble();
+
+  if (sg == null && m['gravity'] != null) {
+    final gVal = (m['gravity'] as num).toDouble();
+    final gUnit = (m['gravity_unit'] ?? m['gravity-unit'] ?? m['gravityUnit'])
+        ?.toString().toLowerCase(); // ← no generic "unit" here
+    if (gUnit == 'brix' || gUnit == '°brix' || gUnit == 'bx') {
+      brix = gVal;
+      sg = brixToSg(gVal);
+    } else {
+      sg = gVal;
+    }
+  }
+  sg ??= (brix != null) ? brixToSg(brix) : null;
+
+  // ----- Temperature -----
+  double? tempC;
+  if (m['tempC'] is num) {
+    tempC = (m['tempC'] as num).toDouble();
+  } else if (m['tempF'] is num) {
+    tempC = ((m['tempF'] as num).toDouble() - 32) * 5 / 9;
+  } else {
+    final rawTemp = (m['temperature'] ?? m['temp']) as num?;
+    final tUnit = (m['temperature_unit'] ?? m['temp_units'] ?? m['tempUnit'])
+        ?.toString().toUpperCase(); // ← no generic "unit" here either
+    if (rawTemp != null) {
+      final t = rawTemp.toDouble();
+      tempC = (tUnit != null && tUnit.contains('F')) ? ((t - 32) * 5 / 9) : t;
+    }
+  }
+
+  final deviceLabel = (m['deviceName'] ?? m['device_name'] ?? m['source'] ?? m['deviceId'])?.toString();
+
+  return Measurement(
+    id: docId ?? 'device_${ts.millisecondsSinceEpoch}',
+    timestamp: ts,
+    gravity: sg,
+    brix: brix,
+    temperature: tempC,
+    fromDevice: true,
+    notes: (deviceLabel == null || deviceLabel.isEmpty) ? 'device' : deviceLabel,
+  );
+}
 
 
 class BatchDetailPage extends StatefulWidget {
@@ -68,8 +121,14 @@ class BatchDetailPage extends StatefulWidget {
 
 class _BatchDetailPageState extends State<BatchDetailPage>
     with SingleTickerProviderStateMixin {
+  // How "recent" to consider a device online
+static const _onlineGrace = Duration(minutes: 10);
+
   // ---- Model / key ----
   BatchModel? _batch;
+
+// Cache a one-shot device snapshot for non-premium view
+Future<QuerySnapshot<Map<String, dynamic>>>? _deviceOnceFuture;
 
   late final TextEditingController _finalNotesController;
   late final TextEditingController _finalYieldController;
@@ -87,9 +146,74 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   late final TextEditingController _tastingAppearanceController;
   late final TextEditingController _tastingAromaController;
   late final TextEditingController _tastingFlavorController;
+  int _tastingRating = 0;
 
-  // How "recent" to consider a device online
-static const _onlineGrace = Duration(minutes: 10);
+  @override
+  void dispose() {
+    if (_isBrewModeEnabled) {
+      WakelockPlus.disable();
+    }
+    _tabController.dispose();
+    _prepNotesController.dispose();
+    _tastingAromaController.dispose();
+    _tastingAppearanceController.dispose();
+    _tastingFlavorController.dispose();
+    _finalYieldDebounce?.cancel();
+    _finalYieldFocus.dispose();
+    _finalYieldController.dispose();
+    _finalNotesController.dispose();
+    super.dispose();
+  }
+
+  // ---------------- lifecycle ----------------
+
+  @override
+void initState() {
+  super.initState();
+
+  // widget.batchKey is a String; convert to int if your box uses int keys
+  _hiveKey = int.tryParse(widget.batchKey) ?? widget.batchKey;
+
+  final box = Hive.box<BatchModel>(Boxes.batches);
+  _batch = box.get(_hiveKey);
+
+  final initialTabIndex = _initialTabIndexFor(_batch?.status);
+  _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
+
+_initControllersFrom(_batch);
+
+
+
+_finalYieldFocus.addListener(() {
+  if (!_finalYieldFocus.hasFocus) _persistFinalYield(); // <-- add
+});
+
+}
+
+/// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
+Widget ifSignedIn(Widget Function(String uid) builder) {
+  final uid = _uid;
+  if (uid == null) return const SizedBox.shrink();
+  return builder(uid);
+}
+
+/// Recalculate batch.plannedOg from ingredients + target volume.
+Future<void> recalcPlannedOg(BatchModel batch) async {
+  final v = (batch.batchVolume ?? 0);
+  if (v <= 0) return;
+
+  final items = batch.safeIngredients;
+  final liquidOg = _blendedOgFromLiquids(items);
+  final liquidGU = (liquidOg == null ? 0.0 : (liquidOg - 1.0) * 1000.0) * v;
+  final massGU   = _sumMassFermentablesGU(items);
+
+  final totalGU  = liquidGU + massGU;
+  final newOg    = 1.0 + (totalGU / v) / 1000.0;
+
+  batch.plannedOg = double.parse(newOg.toStringAsFixed(3));
+  await batch.save();
+  if (mounted) setState(() {}); // reflect in UI immediately
+}
 
 Future<String?> _currentDeviceIdForBatch(String uid, String batchId) async {
   final snap = await FirestorePaths
@@ -161,14 +285,6 @@ Future<void> _attachDeviceToBatch({
   /// The page reads UID itself when needed. If the constructor-provided UID exists,
 /// it wins; otherwise we fall back to FirebaseAuth.
 String? get _uid => widget.firebaseUid ?? FirebaseAuth.instance.currentUser?.uid;
-/// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
-Widget ifSignedIn(Widget Function(String uid) builder) {
-  final uid = _uid;
-  if (uid == null) return const SizedBox.shrink();
-  return builder(uid);
-}
-
-  int _tastingRating = 0;
 
 IconData _batteryIconForPercent(double? pct) {
   final p = (pct ?? -1).toDouble();
@@ -187,66 +303,6 @@ String _timeAgoShort(DateTime t) {
   if (d.inMinutes < 60) return '${d.inMinutes}m ago';
   if (d.inHours < 24) return '${d.inHours}h ago';
   return '${d.inDays}d ago';
-}
-
-  @override
-  void dispose() {
-    if (_isBrewModeEnabled) {
-      WakelockPlus.disable();
-    }
-    _tabController.dispose();
-    _prepNotesController.dispose();
-    _tastingAromaController.dispose();
-    _tastingAppearanceController.dispose();
-    _tastingFlavorController.dispose();
-    _finalYieldDebounce?.cancel();
-    _finalYieldFocus.dispose();
-    _finalYieldController.dispose();
-    _finalNotesController.dispose();
-    super.dispose();
-  }
-
-  // ---------------- lifecycle ----------------
-
-  @override
-void initState() {
-  super.initState();
-
-  // widget.batchKey is a String; convert to int if your box uses int keys
-  _hiveKey = int.tryParse(widget.batchKey) ?? widget.batchKey;
-
-  final box = Hive.box<BatchModel>(Boxes.batches);
-  _batch = box.get(_hiveKey);
-
-  final initialTabIndex = _initialTabIndexFor(_batch?.status);
-  _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
-
-_initControllersFrom(_batch);
-
-
-
-_finalYieldFocus.addListener(() {
-  if (!_finalYieldFocus.hasFocus) _persistFinalYield(); // <-- add
-});
-
-}
-
-/// Recalculate batch.plannedOg from ingredients + target volume.
-Future<void> recalcPlannedOg(BatchModel batch) async {
-  final v = (batch.batchVolume ?? 0);
-  if (v <= 0) return;
-
-  final items = batch.safeIngredients;
-  final liquidOg = _blendedOgFromLiquids(items);
-  final liquidGU = (liquidOg == null ? 0.0 : (liquidOg - 1.0) * 1000.0) * v;
-  final massGU   = _sumMassFermentablesGU(items);
-
-  final totalGU  = liquidGU + massGU;
-  final newOg    = 1.0 + (totalGU / v) / 1000.0;
-
-  batch.plannedOg = double.parse(newOg.toStringAsFixed(3));
-  await batch.save();
-  if (mounted) setState(() {}); // reflect in UI immediately
 }
 
   // ---------------- helpers ----------------
@@ -517,7 +573,6 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
     });
   }
 }
-
 
   Future<void> _showChangeStatusDialog(BatchModel batch) async {
     String currentStatus = batch.status;
@@ -1322,6 +1377,46 @@ ElevatedButton(
     );
   }
 
+Future<void> _openMeasurementEditor(BatchModel batch, Measurement target) async {
+  // figure out "previous" + "first" for FSU/day chips
+  final sorted = [...batch.measurements]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  final firstDate = sorted.isNotEmpty ? sorted.first.timestamp : null;
+  final idx = sorted.indexWhere((m) => m.id == target.id);
+  final prev = (idx > 0) ? sorted[idx - 1] : null;
+
+  final updated = await showDialog<Measurement>(
+    context: context,
+    builder: (_) => AddMeasurementDialog(
+      existingMeasurement: target,
+      previousMeasurement: prev,
+      firstMeasurementDate: firstDate,
+    ),
+  );
+  if (updated == null) return;
+
+  // replace in-place, keep same id
+  await _mutateBatch((bch) {
+    final i = bch.measurements.indexWhere((x) => x.id == target.id);
+    if (i != -1) {
+      bch.measurements[i] = Measurement(
+        id: target.id,
+        timestamp: updated.timestamp,
+        gravityUnit: updated.gravityUnit,
+        gravity: updated.gravity,
+        brix: updated.brix,
+        temperature: updated.temperature,
+        notes: updated.notes,
+        fsuspeed: updated.fsuspeed,
+        ta: updated.ta,
+        sgCorrected: updated.sgCorrected,
+        interventions: updated.interventions,
+        fromDevice: false, // edits are local
+      );
+    }
+  });
+}
+
   void _showSyncFromRecipeDialog(BatchModel batch) async {
     bool syncYeast = true;
     bool syncIngredients = true;
@@ -1355,14 +1450,14 @@ ElevatedButton(
                       child: Text(recipe.name),
                     );
                   }).toList(),
-                  onChanged: (RecipeModel? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        selectedRecipe = newValue;
-                        batch.recipeId = newValue.id;
-                      });
-                    }
-                  },
+onChanged: (RecipeModel? newValue) {
+  if (newValue != null) {
+    setState(() {
+      selectedRecipe = newValue; // local only; don't mutate batch yet
+    });
+  }
+},
+
                 ),
                 if (selectedRecipe != null)
                   Align(
@@ -1370,13 +1465,12 @@ ElevatedButton(
                     child: TextButton.icon(
                       icon: const Icon(Icons.clear, size: 16),
                       label: const Text('Clear'),
-                      onPressed: () {
-                        setState(() {
-                          selectedRecipe = null;
-                          // FIX: Assign empty string instead of null for non-nullable String
-                          batch.recipeId = '';
-                        });
-                      },
+onPressed: () {
+  setState(() {
+    selectedRecipe = null; // local only; don't touch the batch here
+  });
+},
+
                     ),
                   ),
                 const SizedBox(height: 12),
@@ -1466,7 +1560,14 @@ plannedAbv: batch.plannedAbv,
 
     if (confirmed != true || !mounted) return;
     final recipe = selectedRecipe;
-    if (recipe == null) return;
+    if (recipe == null) return;   
+    if (syncYeast) {
+  batch.yeast = recipe.yeast
+      .map<Map<String, dynamic>>((y) => recipeYeastToBatch(y as Map<String, dynamic>))
+      .toList();
+}
+    batch.recipeId = recipe.id;
+
 
     
 if (syncYeast) {
@@ -1985,6 +2086,7 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     batch.save();
     inventoryItem.save();
   }
+
 /// Small row showing the linked device’s battery and last-seen.
 /// We consider the first device where linkedBatchId == batchId.
 Widget _deviceStatusRow({required String uid, required String batchId}) {
@@ -2021,18 +2123,112 @@ Widget _deviceStatusRow({required String uid, required String batchId}) {
     },
   );
 }
-Measurement _fromRemoteDoc(Map<String, dynamic> m) {
-  final ts    = (m['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
-  final sg    = (m['sg'] as num?)?.toDouble();
-  final tempC = (m['tempC'] as num?)?.toDouble();
 
-  return Measurement(
-    id: 'device_${ts.millisecondsSinceEpoch}',
-    timestamp: ts,
-    gravity: sg,
-    temperature: tempC,
-    fromDevice: true,
-    notes: 'device',
+// Stream the attached device's *name* for this batch (if any)
+
+// Tiny pill shown on measurement rows if they came from a device
+Widget _deviceBadge(Measurement m, {String? attachedName}) {
+  if (m.fromDevice != true) return const SizedBox.shrink();
+
+  // prefer label carried in the device point; else use the attached device's name; else generic
+  final note = (m.notes ?? '').trim();
+  final label = (note.isNotEmpty && note.toLowerCase() != 'device')
+      ? note
+      : (attachedName ?? 'Device');
+
+  return Container(
+    margin: const EdgeInsets.only(left: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+  );
+}
+
+// Compact list of the most recent measurements with badges + quick actions
+Widget _recentMeasurementsCard({
+  required List<Measurement> measurements,
+  String? deviceName,
+  int maxItems = 12,
+  required VoidCallback onOpenFullLog,
+  required void Function(Measurement) onEdit,
+  required void Function(Measurement) onDelete,
+}) {
+  final items = [...measurements]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  final recent = items.take(maxItems).toList();
+  if (recent.isEmpty) return const SizedBox.shrink();
+
+  String fmt(Measurement m) {
+    final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
+    final g = (m.gravity != null) ? m.gravity!.toStringAsFixed(3)
+      : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx'
+      : '—';
+    final temp = (m.temperature != null)
+        ? '${m.temperature!.toStringAsFixed(1)}°C'
+        : '—';
+    return '$t • SG/°Bx: $g • Temp: $temp';
+  }
+
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Recent measurements',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: onOpenFullLog,
+                icon: const Icon(Icons.list),
+                label: const Text('Full log'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: recent.length,
+            separatorBuilder: (_, __) => const Divider(height: 8),
+            itemBuilder: (_, i) {
+              final m = recent[i];
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(fmt(m)),
+                leading: Icon(m.fromDevice == true ? Icons.sensors : Icons.edit_note),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _deviceBadge(m, attachedName: deviceName),
+                    const SizedBox(width: 6),
+                    if (m.fromDevice != true)
+                      IconButton(
+                        tooltip: 'Edit',
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => onEdit(m),
+                      ),
+                    if (m.fromDevice != true)
+                      IconButton(
+                        tooltip: 'Delete',
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => onDelete(m),
+                      ),
+                  ],
+                ),
+                onTap: () {
+                  if (m.fromDevice != true) onEdit(m);
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    ),
   );
 }
 
@@ -2068,12 +2264,29 @@ List<Measurement> _mergeDeviceAndLocal({
   return merged;
 }
 
+// Keep only points in the last N days
+List<Measurement> _limitByDays(List<Measurement> items, int days) {
+  final cutoff = DateTime.now().subtract(Duration(days: days));
+  return items.where((m) => m.timestamp.isAfter(cutoff)).toList();
+}
+
+// Cap total points for chart readability
+List<Measurement> _capPoints(List<Measurement> items, int maxPoints) {
+  if (items.length <= maxPoints) return items;
+  final step = (items.length / maxPoints).ceil();
+  final out = <Measurement>[];
+  for (var i = 0; i < items.length; i += step) {
+    out.add(items[i]);
+  }
+  return out;
+}
+
 Widget _buildFermentingTab(BatchModel batch) {
   final localSorted = [...batch.measurements]
     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+final uid = _uid;          // nullable
+final batchId = batch.id;  // non-null
 
-final uid = _uid;               
-final batchId = batch.id;
 
   return ListView(
     padding: const EdgeInsets.all(16),
@@ -2120,75 +2333,184 @@ Builder(
 
     // Not signed in -> show local-only chart
     if (uid == null) {
-      return FermentationChartWidget(
-        measurements: localSorted,
-        stages: batch.safeFermentationStages,
-        onEditMeasurement: (m) async { /* unchanged */ },
-        onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
-        onManageStages: () => _manageStages(batch),
-      );
+return Column(
+  crossAxisAlignment: CrossAxisAlignment.stretch,
+  children: [
+FermentationChartWidget(
+  measurements: _capPoints(_limitByDays(localSorted, 30), 600),
+  stages: batch.safeFermentationStages,
+  onEditMeasurement: (m) async {
+    if (m.fromDevice == true) return;
+    await _openMeasurementEditor(batch, m);
+  },
+  onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
+  onManageStages: () => _manageStages(batch),
+),
+
+    const SizedBox(height: 8),
+    _recentMeasurementsCard(
+      measurements: localSorted,
+      deviceName: null,
+      onOpenFullLog: () {
+        Navigator.of(context).push(MaterialPageRoute(
+builder: (_) => MeasurementLogPage(
+  batchId: batch.id,
+  uid: null, // local-only
+  local: localSorted,
+  deviceName: null,
+  onEditLocal: (m) => _openMeasurementEditor(batch, m),
+),
+
+        ));
+      },
+      onEdit: (m) => _openMeasurementEditor(batch, m),
+      onDelete: (m) => _handleDeleteMeasurement(batch, m),
+    ),
+  ],
+);
+
+
     }
 
-    // Signed in but not Premium -> upsell + local-only chart
-    if (!fg.allowDeviceStreaming) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Material(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.6),
-            borderRadius: BorderRadius.circular(12),
-            child: ListTile(
-              dense: true,
-              leading: const Icon(Icons.lock_outline),
-              title: const Text('Live device data is Premium'),
-              subtitle: const Text('Upgrade to view iSpindel / device readings on the chart.'),
-              trailing: TextButton(
-                onPressed: () => showPaywall(context),
-                child: const Text('UPGRADE'),
+   // Signed in but not Premium -> upsell + one-time (manual refresh) device data
+if (!fg.allowDeviceStreaming) {
+  // Lazily create the future only when we need it and uid is non-null
+final cutoff30d = DateTime.now().subtract(const Duration(days: 30));
+_deviceOnceFuture ??= FirestorePaths
+    .batchMeasurements(uid, batchId)
+    .where('timestamp', isGreaterThan: cutoff30d)
+    .orderBy('timestamp', descending: false)
+    .get();
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Material(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.6),
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          dense: true,
+          leading: const Icon(Icons.lock_outline),
+          title: const Text('Live device updates are Premium'),
+          subtitle: const Text('You can still view current device readings. Upgrade for live streaming.'),
+          trailing: TextButton(
+            onPressed: () => showPaywall(context),
+            child: const Text('UPGRADE'),
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+
+      FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        future: _deviceOnceFuture,
+        builder: (context, snap) {
+final remote = (snap.data?.docs ?? const [])
+  .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
+  .where((m) => m.gravity != null)
+  .toList();
+          final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+          final chartData = _capPoints(_limitByDays(combined, 30), 600);
+
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+FermentationChartWidget(
+  measurements: chartData,
+  stages: batch.safeFermentationStages,
+onEditMeasurement: (m) async {
+  if (m.fromDevice == true) return; // device points stay read-only
+  await _openMeasurementEditor(batch, m);
+},
+  onDeleteMeasurement: (m) {
+    if (m.fromDevice == true) return;
+    _handleDeleteMeasurement(batch, m);
+  },
+  onManageStages: () => _manageStages(batch),
+),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh device data'),
+                  onPressed: () {
+final cutoff30d = DateTime.now().subtract(const Duration(days: 30));
+_deviceOnceFuture = FirestorePaths
+    .batchMeasurements(uid, batchId)
+    .where('timestamp', isGreaterThan: cutoff30d)
+    .orderBy('timestamp', descending: false)
+    .get();
+                    setState(() {}); // re-run the FutureBuilder with the new future
+                  },
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          FermentationChartWidget(
-            measurements: localSorted,
-            stages: batch.safeFermentationStages,
-            onEditMeasurement: (m) async { /* unchanged */ },
-            onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
-            onManageStages: () => _manageStages(batch),
-          ),
-        ],
-      );
-    }
+            ],
+          );
+        },
+      ),
+    ],
+  );
+}
 
-    // Signed in + Premium -> merge device + local in realtime
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirestorePaths
-          .batchMeasurements(uid, batchId)
-          .orderBy('timestamp', descending: false)
-          .snapshots(),
-      builder: (context, snap) {
-        final remote = (snap.data?.docs ?? const [])
-            .map((d) => _fromRemoteDoc(d.data()))
-            .where((m) => m.gravity != null)
-            .toList();
 
-        final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+   // Signed in + Premium -> merge device + local in realtime
+final cutoff30d = DateTime.now().subtract(const Duration(days: 30));
 
-        return FermentationChartWidget(
-          measurements: combined,
+return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+  stream: FirestorePaths
+      .batchMeasurements(uid, batchId)
+      .where('timestamp', isGreaterThan: cutoff30d)
+      .orderBy('timestamp', descending: false)
+      .snapshots(),
+  builder: (context, snap) {
+    final remote = (snap.data?.docs ?? const [])
+        .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
+        .where((m) => m.gravity != null || m.brix != null)
+        .toList();
+
+    final combined  = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+    final chartData = _capPoints(_limitByDays(combined, 30), 600); // keep your client-side guard
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FermentationChartWidget(
+          measurements: chartData,                  // <= use filtered data
           stages: batch.safeFermentationStages,
           onEditMeasurement: (m) async {
-            if (m.fromDevice == true) return; // keep your rule
-            // ... unchanged edit code ...
+            if (m.fromDevice == true) return;
+            await _openMeasurementEditor(batch, m);
           },
           onDeleteMeasurement: (m) {
             if (m.fromDevice == true) return;
             _handleDeleteMeasurement(batch, m);
           },
           onManageStages: () => _manageStages(batch),
-        );
-      },
+        ),
+        const SizedBox(height: 8),
+        _recentMeasurementsCard(
+          measurements: chartData,                 // <= also use filtered here
+          deviceName: null,
+          onOpenFullLog: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => MeasurementLogPage(
+                batchId: batch.id,
+                uid: uid,
+                local: localSorted,
+                deviceName: null,
+                onEditLocal: (m) => _openMeasurementEditor(batch, m),
+              ),
+            ));
+          },
+          onEdit: (m) => _openMeasurementEditor(batch, m),
+          onDelete: (m) => _handleDeleteMeasurement(batch, m),
+        ),
+      ],
     );
+  },
+);
+
   },
 ),
 
@@ -2204,9 +2526,6 @@ Builder(
     ],
   );
 }
-
-
-
 
   void _syncTextController(TextEditingController c, String text) {
   if (c.text != text) {
@@ -2401,22 +2720,20 @@ FutureBuilder(
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _finalYieldController,
-                      focusNode: _finalYieldFocus, // <-- add
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Final Yield'),
-                      onChanged: (v) {
-                        // Update computed chips live
-                        setState(() {});
+  controller: _finalYieldController,
+  focusNode: _finalYieldFocus,
+  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+  textInputAction: TextInputAction.done,            // NEW
+  decoration: const InputDecoration(labelText: 'Final Yield'),
+  onChanged: (v) {
+    setState(() {});
+    _finalYieldDebounce?.cancel();
+    _finalYieldDebounce = Timer(const Duration(milliseconds: 500), _persistFinalYield);
+  },
+  onEditingComplete: _persistFinalYield,            // NEW
+  onSubmitted: (_) => _persistFinalYield(),
+),
 
-                        // Debounce a lightweight persist so paste/typing is captured soon
-                        _finalYieldDebounce?.cancel();
-                        _finalYieldDebounce = Timer(const Duration(milliseconds: 500), _persistFinalYield);
-                      },
-                      onSubmitted: (_) => _persistFinalYield(), // quick persist on IME action
-                      // Optional: restrict to digits + dot
-                      // inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                    ),
                   ),
                   const SizedBox(width: 12),
                   DropdownButton<String>(
@@ -2718,23 +3035,22 @@ onPressed: () async {
   }
 
 // ---------- gravity & volume helpers ----------
-bool _isVolumeUnit(String u) {
-  final s = u.trim().toLowerCase();
-  return s == 'gal' || s == 'l' || s == 'ml' || s == 'fl oz' || s == 'oz';
-}
 
 double _volumeGalOf(Map<String, dynamic> item) {
   final unit = ((item['unit'] ?? '') as String).toLowerCase();
   final amt  = ((item['amount'] ?? 0) as num).toDouble();
 
-  if (!_isVolumeUnit(unit)) return 0.0;
+  if (unit == 'oz') {
+    // Bare "oz" here is ambiguous (mass vs volume). Require "fl oz" for volume.
+    debugPrint('⚠️ Use "fl oz" for volume, "oz" for mass. Got oz in volume path for ${item['name']}');
+    return 0.0;
+  }
 
   switch (unit) {
     case 'gal':   return amt;
     case 'l':     return amt * 0.2641720524;
     case 'ml':    return amt * 0.0002641720524;
     case 'fl oz': return amt / 128.0;
-    case 'oz':    return amt / 128.0; // treat "oz" as fluid ounces in UI
     default:      return 0.0;
   }
 }
@@ -2955,83 +3271,94 @@ Widget build(BuildContext context) {
     tooltip: 'Toggle Brew Mode',
     onPressed: _toggleBrewMode,
   ),
-  IconButton(
-    tooltip: _batch?.isArchived == true ? 'Unarchive' : 'Archive',
-    icon: Icon(_batch?.isArchived == true ? Icons.unarchive : Icons.archive_outlined),
-    onPressed: () {
-      final b = _batch;
-      if (b != null) _onArchiveToggle(b);
-    },
-  ),
+IconButton(
+  tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
+  icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
+  onPressed: () => _onArchiveToggle(batch),
+),
 
   // ---- Device: Link to this batch (Premium) ----
-  ifSignedIn((uid) => IconButton(
-        tooltip: 'Attach / change device',
-        icon: const Icon(Icons.sensors),
-        onPressed: () async {
-          // 🔒 Premium gate
-          if (!fg.allowDevices) {
-            showPaywall(context);
-            return;
-          }
+ifSignedIn((uid) => IconButton(
+  tooltip: 'Attach / change device',
+  icon: const Icon(Icons.sensors),
+  onPressed: () async {
+    if (!fg.allowDevices) { showPaywall(context); return; }
 
-          final messenger = snacks;
-          final batchId = _batch?.id ?? widget.batchKey;
-          final dialogContext = context; // capture early
+    final dialogContext = context;
 
-          final currentId = await _currentDeviceIdForBatch(uid, batchId);
-          if (!dialogContext.mounted) return;
+    final currentId = await _currentDeviceIdForBatch(uid, batch.id);
+    if (!dialogContext.mounted) return;
 
-          final result = await showAttachDeviceSheet(
-            context: dialogContext,
-            currentlyAttachedDeviceId: currentId,
-            fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batchId),
-            showAssignedToo: true,
-            batchId: batchId,
-          );
-          if (result == null) return;
+    final result = await showAttachDeviceSheet(
+      context: dialogContext,
+      currentlyAttachedDeviceId: currentId,
+      fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batch.id),
+      showAssignedToo: true,
+      batchId: batch.id,
+    );
+    if (result == null) return;
 
-          await _attachDeviceToBatch(
-            uid: uid,
-            batchId: batchId,
-            deviceId: result.deviceId, // null => detach
-          );
+    await _attachDeviceToBatch(uid: uid, batchId: batch.id, deviceId: result.deviceId);
+    if (!dialogContext.mounted) return;
 
-          if (!mounted) return;
-          messenger.show(SnackBar(
-            content: Text(result.deviceId == null ? 'Device detached' : 'Device attached'),
-          ));
-          setState(() {});
-        },
-      )),
+    snacks.show(SnackBar(
+      content: Text(result.deviceId == null ? 'Device detached' : 'Device attached'),
+    ));
+    if (mounted) setState(() {});
+  },
+)),
 
-  // ---- Device: Export CSV of raw device points (Premium) ----
-  ifSignedIn((uid) => IconButton(
-        tooltip: 'Export CSV (device raw)',
-        icon: const Icon(Icons.download),
-        onPressed: () async {
-          // 🔒 Premium gate
-          if (!fg.allowDeviceExport) {
-            showPaywall(context);
-            return;
-          }
 
-          final dialogContext = context;                   // for promptSaveCsv
-          final messenger = ScaffoldMessenger.of(context); // for snackbar
-          final batchName = _batch?.name ?? 'batch';
-          final batchId   = _batch?.id ?? widget.batchKey;
+// --- Export CSV (use fresh `batch.name` / `batch.id`) ---
+ifSignedIn((uid) => IconButton(
+ tooltip: 'Export CSV (device raw)',
+ icon: const Icon(Icons.download),
+ onPressed: () async {
+  if (!fg.allowDeviceExport) {
+   // If this context is from a StatefulWidget, you can use `context` directly
+      // before any async operation.
+   showPaywall(context);
+   return;
+  }
 
-          String safe(String s) => s.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
-          final filename = 'device_data_${safe(batchName)}_${DateTime.now().toIso8601String()}.csv';
+  // Capture the BuildContext before the first async gap.
+  final dialogContext = context;
 
-          final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batchId);
-          if (!dialogContext.mounted) return;
+  String safe(String s) {
+   // strip Windows-illegal chars + control chars
+   s = s.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]+'), '_');
+   s = s.replaceAll(RegExp(r'_+'), '_');
+   s = s.replaceAll(RegExp(r'^[\s\.]+|[\s\.]+$'), '');
+   return s.isEmpty ? 'file' : s;
+  }
 
-          await promptSaveCsv(context: dialogContext, filename: filename, csv: csv);
-          messenger.showSnackBar(SnackBar(content: Text('Exported ${csv.length} chars of CSV.')));
-        },
-      )),
-],
+  final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  final base = 'device_data_${batch.name}_$ts';
+  final filename = '${safe(base)}.csv';
+
+  // This is the first async operation (the async gap).
+  final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batch.id);
+
+  // Check if the widget is still mounted after the first async gap.
+  if (!dialogContext.mounted) return;
+
+  // This is the second async operation. We must await it.
+  await promptSaveCsv(context: dialogContext, filename: filename, csv: csv);
+
+    // Check again before performing another UI operation.
+  if (!dialogContext.mounted) return;
+
+  // Now it's safe to show the snack bar.
+  ScaffoldMessenger.of(dialogContext).showSnackBar(
+   SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
+  );
+ },
+))
+
+
+
+
+          ],
 
           bottom: TabBar(
             controller: _tabController,
@@ -3088,4 +3415,166 @@ Widget build(BuildContext context) {
     },
   );
 }
+}
+class MeasurementLogPage extends StatefulWidget {
+  const MeasurementLogPage({
+    super.key,
+    required this.batchId,
+    required this.uid,
+    required this.local,
+    required this.deviceName,
+    this.onEditLocal, // NEW
+
+  });
+
+  final void Function(Measurement)? onEditLocal;
+  final String batchId;
+  final String? deviceName;
+  final List<Measurement> local;
+  final String? uid; // null => local-only
+
+  @override
+  State<MeasurementLogPage> createState() => _MeasurementLogPageState();
+}
+
+class _MeasurementLogPageState extends State<MeasurementLogPage> {
+  static const _filters = <int?>[7, 30, 90, null];
+
+  // null = All
+  int? _days = 30;
+
+  List<Measurement> _mergeAndSort({
+    required List<Measurement> local,
+    required List<Measurement> remote,
+  }) {
+    final all = <Measurement>[...local, ...remote];
+    all.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return all;
+  }
+
+List<Measurement> _applyDayFilterTo(List<Measurement> items) {
+  if (_days == null) return items;
+  final cutoff = DateTime.now().subtract(Duration(days: _days!));
+  return items.where((m) => m.timestamp.isAfter(cutoff)).toList();
+}
+
+  @override
+  Widget build(BuildContext context) {
+    Widget filterBar = Wrap(
+      spacing: 8,
+      children: _filters.map((d) {
+        final label = d == null ? 'All' : 'Last $d d';
+        final selected = _days == d;
+        return ChoiceChip(
+          label: Text(label),
+          selected: selected,
+          onSelected: (_) => setState(() => _days = d),
+        );
+      }).toList(),
+    );
+Widget deviceBadgeLocal(Measurement m) {
+  if (m.fromDevice != true) return const SizedBox.shrink();
+  final note = (m.notes ?? '').trim();
+  final label = (note.isNotEmpty && note.toLowerCase() != 'device')
+      ? note
+      : (widget.deviceName ?? 'Device');
+
+  return Container(
+    margin: const EdgeInsets.only(left: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+  );
+}
+
+    Future<List<Measurement>> fetchRemote() async {
+      if (widget.uid == null) return const <Measurement>[];
+      final ref = FirestorePaths
+          .batchMeasurements(widget.uid!, widget.batchId)
+          .orderBy('timestamp', descending: true);
+
+      final q = (_days == null)
+          ? ref.limit(2000)
+          : ref.where(
+              'timestamp',
+              isGreaterThan: DateTime.now().subtract(Duration(days: _days!)),
+            ).limit(2000);
+
+      final snap = await q.get();
+  return snap.docs
+    .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
+          .where((m) => m.gravity != null || m.brix != null)
+          .toList();
+    }
+
+    Widget buildList(List<Measurement> items) {
+      if (items.isEmpty) {
+        return const Center(child: Padding(
+          padding: EdgeInsets.all(24), child: Text('No measurements.')));
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const Divider(height: 8),
+        itemBuilder: (_, i) {
+          final m = items[i];
+          final ts = DateFormat.yMMMd().add_jm().format(m.timestamp.toLocal());
+          final g  = (m.gravity != null) ? m.gravity!.toStringAsFixed(3)
+                    : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx' : '—';
+          final t  = (m.temperature != null) ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
+
+          return ListTile(
+            title: Text(ts),
+            subtitle: Text('SG/°Bx: $g • Temp: $t'),
+            leading: Icon(m.fromDevice == true ? Icons.sensors : Icons.edit_note),
+            trailing: deviceBadgeLocal(m),
+            onTap: () {
+  if (m.fromDevice != true) {
+    widget.onEditLocal?.call(m);
+  }
+},
+
+          );
+        },
+      );
+    }
+
+    // Local-only
+    if (widget.uid == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Measurement Log')),
+        body: Column(
+          children: [
+            Padding(padding: const EdgeInsets.all(12), child: filterBar),
+            Expanded(child: buildList(_mergeAndSort(local: _applyDayFilterTo(widget.local), remote: const []))),
+          ],
+        ),
+      );
+    }
+
+    // With remote
+    return Scaffold(
+      appBar: AppBar(title: const Text('Measurement Log')),
+      body: Column(
+        children: [
+          Padding(padding: const EdgeInsets.all(12), child: filterBar),
+          Expanded(
+            child: FutureBuilder<List<Measurement>>(
+              future: fetchRemote(),
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+              final merged = _mergeAndSort(local: _applyDayFilterTo(widget.local), remote: snap.data ?? const []);
+              return buildList(merged);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
