@@ -1,4 +1,4 @@
-
+//batch_detail_page.dart
 import 'dart:async';
 import 'package:fermentacraft/utils/inventory_item_extensions.dart';
 import 'package:fermentacraft/widgets/show_paywall.dart';
@@ -17,7 +17,6 @@ import '../widgets/add_ingredient_dialog.dart';
 import '../widgets/add_additive_dialog.dart';
 import '../utils/batch_utils.dart';
 import '../widgets/add_yeast_dialog.dart';
-import '../widgets/fermentation_chart.dart';
 import '../widgets/manage_stages_dialog.dart';
 import '../models/fermentation_stage.dart';
 import '../models/measurement.dart';
@@ -41,6 +40,8 @@ import 'package:fermentacraft/utils/export_csv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fermentacraft/widgets/attach_device_sheet.dart';
 import 'package:fermentacraft/utils/gravity_utils.dart';
+import 'package:fermentacraft/pages/measurement_log_page.dart';
+import 'package:fermentacraft/widgets/fermentation_chart_simple.dart';
 
 
 
@@ -61,6 +62,8 @@ Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
             ?? (m['corr-gravity'] as num?)?.toDouble();
 
   double? brix = (m['brix'] as num?)?.toDouble();
+
+  
 
   if (sg == null && m['gravity'] != null) {
     final gVal = (m['gravity'] as num).toDouble();
@@ -104,6 +107,51 @@ Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
   );
 }
 
+/// Small, dismissible upsell hint used above the chart.
+class _PremiumHint extends StatelessWidget {
+  const _PremiumHint({required this.onUpgrade, required this.onDismiss});
+
+  static const _kCopy =
+      'Live device streaming is a Premium feature. You can still view current readings.';
+
+  final VoidCallback onUpgrade;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final color  = Theme.of(context).colorScheme.onSurface.withOpacity(.65);
+    final border = Theme.of(context).dividerColor.withOpacity(.25);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.25),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(_kCopy, style: TextStyle(fontSize: 12, color: color, height: 1.25)),
+          ),
+          TextButton(onPressed: onUpgrade, child: const Text('Upgrade')),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            splashRadius: 18,
+            tooltip: 'Hide',
+            onPressed: onDismiss,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+
 
 class BatchDetailPage extends StatefulWidget {
   const BatchDetailPage({
@@ -122,31 +170,44 @@ class BatchDetailPage extends StatefulWidget {
 class _BatchDetailPageState extends State<BatchDetailPage>
     with SingleTickerProviderStateMixin {
   // How "recent" to consider a device online
-static const _onlineGrace = Duration(minutes: 10);
+  static const _onlineGrace = Duration(minutes: 10);
+  static const _kSincePitchMaxPoints = 5000; // A high cap for full-history view
+  bool _hidePremiumHint = false;
 
   // ---- Model / key ----
   BatchModel? _batch;
-
-// Cache a one-shot device snapshot for non-premium view
-Future<QuerySnapshot<Map<String, dynamic>>>? _deviceOnceFuture;
+  // Cache a one-shot device snapshot for non-premium view
+  Future<QuerySnapshot<Map<String, dynamic>>>? _deviceOnceFuture;
 
   late final TextEditingController _finalNotesController;
   late final TextEditingController _finalYieldController;
-    Timer? _finalYieldDebounce;
-  final FocusNode _finalYieldFocus = FocusNode(); 
+  Timer? _finalYieldDebounce;
+  final FocusNode _finalYieldFocus = FocusNode();
   String _finalYieldUnit = 'gal';
   late final Object _hiveKey;
   bool _isBrewModeEnabled = false;
   late final TextEditingController _prepNotesController;
- // int or String, depending on your box keys
 
   // ---- UI state ----
   late final TabController _tabController;
-
   late final TextEditingController _tastingAppearanceController;
   late final TextEditingController _tastingAromaController;
   late final TextEditingController _tastingFlavorController;
   int _tastingRating = 0;
+  // NEW: The selected chart range, defaults to 7 days
+  ChartRange _currentChartRange = ChartRange.d7;
+DateTime? _inferPitchTime(BatchModel b) {
+  // Prefer an explicit startDate if you use it as “pitched”
+
+  // Otherwise fall back to the earliest measurement time (if any)
+  if (b.safeMeasurements.isNotEmpty) {
+  }
+
+  // If you track fermentation stages with dates, you could also consider:
+  // final d3 = b.safeFermentationStages.isNotEmpty ? b.safeFermentationStages.first.startDate : null;
+
+return b.startDate;
+}
 
   @override
   void dispose() {
@@ -168,27 +229,21 @@ Future<QuerySnapshot<Map<String, dynamic>>>? _deviceOnceFuture;
   // ---------------- lifecycle ----------------
 
   @override
-void initState() {
-  super.initState();
+  void initState() {
+    super.initState();
 
-  // widget.batchKey is a String; convert to int if your box uses int keys
-  _hiveKey = int.tryParse(widget.batchKey) ?? widget.batchKey;
+    _hiveKey = int.tryParse(widget.batchKey) ?? widget.batchKey;
+    final box = Hive.box<BatchModel>(Boxes.batches);
+    _batch = box.get(_hiveKey);
 
-  final box = Hive.box<BatchModel>(Boxes.batches);
-  _batch = box.get(_hiveKey);
+    final initialTabIndex = _initialTabIndexFor(_batch?.status);
+    _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
 
-  final initialTabIndex = _initialTabIndexFor(_batch?.status);
-  _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
-
-_initControllersFrom(_batch);
-
-
-
-_finalYieldFocus.addListener(() {
-  if (!_finalYieldFocus.hasFocus) _persistFinalYield(); // <-- add
-});
-
-}
+    _initControllersFrom(_batch);
+    _finalYieldFocus.addListener(() {
+      if (!_finalYieldFocus.hasFocus) _persistFinalYield();
+    });
+  }
 
 /// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
 Widget ifSignedIn(Widget Function(String uid) builder) {
@@ -2127,110 +2182,9 @@ Widget _deviceStatusRow({required String uid, required String batchId}) {
 // Stream the attached device's *name* for this batch (if any)
 
 // Tiny pill shown on measurement rows if they came from a device
-Widget _deviceBadge(Measurement m, {String? attachedName}) {
-  if (m.fromDevice != true) return const SizedBox.shrink();
-
-  // prefer label carried in the device point; else use the attached device's name; else generic
-  final note = (m.notes ?? '').trim();
-  final label = (note.isNotEmpty && note.toLowerCase() != 'device')
-      ? note
-      : (attachedName ?? 'Device');
-
-  return Container(
-    margin: const EdgeInsets.only(left: 6),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.primaryContainer,
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(label, style: Theme.of(context).textTheme.labelSmall),
-  );
-}
 
 // Compact list of the most recent measurements with badges + quick actions
-Widget _recentMeasurementsCard({
-  required List<Measurement> measurements,
-  String? deviceName,
-  int maxItems = 12,
-  required VoidCallback onOpenFullLog,
-  required void Function(Measurement) onEdit,
-  required void Function(Measurement) onDelete,
-}) {
-  final items = [...measurements]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-  final recent = items.take(maxItems).toList();
-  if (recent.isEmpty) return const SizedBox.shrink();
 
-  String fmt(Measurement m) {
-    final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
-    final g = (m.gravity != null) ? m.gravity!.toStringAsFixed(3)
-      : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx'
-      : '—';
-    final temp = (m.temperature != null)
-        ? '${m.temperature!.toStringAsFixed(1)}°C'
-        : '—';
-    return '$t • SG/°Bx: $g • Temp: $temp';
-  }
-
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text('Recent measurements',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: onOpenFullLog,
-                icon: const Icon(Icons.list),
-                label: const Text('Full log'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: recent.length,
-            separatorBuilder: (_, __) => const Divider(height: 8),
-            itemBuilder: (_, i) {
-              final m = recent[i];
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(fmt(m)),
-                leading: Icon(m.fromDevice == true ? Icons.sensors : Icons.edit_note),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _deviceBadge(m, attachedName: deviceName),
-                    const SizedBox(width: 6),
-                    if (m.fromDevice != true)
-                      IconButton(
-                        tooltip: 'Edit',
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => onEdit(m),
-                      ),
-                    if (m.fromDevice != true)
-                      IconButton(
-                        tooltip: 'Delete',
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => onDelete(m),
-                      ),
-                  ],
-                ),
-                onTap: () {
-                  if (m.fromDevice != true) onEdit(m);
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    ),
-  );
-}
 
 /// Merge lists preferring local (manual) points if within +/- 5 minutes of a device point.
 List<Measurement> _mergeDeviceAndLocal({
@@ -2265,10 +2219,6 @@ List<Measurement> _mergeDeviceAndLocal({
 }
 
 // Keep only points in the last N days
-List<Measurement> _limitByDays(List<Measurement> items, int days) {
-  final cutoff = DateTime.now().subtract(Duration(days: days));
-  return items.where((m) => m.timestamp.isAfter(cutoff)).toList();
-}
 
 // Cap total points for chart readability
 List<Measurement> _capPoints(List<Measurement> items, int maxPoints) {
@@ -2280,6 +2230,129 @@ List<Measurement> _capPoints(List<Measurement> items, int maxPoints) {
   }
   return out;
 }
+
+// --- Ferment tab: grouped + capped recent list (authoritative) ---
+Widget _groupedRecentList({
+  required List<Measurement> local,
+  required List<Measurement> device,
+  required String? deviceName,
+  required String batchId,
+  required String? uid,
+  required void Function(Measurement) onEditLocal,
+  required void Function(Measurement) onDeleteLocal,
+  int cap = 12,
+}) {
+
+  // Merge + newest-first
+  final merged = <Measurement>[
+    ...local,
+    ...device,
+  ]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+  // Hard cap for the ferment tab
+  final limited = merged.take(cap).toList();
+
+  // Group (using local date)
+  final byDay = <DateTime, List<Measurement>>{};
+  for (final m in limited) {
+    final t = m.timestamp.toLocal();
+    final key = DateTime(t.year, t.month, t.day);
+    (byDay[key] ??= <Measurement>[]).add(m);
+  }
+  final dayKeys = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
+
+  String fmt(Measurement m) {
+    final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
+    final g = (m.gravity != null)
+        ? m.gravity!.toStringAsFixed(3)
+        : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx' : '—';
+    final temp = (m.temperature != null) ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
+    final fsu = (m.fsuspeed != null) ? ' · FSU ${m.fsuspeed!.toStringAsFixed(0)}' : '';
+    return '$t · SG $g · $temp$fsu';
+  }
+
+  Widget badge(Measurement m) {
+    if (m.fromDevice != true) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(deviceName ?? 'device'),
+    );
+  }
+
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Recent measurements', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.list),
+                label: const Text('Open full log'),
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => MeasurementLogPage(
+                      batchId: batchId,
+                      uid: uid,      // null => local-only
+                      local: local,
+                      deviceName: deviceName,
+                      onEditLocal: onEditLocal,
+                    ),
+                  ));
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final day in dayKeys) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    DateFormat.yMMMd().format(day),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(child: Divider()),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ...byDay[day]!.map((m) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(m.fromDevice == true ? Icons.sensors : Icons.edit_note),
+                  title: Text(fmt(m)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      badge(m),
+                      const SizedBox(width: 6),
+                      if (m.fromDevice != true)
+                        IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit), onPressed: () => onEditLocal(m)),
+                      if (m.fromDevice != true)
+                        IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: () => onDeleteLocal(m)),
+                    ],
+                  ),
+                )),
+            const Divider(height: 8),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+// --- GROUPED + CAPPED recent list for the Ferment tab ---
+
 
 Widget _buildFermentingTab(BatchModel batch) {
   final localSorted = [...batch.measurements]
@@ -2331,191 +2404,179 @@ Builder(
   builder: (context) {
     final fg = context.read<FeatureGate>();
 
-    // Not signed in -> show local-only chart
-    if (uid == null) {
-return Column(
-  crossAxisAlignment: CrossAxisAlignment.stretch,
-  children: [
-FermentationChartWidget(
-  measurements: _capPoints(_limitByDays(localSorted, 30), 600),
-  stages: batch.safeFermentationStages,
-  onEditMeasurement: (m) async {
-    if (m.fromDevice == true) return;
-    await _openMeasurementEditor(batch, m);
-  },
-  onDeleteMeasurement: (m) => _handleDeleteMeasurement(batch, m),
-  onManageStages: () => _manageStages(batch),
-),
-
-    const SizedBox(height: 8),
-    _recentMeasurementsCard(
-      measurements: localSorted,
-      deviceName: null,
-      onOpenFullLog: () {
-        Navigator.of(context).push(MaterialPageRoute(
-builder: (_) => MeasurementLogPage(
-  batchId: batch.id,
-  uid: null, // local-only
-  local: localSorted,
-  deviceName: null,
-  onEditLocal: (m) => _openMeasurementEditor(batch, m),
-),
-
-        ));
-      },
-      onEdit: (m) => _openMeasurementEditor(batch, m),
-      onDelete: (m) => _handleDeleteMeasurement(batch, m),
-    ),
-  ],
-);
-
-
-    }
-
-   // Signed in but not Premium -> upsell + one-time (manual refresh) device data
-if (!fg.allowDeviceStreaming) {
-  // Lazily create the future only when we need it and uid is non-null
-final cutoff30d = DateTime.now().subtract(const Duration(days: 30));
-_deviceOnceFuture ??= FirestorePaths
-    .batchMeasurements(uid, batchId)
-    .where('timestamp', isGreaterThan: cutoff30d)
-    .orderBy('timestamp', descending: false)
-    .get();
+// Not signed in -> show local-only chart
+if (uid == null) {
+  final settings = context.watch<SettingsModel>();
+  final useFahrenheit = !settings.useCelsius;
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Material(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.6),
-        borderRadius: BorderRadius.circular(12),
-        child: ListTile(
-          dense: true,
-          leading: const Icon(Icons.lock_outline),
-          title: const Text('Live device updates are Premium'),
-          subtitle: const Text('You can still view current device readings. Upgrade for live streaming.'),
-          trailing: TextButton(
-            onPressed: () => showPaywall(context),
-            child: const Text('UPGRADE'),
-          ),
-        ),
+      SimpleFermentationChartPanel(
+        measurements: batch.safeMeasurements,
+        useFahrenheit: useFahrenheit,
+sincePitchingAt: _inferPitchTime(batch),        initialRange: ChartRange.d7,
       ),
+      const SizedBox(height: 8),
+      _groupedRecentList(
+        local: localSorted,
+        device: const [],
+        deviceName: null,
+        batchId: batch.id,
+        uid: null,
+        onEditLocal: (m) => _openMeasurementEditor(batch, m),
+        onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
+      ),
+    ],
+  );
+}
+
+  // Signed in but not Premium -> subtle upsell + one-time device fetch
+if (!fg.allowDeviceStreaming) {
+  // UPDATED: Dynamically get data for the full batch if "Since pitching" is selected
+  final cutoff = _currentChartRange == ChartRange.sincePitch
+      ? null
+      : DateTime.now().subtract(const Duration(days: 30));
+
+  _deviceOnceFuture ??= (cutoff != null)
+      ? FirestorePaths.batchMeasurements(uid, batchId)
+          .where('timestamp', isGreaterThan: cutoff)
+          .orderBy('timestamp', descending: false)
+          .get()
+      : FirestorePaths.batchMeasurements(uid, batchId)
+          .orderBy('timestamp', descending: false)
+          .get();
+
+  final settings = context.watch<SettingsModel>();
+  final useFahrenheit = !settings.useCelsius;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (!_hidePremiumHint)
+        _PremiumHint(
+          onUpgrade: () => showPaywall(context),
+          onDismiss: () => setState(() => _hidePremiumHint = true),
+        ),
       const SizedBox(height: 8),
 
       FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
         future: _deviceOnceFuture,
         builder: (context, snap) {
-final remote = (snap.data?.docs ?? const [])
-  .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
-  .where((m) => m.gravity != null)
-  .toList();
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const SizedBox(
+              height: 300,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snap.hasError) {
+            return const SizedBox(
+              height: 80,
+              child: Center(child: Text('Failed to load measurements')),
+            );
+          }
+
+          final remote = (snap.data?.docs ?? const [])
+              .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
+              .where((m) => m.gravity != null || m.brix != null || m.temperature != null)
+              .toList();
+
           final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
-          final chartData = _capPoints(_limitByDays(combined, 30), 600);
 
+          // UPDATED: Dynamic data cap based on the selected range
+          final maxPoints = _currentChartRange == ChartRange.sincePitch ? _kSincePitchMaxPoints : 600;
+          final capped = _capPoints(combined, maxPoints);
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-FermentationChartWidget(
-  measurements: chartData,
-  stages: batch.safeFermentationStages,
-onEditMeasurement: (m) async {
-  if (m.fromDevice == true) return; // device points stay read-only
-  await _openMeasurementEditor(batch, m);
-},
-  onDeleteMeasurement: (m) {
-    if (m.fromDevice == true) return;
-    _handleDeleteMeasurement(batch, m);
-  },
-  onManageStages: () => _manageStages(batch),
-),
-
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh device data'),
-                  onPressed: () {
-final cutoff30d = DateTime.now().subtract(const Duration(days: 30));
-_deviceOnceFuture = FirestorePaths
-    .batchMeasurements(uid, batchId)
-    .where('timestamp', isGreaterThan: cutoff30d)
-    .orderBy('timestamp', descending: false)
-    .get();
-                    setState(() {}); // re-run the FutureBuilder with the new future
-                  },
-                ),
-              ),
-            ],
+          return SimpleFermentationChartPanel(
+            measurements: capped,
+            useFahrenheit: useFahrenheit,
+            sincePitchingAt: _inferPitchTime(batch),
+            initialRange: _currentChartRange, // UPDATED: Pass the current range
+            onRangeChanged: (r) => setState(() => _currentChartRange = r), // NEW: Add callback
           );
         },
+      ),
+      const SizedBox(height: 8),
+      _groupedRecentList(
+        local: localSorted,
+        device: const [], // one-time fetch is summarized in chart; list shows local
+        deviceName: null,
+        batchId: batch.id,
+        uid: uid,
+        onEditLocal: (m) => _openMeasurementEditor(batch, m),
+        onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
       ),
     ],
   );
 }
 
 
-   // Signed in + Premium -> merge device + local in realtime
-final cutoff30d = DateTime.now().subtract(const Duration(days: 30));
+
+// Signed in + Premium -> live stream
+final settings = context.watch<SettingsModel>();
+final useFahrenheit = !settings.useCelsius;
+
+// UPDATED: Dynamically create the stream based on the selected range
+final streamQuery = _currentChartRange == ChartRange.sincePitch
+    ? FirestorePaths.batchMeasurements(uid, batchId)
+        .orderBy('timestamp', descending: false)
+    : FirestorePaths.batchMeasurements(uid, batchId)
+        .where('timestamp', isGreaterThan: DateTime.now().subtract(const Duration(days: 30)))
+        .orderBy('timestamp', descending: false);
 
 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-  stream: FirestorePaths
-      .batchMeasurements(uid, batchId)
-      .where('timestamp', isGreaterThan: cutoff30d)
-      .orderBy('timestamp', descending: false)
-      .snapshots(),
+  stream: streamQuery.snapshots(),
   builder: (context, snap) {
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const SizedBox(
+        height: 300,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (snap.hasError) {
+      return const SizedBox(
+        height: 80,
+        child: Center(child: Text('Failed to load measurements')),
+      );
+    }
+
     final remote = (snap.data?.docs ?? const [])
         .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
-        .where((m) => m.gravity != null || m.brix != null)
+        .where((m) => m.gravity != null || m.brix != null || m.temperature != null)
         .toList();
 
-    final combined  = _mergeDeviceAndLocal(local: localSorted, remote: remote);
-    final chartData = _capPoints(_limitByDays(combined, 30), 600); // keep your client-side guard
+    final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+
+    // UPDATED: Dynamic data cap based on the selected range
+    final maxPoints = _currentChartRange == ChartRange.sincePitch ? _kSincePitchMaxPoints : 600;
+    final capped = _capPoints(combined, maxPoints);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FermentationChartWidget(
-          measurements: chartData,                  // <= use filtered data
-          stages: batch.safeFermentationStages,
-          onEditMeasurement: (m) async {
-            if (m.fromDevice == true) return;
-            await _openMeasurementEditor(batch, m);
-          },
-          onDeleteMeasurement: (m) {
-            if (m.fromDevice == true) return;
-            _handleDeleteMeasurement(batch, m);
-          },
-          onManageStages: () => _manageStages(batch),
+        SimpleFermentationChartPanel(
+          measurements: capped,
+          useFahrenheit: useFahrenheit,
+          sincePitchingAt: _inferPitchTime(batch),
+          initialRange: _currentChartRange, // UPDATED: Pass the current range
+          onRangeChanged: (r) => setState(() => _currentChartRange = r), // NEW: Add callback
         ),
         const SizedBox(height: 8),
-        _recentMeasurementsCard(
-          measurements: chartData,                 // <= also use filtered here
-          deviceName: null,
-          onOpenFullLog: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => MeasurementLogPage(
-                batchId: batch.id,
-                uid: uid,
-                local: localSorted,
-                deviceName: null,
-                onEditLocal: (m) => _openMeasurementEditor(batch, m),
-              ),
-            ));
-          },
-          onEdit: (m) => _openMeasurementEditor(batch, m),
-          onDelete: (m) => _handleDeleteMeasurement(batch, m),
+        _groupedRecentList(
+          local: localSorted,
+          device: remote,
+          deviceName: null, // keep null to avoid the undefined variable warning
+          batchId: batch.id,
+          uid: uid,
+          onEditLocal: (m) => _openMeasurementEditor(batch, m),
+          onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
         ),
       ],
     );
   },
 );
-
-  },
-),
-
-
-
+},
+  ),
       _buildStatusProgressionButton(
         batch: batch,
         currentStatus: 'Fermenting',
@@ -3416,165 +3477,5 @@ ifSignedIn((uid) => IconButton(
   );
 }
 }
-class MeasurementLogPage extends StatefulWidget {
-  const MeasurementLogPage({
-    super.key,
-    required this.batchId,
-    required this.uid,
-    required this.local,
-    required this.deviceName,
-    this.onEditLocal, // NEW
 
-  });
 
-  final void Function(Measurement)? onEditLocal;
-  final String batchId;
-  final String? deviceName;
-  final List<Measurement> local;
-  final String? uid; // null => local-only
-
-  @override
-  State<MeasurementLogPage> createState() => _MeasurementLogPageState();
-}
-
-class _MeasurementLogPageState extends State<MeasurementLogPage> {
-  static const _filters = <int?>[7, 30, 90, null];
-
-  // null = All
-  int? _days = 30;
-
-  List<Measurement> _mergeAndSort({
-    required List<Measurement> local,
-    required List<Measurement> remote,
-  }) {
-    final all = <Measurement>[...local, ...remote];
-    all.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return all;
-  }
-
-List<Measurement> _applyDayFilterTo(List<Measurement> items) {
-  if (_days == null) return items;
-  final cutoff = DateTime.now().subtract(Duration(days: _days!));
-  return items.where((m) => m.timestamp.isAfter(cutoff)).toList();
-}
-
-  @override
-  Widget build(BuildContext context) {
-    Widget filterBar = Wrap(
-      spacing: 8,
-      children: _filters.map((d) {
-        final label = d == null ? 'All' : 'Last $d d';
-        final selected = _days == d;
-        return ChoiceChip(
-          label: Text(label),
-          selected: selected,
-          onSelected: (_) => setState(() => _days = d),
-        );
-      }).toList(),
-    );
-Widget deviceBadgeLocal(Measurement m) {
-  if (m.fromDevice != true) return const SizedBox.shrink();
-  final note = (m.notes ?? '').trim();
-  final label = (note.isNotEmpty && note.toLowerCase() != 'device')
-      ? note
-      : (widget.deviceName ?? 'Device');
-
-  return Container(
-    margin: const EdgeInsets.only(left: 6),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.primaryContainer,
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(label, style: Theme.of(context).textTheme.labelSmall),
-  );
-}
-
-    Future<List<Measurement>> fetchRemote() async {
-      if (widget.uid == null) return const <Measurement>[];
-      final ref = FirestorePaths
-          .batchMeasurements(widget.uid!, widget.batchId)
-          .orderBy('timestamp', descending: true);
-
-      final q = (_days == null)
-          ? ref.limit(2000)
-          : ref.where(
-              'timestamp',
-              isGreaterThan: DateTime.now().subtract(Duration(days: _days!)),
-            ).limit(2000);
-
-      final snap = await q.get();
-  return snap.docs
-    .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
-          .where((m) => m.gravity != null || m.brix != null)
-          .toList();
-    }
-
-    Widget buildList(List<Measurement> items) {
-      if (items.isEmpty) {
-        return const Center(child: Padding(
-          padding: EdgeInsets.all(24), child: Text('No measurements.')));
-      }
-      return ListView.separated(
-        padding: const EdgeInsets.all(12),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const Divider(height: 8),
-        itemBuilder: (_, i) {
-          final m = items[i];
-          final ts = DateFormat.yMMMd().add_jm().format(m.timestamp.toLocal());
-          final g  = (m.gravity != null) ? m.gravity!.toStringAsFixed(3)
-                    : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx' : '—';
-          final t  = (m.temperature != null) ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
-
-          return ListTile(
-            title: Text(ts),
-            subtitle: Text('SG/°Bx: $g • Temp: $t'),
-            leading: Icon(m.fromDevice == true ? Icons.sensors : Icons.edit_note),
-            trailing: deviceBadgeLocal(m),
-            onTap: () {
-  if (m.fromDevice != true) {
-    widget.onEditLocal?.call(m);
-  }
-},
-
-          );
-        },
-      );
-    }
-
-    // Local-only
-    if (widget.uid == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Measurement Log')),
-        body: Column(
-          children: [
-            Padding(padding: const EdgeInsets.all(12), child: filterBar),
-            Expanded(child: buildList(_mergeAndSort(local: _applyDayFilterTo(widget.local), remote: const []))),
-          ],
-        ),
-      );
-    }
-
-    // With remote
-    return Scaffold(
-      appBar: AppBar(title: const Text('Measurement Log')),
-      body: Column(
-        children: [
-          Padding(padding: const EdgeInsets.all(12), child: filterBar),
-          Expanded(
-            child: FutureBuilder<List<Measurement>>(
-              future: fetchRemote(),
-              builder: (context, snap) {
-                if (snap.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-              final merged = _mergeAndSort(local: _applyDayFilterTo(widget.local), remote: snap.data ?? const []);
-              return buildList(merged);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

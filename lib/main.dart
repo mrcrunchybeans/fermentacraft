@@ -22,7 +22,7 @@ import 'models/tag_manager.dart';
 // Migration + Sync
 import 'services/firestore_sync_service.dart';
 
-// Premium state (single source of truth) + RC bootstrap
+// Premium state (single source offruth) + RC bootstrap
 import 'services/feature_gate.dart';
 import 'services/revenuecat_service.dart';
 

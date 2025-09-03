@@ -1,0 +1,55 @@
+diff --git a/lib/pages/batch_detail_page.dart b/lib/pages/batch_detail_page.dart
+--- a/lib/pages/batch_detail_page.dart
++++ b/lib/pages/batch_detail_page.dart
+@@
+   String fmt(Measurement m) {
+     final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
+     final g = (m.gravity != null) ? m.gravity!.toStringAsFixed(3)
+       : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx'
+       : '—';
+-    final temp = (m.temperature != null)
+-        ? '${m.temperature!.toStringAsFixed(1)}°C'
+-        : '—';
+-    return '$t • SG/°Bx: $g • Temp: $temp';
++    final tempStr = (m.temperature != null)
++        ? TempDisplay(valueC: m.temperature!)
++            .toDisplay(targetUnit: context.read<SettingsModel>().unit)
++        : '—';
++    return '$t • SG/°Bx: $g • Temp: $tempStr';
+   }
+@@
+       FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+         future: _deviceOnceFuture,
+         builder: (context, snap) {
+ final remote = (snap.data?.docs ?? const [])
+   .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
+-  .where((m) => m.gravity != null)
++  .where((m) => m.gravity != null || m.brix != null)
+   .toList();
+           final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+           final chartData = _capPoints(_limitByDays(combined, 30), 600);
+@@
+   onChanged: (v) {
+     setState(() {});
+     _finalYieldDebounce?.cancel();
+     _finalYieldDebounce = Timer(const Duration(milliseconds: 500), _persistFinalYield);
+   },
+-  onEditingComplete: _persistFinalYield,            // NEW
+-  onSubmitted: (_) => _persistFinalYield(),
++  onEditingComplete: _persistFinalYield,
++  onSubmitted: (_) {}, // avoid double-save on submit
+ ),
+@@
+           final m = items[i];
+           final ts = DateFormat.yMMMd().add_jm().format(m.timestamp.toLocal());
+           final g  = (m.gravity != null) ? m.gravity!.toStringAsFixed(3)
+                     : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx' : '—';
+-          final t  = (m.temperature != null) ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
++          final t  = (m.temperature != null)
++              ? TempDisplay(valueC: m.temperature!)
++                  .toDisplay(targetUnit: context.read<SettingsModel>().unit)
++              : '—';
+ 
+           return ListTile(
+             title: Text(ts),
+             subtitle: Text('SG/°Bx: $g • Temp: $t'),

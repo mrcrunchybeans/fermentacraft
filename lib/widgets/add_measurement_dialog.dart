@@ -125,20 +125,21 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
   }
 
   // Prevent label wrapping + force fixed height to avoid weird growth
-  Widget _segLabel(String text, {double width = 56}) {
-    return SizedBox(
-      width: width,
-      height: 36, // match segmented min height
-      child: Center(
-        child: Text(
-          text,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.visible,
-        ),
+Widget _segLabel(String text, {double width = 56}) {
+  return SizedBox(
+    width: width,
+    height: 36,
+    child: Center(
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis, // 👈
       ),
-    );
-  }
+    ),
+  );
+}
+
 
   // Local Theme wrapper to suppress any error text spacing that can stretch controls
   Widget _noErrorTheme({required Widget child}) {
@@ -283,14 +284,26 @@ if (Navigator.canPop(context)) {
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (picked != null) {
-      final now = DateTime.now();
-      setState(() {
-        _timestamp = DateTime(picked.year, picked.month, picked.day, now.hour, now.minute);
-        _recalculateAllValues();
-      });
-    }
+if (!mounted || picked == null) return;
+setState(() {
+  _timestamp = DateTime(
+    picked.year, picked.month, picked.day, _timestamp.hour, _timestamp.minute,
+  );
+  _recalculateAllValues();
+});
   }
+  Future<void> _pickTime() async {
+  final initial = TimeOfDay.fromDateTime(_timestamp);
+  final picked = await showTimePicker(context: context, initialTime: initial);
+  if (!mounted || picked == null) return;
+  setState(() {
+    _timestamp = DateTime(
+      _timestamp.year, _timestamp.month, _timestamp.day, picked.hour, picked.minute,
+    );
+    _recalculateAllValues();
+  });
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +318,8 @@ if (Navigator.canPop(context)) {
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       actionsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        scrollable: true, // 👈 add this
+
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -318,7 +333,7 @@ if (Navigator.canPop(context)) {
               // Header: Date + Day chip
               Row(
                 children: [
-                  Expanded(child: Text('Date: ${DateFormat.yMMMd().format(_timestamp)}')),
+                Expanded(child: Text('Date: ${DateFormat.yMMMd().format(_timestamp)}')),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
@@ -327,13 +342,18 @@ if (Navigator.canPop(context)) {
                     ),
                     child: Text(_daysText, style: Theme.of(context).textTheme.labelMedium),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.calendar_today),
-                    tooltip: 'Change Date',
-                    onPressed: _pickDate,
-                  ),
-                ],
-              ),
+    IconButton(
+      icon: const Icon(Icons.calendar_today),
+      tooltip: 'Change Date',
+      onPressed: _pickDate,
+    ),
+    IconButton(
+      icon: const Icon(Icons.schedule),
+      tooltip: 'Change Time',
+      onPressed: _pickTime,
+    ),
+  ],
+),
               const SizedBox(height: 10),
 
               // Gravity + unit segment (stack on narrow)
@@ -523,6 +543,18 @@ if (Navigator.canPop(context)) {
                 ),
 
               const SizedBox(height: 14),
+              // Notes (optional)
+              TextFormField(
+                controller: _noteController,
+                maxLines: 3,
+                decoration: _dec(
+                  'Notes (optional)',
+                  hint: 'Comments, actions taken, aromas, etc.',
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
 
               // Interventions as FilterChips
               Text('Interventions', style: Theme.of(context).textTheme.labelLarge),

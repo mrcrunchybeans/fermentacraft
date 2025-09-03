@@ -68,15 +68,54 @@ class _MeasurementListPagedState extends State<MeasurementListPaged> {
             final ts = (d['timestamp'] as Timestamp?)?.toDate();
             final sg = d['sg'] as num?;
             final tempC = d['tempC'] as num?;
-            return ListTile(
-              dense: true,
-              title: Text(ts?.toLocal().toString() ?? '—'),
-              subtitle: Text([
-                if (sg != null) 'SG ${sg.toStringAsFixed(3)}',
-                if (tempC != null) '${tempC.toStringAsFixed(1)} °C',
-                if (d['source'] == 'device') 'device',
-              ].join(' · ')),
-            );
+             final docId = _docs[i].id;
+             final note = (d['notes'] as String?)?.trim();
+             final isDevice = (d['source'] == 'device');
+             return ListTile(
+               dense: true,
+               title: Text(ts?.toLocal().toString() ?? '—'),
+               subtitle: Text([
+                 if (sg != null) 'SG ${sg.toStringAsFixed(3)}',
+                 if (tempC != null) '${tempC.toStringAsFixed(1)} °C',
+                 if (isDevice) 'device',
+                 if ((note ?? '').isNotEmpty) '📝 note',
+               ].join(' · ')),
+               trailing: isDevice
+                   ? Row(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         IconButton(
+                           tooltip: (note == null || note.isEmpty) ? 'Add note' : 'Edit note',
+                           icon: Icon((note == null || note.isEmpty) ? Icons.note_add : Icons.edit_note),
+                          onPressed: () async {
+  // Capture things we need before any awaits
+  final messenger = ScaffoldMessenger.of(context);
+
+  final newNote = await showDialog<String?>(
+    context: context,
+    builder: (_) => const _NoteOnlyDialog(
+      title: 'Device measurement note',
+    ),
+  );
+  if (newNote == null) return;
+
+  final trimmed = newNote.trim();
+  await FirestorePaths
+      .batchMeasurements(widget.uid, widget.batchId)
+      .doc(docId)
+      .set({'notes': trimmed.isEmpty ? null : trimmed}, SetOptions(merge: true));
+
+  if (!mounted) return;        // guard setState & UI work
+  setState(() {});             // refresh this item
+  messenger.showSnackBar(      // use captured messenger
+    const SnackBar(content: Text('Note saved')),
+  );
+},
+
+                   )],
+                     )
+                   : null,
+             );
           },
         ),
         const SizedBox(height: 8),
@@ -88,6 +127,49 @@ class _MeasurementListPagedState extends State<MeasurementListPaged> {
           )
         else
           const SizedBox.shrink(),
+      ],
+    );
+  }
+}
+class _NoteOnlyDialog extends StatefulWidget {
+  final String title;
+  const _NoteOnlyDialog({required this.title});
+
+  @override
+  State<_NoteOnlyDialog> createState() => _NoteOnlyDialogState();
+}
+
+class _NoteOnlyDialogState extends State<_NoteOnlyDialog> {
+  late final TextEditingController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextFormField(
+        controller: _c,
+        maxLines: 5,
+        decoration: const InputDecoration(
+          labelText: 'Note',
+          hintText: 'Add your observation, action taken, aroma, etc.',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, _c.text), child: const Text('Save')),
       ],
     );
   }

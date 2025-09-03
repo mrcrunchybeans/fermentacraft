@@ -18,6 +18,11 @@ function getHeader(req: Request, name: string): string {
 function platoToSG(p: number): number {
   return 1 + p / (258.6 - ((p / 258.2) * 227.1));
 }
+/** Brix → SG (typical cubic fit) */
+function brixToSG(bx: number): number {
+  // Widely used third-order approx
+  return 1 + (bx / (258.6 - ((bx / 258.2) * 227.1)));
+}
 
 /** Prefer short path: /u/<uid>/d/<deviceId>  (optionally ?b=<batchId>) */
 function parseIdsFromPreferredPath(req: Request): { uid: string; deviceId: string } {
@@ -81,12 +86,31 @@ function parsePayload(req: Request): {
     }
   }
 
-  const gravity = Number(raw.gravity ?? raw["corr-gravity"]);
-  const gravityUnitRaw = raw.gravity_unit ?? raw["gravity-unit"] ?? raw["gravity-format"] ?? "SG";
+  // Gravity value: prefer corrected, then plain
+  const gravity = Number(
+    raw["corr-gravity"] ??
+    raw.corr_gravity ??
+    raw.corrGravity ??
+    raw.corrSG ??
+    raw.corr_sg ??
+    raw.gravity
+  );
+  const gravityUnitRaw =
+    raw.gravity_unit ??
+    raw["gravity-unit"] ??
+    raw["gravity-format"] ??
+    raw.gravityUnit ??
+    "SG";
   const gravityUnit = String(gravityUnitRaw).toUpperCase();
 
+  // Temperature value + unit (accept a few more aliases)
   const temp = Number(raw.temp ?? raw.temperature);
-  const tempUnitRaw = raw.temp_unit ?? raw.temp_units ?? "C";
+  const tempUnitRaw =
+    raw.temp_unit ??
+    raw.temp_units ??
+    raw.temperature_unit ??
+    raw.temperatureUnit ??
+    "C";
   const tempUnit = String(tempUnitRaw).toUpperCase();
 
   const angle = raw.angle != null ? Number(raw.angle) : null;
@@ -94,12 +118,22 @@ function parsePayload(req: Request): {
 
   let sg: number | undefined;
   if (!Number.isNaN(gravity)) {
-    sg = gravityUnit.startsWith("P") || gravityUnit === "PLATO" ? platoToSG(gravity) : gravity;
+    if (gravityUnit.startsWith("P") || gravityUnit === "PLATO") {
+      sg = platoToSG(gravity);
+    } else if (gravityUnit.startsWith("B")) { // BRIX / BX
+      sg = brixToSG(gravity);
+    } else {
+      sg = gravity; // assume SG
+    }
+  }
+  // If device sends explicit brix instead of unit flag
+  if (sg == null && typeof raw.brix === "number") {
+    sg = brixToSG(Number(raw.brix));
   }
 
   let tempC: number | undefined;
   if (!Number.isNaN(temp)) {
-    tempC = tempUnit === "F" ? (temp - 32) * (5 / 9) : temp;
+  tempC = tempUnit.startsWith("F") ? (temp - 32) * (5 / 9) : temp;
   }
 
   return { sg, tempC, angle, battery, raw };
@@ -178,11 +212,14 @@ async function saveMeasurement(opts: {
 
   const base = `users/${uid}/batches/${targetBatch}`;
   const meas = { timestamp: now, sg, tempC: tempC ?? null, source: "device", deviceId, angle, battery };
-
+  
   const mRef = db.collection(`${base}/measurements`).doc();
   const rRef = db.collection(`${base}/raw_measurements`).doc();
+
   batch.set(mRef, meas);
-  batch.set(rRef, { ...meas, ttl: now });
+  // Keep the raw body for diagnostics (short-lived in this collection anyway)
+  batch.set(rRef, { ...meas, raw: opts, ttl: now });
+
   batch.set(stateRef, { lastSavedAt: now, lastSg: sg, lastTempC: tempC ?? lastTempC ?? null }, { merge: true });
 
   await batch.commit();
