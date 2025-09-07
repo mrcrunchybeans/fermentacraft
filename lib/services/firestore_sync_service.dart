@@ -10,7 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logger/logger.dart';
-
+import 'package:fermentacraft/utils/sanitize.dart';
 import '../utils/boxes.dart';
 import '../models/batch_model.dart';
 import '../models/inventory_item.dart';
@@ -1017,26 +1017,37 @@ class FirestoreSyncService {
   }
 
   Future<void> restoreBatch(BatchModel batch) async {
-    final uid = _uid;
-    if (uid == null) return;
+  final uid = _uid;
+  if (uid == null) return;
 
-    final id = batch.id.trim();
-    if (id.isEmpty) return;
+  final id = batch.id.trim();
+  if (id.isEmpty) return;
 
-    final json = batch.toJson();
+  final json = batch.toJson();
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await FirestorePaths.doc(uid, 'batches', id).set({
-      ...json,
-      'id': id,
-      '_meta': {
-        'updatedAt': FieldValue.serverTimestamp(),
-        'deviceUpdatedAt': now,
-        'deleted': false,
-      }
-    }, SetOptions(merge: true));
+  // device-side timestamp in epoch millis (int)
+  final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    _lastSentJson[_keyOf('batches', id)] = jsonEncode(json);
-    await SyncMetaStore.setLastSyncedNow('batches', id, now);
-  }
+  // Firestore-friendly payload + ensure required fields
+  final payload = sanitizeForFirestore({
+    ...json,
+    'id': id,                // rules require id == docId
+    'ownerUid': uid,         // helps if client filters on owner
+    '_meta': {
+      'updatedAt': FieldValue.serverTimestamp(), // server authoritative
+      'deviceUpdatedAt': nowMs,                  // int (millis)
+      'deleted': false,
+    },
+  });
+
+  await FirestorePaths.doc(uid, Boxes.batches, id)
+      .set(payload, SetOptions(merge: true));
+
+  // cache last-sent JSON (so we can skip identical re-sends)
+  _lastSentJson[_keyOf(Boxes.batches, id)] = jsonEncode(json);
+
+  // record last-synced time in millis
+  await SyncMetaStore.setLastSyncedNow(Boxes.batches, id, nowMs);
+}
+
 }

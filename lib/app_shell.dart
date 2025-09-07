@@ -1,10 +1,13 @@
 // lib/app_shell.dart
+import 'package:fermentacraft/models/batch_model.dart';
+import 'package:fermentacraft/utils/boxes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive/hive.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:fermentacraft/pages/login_page.dart';
 import 'home_page.dart';
 import 'pages/batch_log_page.dart';
 import 'pages/inventory_page.dart';
@@ -108,6 +111,25 @@ class _AppShellState extends State<AppShell> {
 
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
+
+  Future<void> _postLogoutHiveCleanup() async {
+  try {
+    if (Hive.isBoxOpen(Boxes.batches)) {
+      await Hive.box<BatchModel>(Boxes.batches).clear();
+    }
+    // Clear other boxes if you keep local state:
+    // if (Hive.isBoxOpen(Boxes.inventory)) {
+    //   await Hive.box<InventoryItem>(Boxes.inventory).clear();
+    // }
+    // if (Hive.isBoxOpen(Boxes.inventoryActions)) {
+    //   await Hive.box<InventoryAction>(Boxes.inventoryActions).clear();
+    // }
+    await Hive.close(); // closes all boxes
+  } catch (_) {
+    // Swallow errors; user has already been navigated off the screen
+  }
+}
+
 
   Future<void> _showAboutAppDialog(BuildContext context) async {
     // Fetch **before** showing the dialog; only use context if still mounted.
@@ -247,28 +269,48 @@ class MorePage extends StatelessWidget {
           ),
           title: Text(name),
           subtitle: const Text('Tap to log out'),
-          onTap: () async {
-            final confirm = await showDialog<bool>(
-              context: context,
-              builder: (dialogCtx) => AlertDialog(
-                title: const Text('Log out?'),
-                content: const Text('Are you sure you want to sign out?'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(dialogCtx, true),
-                    child: const Text('Logout'),
-                  ),
-                ],
-              ),
-            );
-            if (confirm == true) {
-              await FirebaseAuth.instance.signOut();
-              // Optional: pop to root if your AuthGate handles routing automatically
-              if (!context.mounted) return;
-              // Navigator.of(context).popUntil((r) => r.isFirst);
-            }
-          },
+       onTap: () async {
+  // Capture anything derived from context BEFORE the first await
+  final navigator = Navigator.of(context);
+
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (dialogCtx) => AlertDialog(
+      title: const Text('Log out?'),
+      content: const Text('Are you sure you want to sign out?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogCtx, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogCtx, true),
+          child: const Text('Logout'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm == true) {
+    // Sign out (no context usage here)
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {
+      // ignore; proceed regardless
+    }
+
+    // Navigate away using the captured navigator (no direct context)
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (_) => false,
+    );
+
+    // Fire-and-forget cleanup; does not use context
+    // ignore: discarded_futures
+    _postLogoutHiveCleanup();
+  }
+}
+
         ),
         const Divider(),
         ListTile(
@@ -307,4 +349,7 @@ class MorePage extends StatelessWidget {
       ],
     );
   }
+  
 }
+
+

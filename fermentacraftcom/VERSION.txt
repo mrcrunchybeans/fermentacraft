@@ -1,0 +1,6 @@
+Patched 2025-08-20 02:34:57 UTC
+- Windows → https://github.com/mrcrunchybeans/FermentaCraft/releases/latest
+- Android/Play → https://play.google.com/store/apps/details?id=com.fermentacraft
+- Support → mailto:support@fermentacraft.com
+- Privacy → https://fermentacraft.com/privacy.html
+- Terms → https://fermentacraft.com/terms.html

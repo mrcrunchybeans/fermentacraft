@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>FermentaCraft — Account & Data Deletion</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.6; padding: 24px; max-width: 880px; margin: 0 auto; }
+    h1, h2 { line-height: 1.25; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .callout { background: #f6f8fa; border: 1px solid #eaecef; padding: 12px 16px; border-radius: 8px; }
+    a { color: #0366d6; }
+  </style>
+</head>
+<body>
+  <h1>FermentaCraft — Request Account & Data Deletion</h1>
+  <p><strong>Developer:</strong> Brian Petry <!-- or your chosen developer name -->
+  <br><strong>App:</strong> FermentaCraft</p>
+
+  <p>This page explains how you can request deletion of your FermentaCraft account and the data associated with it.</p>
+
+  <h2>How to request deletion</h2>
+  <ol>
+    <li><strong>In-app (recommended):</strong> Open the app → <em>Settings</em> → <em>Account</em> → <em>Delete Account</em>. Follow the confirmation prompts. This deletes your account and associated cloud data.</li>
+    <li><strong>Web request:</strong> If you can’t access the app, email <a href="mailto:privacy@fermentacraft.com">privacy@fermentacraft.com.com</a> from the email address you use to sign in. Include the subject line <span class="mono">Account Deletion – FermentaCraft</span>. We’ll verify your identity and process the deletion.</li>
+  </ol>
+
+  <div class="callout">
+    <strong>Identity verification:</strong> For security, deletion requests must come from the signed-in account in-app or from the same email address used for your account.
+  </div>
+
+  <h2>What we delete</h2>
+  <ul>
+    <li><strong>Account credentials</strong> (Firebase Auth user).</li>
+    <li><strong>User-generated data</strong> stored in our cloud (e.g., recipes, batches, measurements, inventory, notes) in <strong>Cloud Firestore</strong>.</li>
+    <li><strong>Linked cloud files</strong> stored by us (if any) in <strong>Cloud Storage</strong>.</li>
+    <li><strong>Purchase entitlement link</strong> between your account and <strong>RevenueCat</strong> (if applicable) is removed/anonymized on deletion.</li>
+  </ul>
+
+  <h2>What may be retained</h2>
+  <ul>
+    <li><strong>App Store purchase records</strong> (Google Play / Apple) are maintained by the stores and can’t be deleted by us. These records don’t allow access to your account in our app.</li>
+    <li><strong>Backups/Logs:</strong> Minimal disaster-recovery backups may persist for up to <strong>30 days</strong> and are automatically purged. We do not use these for any purpose other than recovery.</li>
+    <li><strong>Legal/Compliance:</strong> If required by law, we may retain limited information necessary to meet legal obligations.</li>
+  </ul>
+
+  <h2>Timing</h2>
+  <p>Deletion is normally processed <strong>immediately</strong> after your request. Backup purges complete within <strong>30 days</strong>.</p>
+
+  <h2>Contact</h2>
+  <p>Questions? Email <a href="mailto:privacy@fermentacraft.com">privacy@fermentacraft.com</a>.</p>
+
+  <p class="mono">Last updated: 2025-08-09</p>
+</body>
+</html>

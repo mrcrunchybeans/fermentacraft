@@ -173,6 +173,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   static const _onlineGrace = Duration(minutes: 10);
   static const _kSincePitchMaxPoints = 5000; // A high cap for full-history view
   bool _hidePremiumHint = false;
+  bool _pauseRealtime = false;
 
   // ---- Model / key ----
   BatchModel? _batch;
@@ -250,6 +251,113 @@ Widget ifSignedIn(Widget Function(String uid) builder) {
   final uid = _uid;
   if (uid == null) return const SizedBox.shrink();
   return builder(uid);
+}
+
+double _computeTotalIngredientCost(BatchModel batch) {
+  final invBox = Hive.box<InventoryItem>(Boxes.inventory);
+  double sum = 0.0;
+
+  // Local helper: accept dynamic list -> iterable of maps
+  Iterable<Map<dynamic, dynamic>> asMaps(dynamic list) {
+    if (list is Iterable) return list.cast<Map<dynamic, dynamic>>();
+    return const <Map<dynamic, dynamic>>[];
+  }
+
+  void add(Map<dynamic, dynamic> line) {
+    final name   = (line['name'] as String?)?.trim() ?? '';
+    final unit   = (line['unit'] as String?)?.trim() ?? '';
+    final amount = (line['amount'] as num?)?.toDouble() ?? 0.0;
+    final deduct = (line['deductFromInventory'] as bool?) ?? false;
+
+    if (!deduct || name.isEmpty || unit.isEmpty || amount <= 0) return;
+
+    // Make result nullable by casting the values to InventoryItem?
+    final InventoryItem? inv = invBox.values
+        .cast<InventoryItem?>()
+        .firstWhere(
+          (i) => i?.name.toLowerCase() == name.toLowerCase(),
+          orElse: () => null,
+        );
+
+    if (inv == null) return;
+
+    // Require unit match (no silent conversion)
+    if ((inv.unit).trim().toLowerCase() != unit.toLowerCase()) return;
+
+    // Prefer moving average if present, fallback to static costPerUnit
+    final perUnit = (inv.averageCostPerUnit > 0)
+        ? inv.averageCostPerUnit
+        : (inv.costPerUnit);
+
+    if (perUnit > 0) {
+      sum += amount * perUnit;
+    }
+  }
+
+  // Use braces to satisfy lints
+  for (final m in asMaps(batch.ingredients)) { add(m); }
+  for (final a in asMaps(batch.additives))  { add(a); }
+  for (final y in asMaps(batch.yeast))      { add(y); }
+
+  return sum;
+}
+
+Widget _buildCostSummary({
+  required double totalCost,
+  required double finalYield,
+  required String finalYieldUnit,
+  required int n12,
+  required int n16,
+  required int n25,
+  required double kegsAsDouble,
+}) {
+  if (totalCost <= 0 || finalYield <= 0) return const SizedBox.shrink();
+
+  final f = NumberFormat.simpleCurrency();
+
+  // Per-volume (only when yield unit itself is a volume unit)
+  Widget perVolumeTile() {
+    if (finalYieldUnit == 'gal' || finalYieldUnit == 'L') {
+      return ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.calculate),
+        title: Text('Cost per $finalYieldUnit'),
+        subtitle: Text(f.format(totalCost / finalYield)),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // Per-package
+  int? packages;
+  if (finalYieldUnit == '12oz bottle') packages = n12;
+  if (finalYieldUnit == '16oz bottle') packages = n16;
+  if (finalYieldUnit == '32oz growler') packages = n25;
+  if (finalYieldUnit == '5gal keg')     packages = kegsAsDouble.floor();
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Divider(),
+      ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.attach_money),
+        title: const Text('Total Ingredient Cost'),
+        subtitle: Text(f.format(totalCost)),
+      ),
+      perVolumeTile(),
+      if (packages != null && packages > 0)
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.local_drink),
+          title: const Text('Cost per package'),
+          subtitle: Text(f.format(totalCost / packages)),
+        ),
+    ],
+  );
 }
 
 /// Recalculate batch.plannedOg from ingredients + target volume.
@@ -1433,43 +1541,55 @@ ElevatedButton(
   }
 
 Future<void> _openMeasurementEditor(BatchModel batch, Measurement target) async {
-  // figure out "previous" + "first" for FSU/day chips
-  final sorted = [...batch.measurements]
-    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-  final firstDate = sorted.isNotEmpty ? sorted.first.timestamp : null;
-  final idx = sorted.indexWhere((m) => m.id == target.id);
-  final prev = (idx > 0) ? sorted[idx - 1] : null;
+  // Pause realtime updates while editing to prevent focus/IME drops.
+  if (mounted) setState(() => _pauseRealtime = true);
 
-  final updated = await showDialog<Measurement>(
-    context: context,
-    builder: (_) => AddMeasurementDialog(
-      existingMeasurement: target,
-      previousMeasurement: prev,
-      firstMeasurementDate: firstDate,
-    ),
-  );
-  if (updated == null) return;
+  try {
+    // Build a sorted snapshot to compute "first" (for Day chip) and "prev" (for FSU).
+    final sorted = [...batch.measurements]
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final firstDate = sorted.isNotEmpty ? sorted.first.timestamp : null;
 
-  // replace in-place, keep same id
-  await _mutateBatch((bch) {
-    final i = bch.measurements.indexWhere((x) => x.id == target.id);
-    if (i != -1) {
-      bch.measurements[i] = Measurement(
-        id: target.id,
-        timestamp: updated.timestamp,
-        gravityUnit: updated.gravityUnit,
-        gravity: updated.gravity,
-        brix: updated.brix,
-        temperature: updated.temperature,
-        notes: updated.notes,
-        fsuspeed: updated.fsuspeed,
-        ta: updated.ta,
-        sgCorrected: updated.sgCorrected,
-        interventions: updated.interventions,
-        fromDevice: false, // edits are local
-      );
-    }
-  });
+    // Previous measurement relative to the target (by id).
+    final idx = sorted.indexWhere((m) => m.id == target.id);
+    final prev = (idx > 0) ? sorted[idx - 1] : null;
+
+    // Open editor (isolated from subtree rebuilds).
+    final updated = await showDialog<Measurement>(
+      context: context,
+      useRootNavigator: true,
+      builder: (_) => AddMeasurementDialog(
+        existingMeasurement: target,
+        previousMeasurement: prev,
+        firstMeasurementDate: firstDate,
+      ),
+    );
+
+    if (updated == null) return; // user canceled
+
+    // Replace the existing item in-place, preserving id.
+    await _mutateBatch((bch) {
+      final i = bch.measurements.indexWhere((x) => x.id == target.id);
+      if (i != -1) {
+        bch.measurements[i] = Measurement(
+          id: target.id,
+          timestamp: updated.timestamp,
+          gravityUnit: updated.gravityUnit,
+          gravity: updated.gravity,
+          brix: updated.brix,
+          temperature: updated.temperature,
+          notes: updated.notes,
+          fsuspeed: updated.fsuspeed,
+          ta: updated.ta,
+          sgCorrected: updated.sgCorrected,
+          interventions: updated.interventions,
+          fromDevice: false, // edits are local/manual
+        );
+      }
+    });
+  } finally {
+    if (mounted) setState(() => _pauseRealtime = false);
+  }
 }
 
   void _showSyncFromRecipeDialog(BatchModel batch) async {
@@ -2144,7 +2264,11 @@ void _showCreateInventoryItemDialog(String name, String unit) {
 
 /// Small row showing the linked device’s battery and last-seen.
 /// We consider the first device where linkedBatchId == batchId.
+/// Small row showing the linked device’s battery and last-seen.
+/// We consider the first device where linkedBatchId == batchId.
 Widget _deviceStatusRow({required String uid, required String batchId}) {
+  if (_pauseRealtime) return const SizedBox.shrink(); // 👈 this is enough
+
   return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
     stream: FirestorePaths
         .devicesColl(uid)
@@ -2178,6 +2302,7 @@ Widget _deviceStatusRow({required String uid, required String batchId}) {
     },
   );
 }
+
 
 // Stream the attached device's *name* for this batch (if any)
 
@@ -2242,7 +2367,7 @@ Widget _groupedRecentList({
   required void Function(Measurement) onDeleteLocal,
   int cap = 12,
 }) {
-
+  if (_pauseRealtime) return const SizedBox.shrink();
   // Merge + newest-first
   final merged = <Measurement>[
     ...local,
@@ -2375,19 +2500,23 @@ final batchId = batch.id;  // non-null
             icon: const Icon(Icons.add),
             label: const Text('Add Measurement'),
             onPressed: () async {
-              final sorted = [...batch.measurements]
-                ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-              final newM = await showDialog<Measurement>(
+              if (mounted) setState(() => _pauseRealtime = true);
+              try {
+                final sorted = [...batch.measurements]
+                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+                final newM = await showDialog<Measurement>(
                 context: context,
                 builder: (_) => AddMeasurementDialog(
                   previousMeasurement: sorted.isNotEmpty ? sorted.last : null,
                   firstMeasurementDate: sorted.isNotEmpty ? sorted.first.timestamp : null,
                 ),
-              );
-              if (newM != null) {
-                await _mutateBatch((b) => b.measurements.add(newM));
-              }
+    );
+    if (newM != null) {
+      await _mutateBatch((b) => b.measurements.add(newM));
+    }
+  } finally {
+    if (mounted) setState(() => _pauseRealtime = false);
+  }
             },
           ),
         ],
@@ -2406,11 +2535,15 @@ Builder(
 
 // Not signed in -> show local-only chart
 if (uid == null) {
+  if (_pauseRealtime) return const SizedBox.shrink();
+
   final settings = context.watch<SettingsModel>();
   final useFahrenheit = !settings.useCelsius;
 
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+  if (_pauseRealtime) return const SizedBox.shrink();
+  return TickerMode(
+    enabled: !_pauseRealtime,
+    child: Column(    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       SimpleFermentationChartPanel(
         measurements: batch.safeMeasurements,
@@ -2428,6 +2561,7 @@ sincePitchingAt: _inferPitchTime(batch),        initialRange: ChartRange.d7,
         onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
       ),
     ],
+    ),
   );
 }
 
@@ -2446,6 +2580,8 @@ if (!fg.allowDeviceStreaming) {
       : FirestorePaths.batchMeasurements(uid, batchId)
           .orderBy('timestamp', descending: false)
           .get();
+
+  if (_pauseRealtime) return const SizedBox.shrink();
 
   final settings = context.watch<SettingsModel>();
   final useFahrenheit = !settings.useCelsius;
@@ -2525,8 +2661,13 @@ final streamQuery = _currentChartRange == ChartRange.sincePitch
         .orderBy('timestamp', descending: false);
 
 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-  stream: streamQuery.snapshots(),
+  stream: _pauseRealtime
+      ? const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
+      : streamQuery.snapshots(),
   builder: (context, snap) {
+    
+    if (_pauseRealtime) return const SizedBox.shrink();
+
     if (snap.connectionState == ConnectionState.waiting) {
       return const SizedBox(
         height: 300,
@@ -2551,7 +2692,9 @@ return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
     final maxPoints = _currentChartRange == ChartRange.sincePitch ? _kSincePitchMaxPoints : 600;
     final capped = _capPoints(combined, maxPoints);
 
-    return Column(
+  return TickerMode(
+    enabled: !_pauseRealtime,
+    child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SimpleFermentationChartPanel(
@@ -2560,6 +2703,7 @@ return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           sincePitchingAt: _inferPitchTime(batch),
           initialRange: _currentChartRange, // UPDATED: Pass the current range
           onRangeChanged: (r) => setState(() => _currentChartRange = r), // NEW: Add callback
+          
         ),
         const SizedBox(height: 8),
         _groupedRecentList(
@@ -2571,8 +2715,9 @@ return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           onEditLocal: (m) => _openMeasurementEditor(batch, m),
           onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
         ),
-      ],
-    );
+     ],
+   ),
+ );
   },
 );
 },
@@ -2851,7 +2996,7 @@ FutureBuilder(
                     finalYield: fy, finalYieldUnit: u, bottleOz: 16);
                 final n25 = _bottlesFromYield(
                     finalYield: fy, finalYieldUnit: u, bottleOz: 25.4);
-                final kegs = (_toGallons(fy, u) / 5.0).toStringAsFixed(2);
+                final kegsAsDouble = _toGallons(fy, u) / 5.0;
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2865,9 +3010,26 @@ FutureBuilder(
                         Chip(label: Text('$n12 × 12oz')),
                         Chip(label: Text('$n16 × 16oz')),
                         Chip(label: Text('$n25 × 750mL')),
-                        Chip(label: Text('$kegs × 5gal kegs')),
+                        Chip(label: Text('${kegsAsDouble.toStringAsFixed(2)} × 5gal kegs')),
                       ],
                     ),
+                     const SizedBox(height: 12),
+      Builder(builder: (_) {
+        // Compute total ingredient cost from inventory-backed lines (deduct=true)
+        final totalCost = _computeTotalIngredientCost(batch);
+        if (totalCost <= 0) return const SizedBox.shrink();
+
+        // Render per-volume and (optionally) per-package
+        return _buildCostSummary(
+          totalCost: totalCost,
+          finalYield: fy,
+          finalYieldUnit: u,
+          n12: n12,
+          n16: n16,
+          n25: n25,
+          kegsAsDouble: kegsAsDouble,
+        );
+      }),
                   ],
                 );
               }),
@@ -3238,6 +3400,7 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
 
   // ===== Small utils for packaging math =====
   double _toGallons(double qty, String unit) {
+    
     switch (unit) {
       case 'gal':
         return qty;
@@ -3255,6 +3418,23 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         return qty; // fallback assumes gal
     }
   }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Total ingredient cost = sum(amount_used (converted to inventory unit) × averageCostPerUnit)
+// Looks up InventoryItem by name (case-insensitive), uses weighted avg from purchase history.
+// Skips lines with unknown/incompatible units or no priced history.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI fragment for cost summary (Total + per L / per gal)
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// UI fragment for cost summary (Total + per L / per gal + per package)
+// If `packageCount` is not provided, we try to infer it from batch packaging.
+// ─────────────────────────────────────────────────────────────
+
+
 
   int _bottlesFromYield({
     required double? finalYield,
@@ -3296,7 +3476,11 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         ),
       ],
     );
+
+    
   }
+
+  
 
 @override
 Widget build(BuildContext context) {
@@ -3371,50 +3555,46 @@ ifSignedIn((uid) => IconButton(
 
 
 // --- Export CSV (use fresh `batch.name` / `batch.id`) ---
+// --- Export CSV (use fresh `batch.name` / `batch.id`) ---
 ifSignedIn((uid) => IconButton(
- tooltip: 'Export CSV (device raw)',
- icon: const Icon(Icons.download),
- onPressed: () async {
-  if (!fg.allowDeviceExport) {
-   // If this context is from a StatefulWidget, you can use `context` directly
-      // before any async operation.
-   showPaywall(context);
-   return;
-  }
+  tooltip: 'Export CSV (device raw)',
+  icon: const Icon(Icons.download),
+  onPressed: () async {
+    if (!fg.allowDeviceExport) {
+      showPaywall(context);
+      return;
+    }
 
-  // Capture the BuildContext before the first async gap.
-  final dialogContext = context;
+    // Capture the BuildContext before the first async gap.
+    final dialogContext = context;
 
-  String safe(String s) {
-   // strip Windows-illegal chars + control chars
-   s = s.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]+'), '_');
-   s = s.replaceAll(RegExp(r'_+'), '_');
-   s = s.replaceAll(RegExp(r'^[\s\.]+|[\s\.]+$'), '');
-   return s.isEmpty ? 'file' : s;
-  }
+    // Build a safe, timestamped filename.
+    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final rawBase = 'device_data_${batch.name}_$ts.csv';
+    final filename = sanitizeFilename(rawBase);
 
-  final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-  final base = 'device_data_${batch.name}_$ts';
-  final filename = '${safe(base)}.csv';
+    // First async operation: build CSV text.
+    final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batch.id);
 
-  // This is the first async operation (the async gap).
-  final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batch.id);
+    // Ensure we’re still mounted before any UI work.
+    if (!dialogContext.mounted) return;
 
-  // Check if the widget is still mounted after the first async gap.
-  if (!dialogContext.mounted) return;
+    // Second async operation: save/share (desktop save dialog; mobile share from memory).
+    await promptSaveCsv(
+      context: dialogContext,
+      filename: filename,
+      csv: csv,
+    );
 
-  // This is the second async operation. We must await it.
-  await promptSaveCsv(context: dialogContext, filename: filename, csv: csv);
+    if (!dialogContext.mounted) return;
 
-    // Check again before performing another UI operation.
-  if (!dialogContext.mounted) return;
-
-  // Now it's safe to show the snack bar.
-  ScaffoldMessenger.of(dialogContext).showSnackBar(
-   SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
-  );
- },
+    // Friendly toast.
+    ScaffoldMessenger.of(dialogContext).showSnackBar(
+      SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
+    );
+  },
 ))
+
 
 
 

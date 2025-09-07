@@ -416,58 +416,81 @@ fermentationStages: _stages, // ✅ List<FermentationStage>
     return model;
   }
 
-  Future<void> _saveRecipe() async {
-    final recipes = Hive.box<RecipeModel>(Boxes.recipes);
-    final messenger = ScaffoldMessenger.of(context);
+  bool _isSaving = false; // put this as a State field
 
-    try {
-      final model = _buildRecipeModel();
-      final newKey = model.id.trim();
-      if (newKey.isEmpty) {
-        throw StateError('Recipe id missing');
-      }
+Future<void> _saveRecipe() async {
+  if (_isSaving) return;         // Guard re-entrancy / double taps
+  _isSaving = true;
+  if (mounted) setState(() {});
 
-      if (widget.existingRecipe != null && widget.isClone == false) {
-        final oldKeyRaw = (widget.recipeKey ?? widget.existingRecipe!.key);
-        final oldKey = oldKeyRaw?.toString().trim();
-        if (oldKey != null && oldKey.isNotEmpty && oldKey != newKey) {
-          await recipes.put(newKey, model);
-          await recipes.delete(oldKey);
-        } else {
-          await recipes.put(newKey, model);
-        }
+  final recipes = Hive.box<RecipeModel>(Boxes.recipes);
+  final messenger = ScaffoldMessenger.of(context);
+
+  try {
+    // 1) Commit any in-flight edits from focused fields
+    FocusScope.of(context).unfocus();
+
+    // 2) Let any queued controller updates (post-frame) complete
+    //    This flushes _safeNotify() changes before we read model state.
+    await Future<void>.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
+
+    // 3) Now build the model from up-to-date state
+    final model = _buildRecipeModel();
+    final newKey = model.id.trim();
+    if (newKey.isEmpty) {
+      throw StateError('Recipe id missing');
+    }
+
+    // 4) Persist
+    if (widget.existingRecipe != null && widget.isClone == false) {
+      final oldKeyRaw = (widget.recipeKey ?? widget.existingRecipe!.key);
+      final oldKey = oldKeyRaw?.toString().trim();
+      if (oldKey != null && oldKey.isNotEmpty && oldKey != newKey) {
+        await recipes.put(newKey, model);
+        await recipes.delete(oldKey);
       } else {
         await recipes.put(newKey, model);
       }
+    } else {
+      await recipes.put(newKey, model);
+    }
 
-      await FirestoreSyncService.instance.forceSync();
+    // 5) Force Firestore sync (you already had this)
+    await FirestoreSyncService.instance.forceSync();
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Recipe saved'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Recipe saved'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // 6) Navigate after successful save
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => RecipeDetailPage(
+          recipeKey: newKey,
+          recipe: model,
         ),
-      );
-
-      // Navigate to the detail page of the saved recipe.
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => RecipeDetailPage(
-            recipeKey: newKey,
-            recipe: model,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
         content: Text('Failed to save: $e'),
         behavior: SnackBarBehavior.floating,
-      ));
-    }
+      ),
+    );
+  } finally {
+    _isSaving = false;
+    if (mounted) setState(() {});
   }
+}
+
 
 
 
@@ -483,12 +506,14 @@ fermentationStages: _stages, // ✅ List<FermentationStage>
           title: Text(widget.existingRecipe == null || widget.isClone ? "Recipe Builder" : "Edit Recipe"),
           actions: [
             IconButton(
-              onPressed: _saveRecipe,
-              icon: const Icon(Icons.save),
-              tooltip: 'Save',
+              onPressed: _isSaving ? null : _saveRecipe,
+              icon: _isSaving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.save),
+              tooltip: _isSaving ? 'Saving…' : 'Save',
             ),
           ],
-        ),
+                  ),
         body: RefreshIndicator(
           onRefresh: () async {
             c.recalc();

@@ -6,10 +6,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../services/firestore_paths.dart';
+
+/// --- Optional helper: sanitize filenames for cross-platform safety.
+String sanitizeFilename(String s) {
+  s = s.replaceAll(RegExp(r'\s+'), '_');                         // collapse spaces
+  s = s.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]+'), '_');      // illegal/control
+  s = s.replaceAll(RegExp(r'_+'), '_');                          // shrink ___
+  s = s.replaceAll(RegExp(r'^[\s\._]+|[\s\._]+$'), '');          // trim
+  if (s.length > 60) s = s.substring(0, 60);                     // keep short
+  return s.isEmpty ? 'file' : s;
+}
 
 /// Build a CSV of raw device measurements for a given batch.
 /// Columns: timestamp, sg, tempC, source
@@ -44,7 +53,7 @@ Future<String> exportRawMeasurementsCsv({
 
 /// Prompts the user to save/share a CSV.
 /// - On desktop/web: shows a Save dialog
-/// - On Android/iOS: uses Share sheet
+/// - On Android/iOS: uses Share sheet from memory (no temp file path)
 Future<void> promptSaveCsv({
   required BuildContext context,
   required String filename,
@@ -54,15 +63,16 @@ Future<void> promptSaveCsv({
   final platform = Theme.of(context).platform;
   final messenger = ScaffoldMessenger.of(context);
 
+  final safeName = sanitizeFilename(filename);
   final bytes = Uint8List.fromList(utf8.encode(csv));
 
   if (kIsWeb) {
     final saveLoc = await getSaveLocation(
-      suggestedName: filename,
+      suggestedName: safeName,
       acceptedTypeGroups: [const XTypeGroup(label: 'CSV', extensions: ['csv'])],
     );
     if (saveLoc == null) return;
-    final file = XFile.fromData(bytes, name: filename, mimeType: 'text/csv');
+    final file = XFile.fromData(bytes, name: safeName, mimeType: 'text/csv');
     await file.saveTo(saveLoc.path);
     _showSnack(messenger, 'CSV saved');
     return;
@@ -73,35 +83,29 @@ Future<void> promptSaveCsv({
     case TargetPlatform.linux:
     case TargetPlatform.macOS: {
       final saveLoc = await getSaveLocation(
-        suggestedName: filename,
+        suggestedName: safeName,
         acceptedTypeGroups: [const XTypeGroup(label: 'CSV', extensions: ['csv'])],
       );
       if (saveLoc == null) return;
-      final file = XFile.fromData(bytes, name: filename, mimeType: 'text/csv');
+      final file = XFile.fromData(bytes, name: safeName, mimeType: 'text/csv');
       await file.saveTo(saveLoc.path);
       _showSnack(messenger, 'CSV saved');
       return;
     }
     case TargetPlatform.android:
     case TargetPlatform.iOS: {
-      final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/$filename';
-      final xfile = XFile.fromData(
-        bytes,
-        name: filename,
-        mimeType: 'text/csv',
-        path: path,
-      );
+      // IMPORTANT: Share from memory only; don't provide a bogus temp path.
+      final xfile = XFile.fromData(bytes, name: safeName, mimeType: 'text/csv');
       await Share.shareXFiles([xfile], text: 'FermentaCraft device data');
       return;
     }
     default: {
       final saveLoc = await getSaveLocation(
-        suggestedName: filename,
+        suggestedName: safeName,
         acceptedTypeGroups: [const XTypeGroup(label: 'CSV', extensions: ['csv'])],
       );
       if (saveLoc == null) return;
-      final file = XFile.fromData(bytes, name: filename, mimeType: 'text/csv');
+      final file = XFile.fromData(bytes, name: safeName, mimeType: 'text/csv');
       await file.saveTo(saveLoc.path);
       _showSnack(messenger, 'CSV saved');
       return;

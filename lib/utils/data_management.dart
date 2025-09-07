@@ -1,5 +1,6 @@
 // lib/utils/data_management.dart
 import 'dart:convert';
+import 'package:fermentacraft/utils/sanitize.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -132,52 +133,65 @@ class DataManagementService {
     }
   }
 
-  /// Exports all Hive data to a JSON file.
-  static Future<void> exportData(BuildContext context) async {
-    try {
-      final Map<String, dynamic> allData = {};
-      for (final boxName in _boxNames) {
-        final box = Hive.isBoxOpen(boxName)
-            ? getTypedBox(boxName)
-            : await openTypedBox(boxName);
+ /// Exports all Hive data to a JSON file.
+static Future<void> exportData(BuildContext context) async {
+  try {
+    final Map<String, dynamic> allData = {};
 
-        try {
-          if (boxName == Boxes.settings) {
-            allData[boxName] = [Map<String, dynamic>.from(box.toMap())];
-          } else {
-            allData[boxName] = box.values
-                .map((item) =>
-                    (item as dynamic).toJson() as Map<String, dynamic>)
-                .toList();
-          }
-        } finally {
-          if (!Hive.isBoxOpen(boxName)) await box.close();
+    for (final boxName in _boxNames) {
+      // Open (or get) the correct typed box
+      final wasOpen = Hive.isBoxOpen(boxName);
+      final box = wasOpen ? getTypedBox(boxName) : await openTypedBox(boxName);
+
+      try {
+        if (boxName == Boxes.settings) {
+          // Settings: single map -> wrap in a list for consistency
+          // box.toMap() has dynamic keys; coerce to <String, dynamic>
+          final raw = Map.from(box.toMap());
+          final strKeyed = <String, dynamic>{
+            for (final entry in raw.entries) entry.key.toString(): entry.value
+          };
+          allData[boxName] = [strKeyed];
+        } else {
+          // Other boxes: model -> toJson() -> deep sanitize so DateTime/Duration are safe
+          final items = box.values.map((item) {
+            final Map<String, dynamic> m =
+                (item as dynamic).toJson() as Map<String, dynamic>;
+            return sanitizeForJson(m);
+          }).toList();
+          allData[boxName] = items;
+        }
+      } finally {
+        if (!wasOpen) {
+          await box.close();
         }
       }
+    }
 
-      final jsonString = const JsonEncoder.withIndent('  ').convert(allData);
-      final bytes = utf8.encode(jsonString);
-      final timestamp =
-          DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
-      final fileName = 'fermentacraft_backup_$timestamp.json';
+    // Pretty JSON and save
+    final jsonString = const JsonEncoder.withIndent('  ').convert(allData);
+    final bytes = utf8.encode(jsonString);
+    final timestamp =
+        DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    final fileName = 'fermentacraft_backup_$timestamp.json';
 
-      final savedPath = await saveBytesToDevice(fileName, bytes);
+    final savedPath = await saveBytesToDevice(fileName, bytes);
 
-      if (!kIsWeb && savedPath != null && context.mounted) {
-        // ignore: deprecated_member_use
-        await Share.shareXFiles([XFile(savedPath)],
-            text: 'FermentaCraft Backup');
-      }
+    if (!kIsWeb && savedPath != null && context.mounted) {
+      // ignore: deprecated_member_use
+      await Share.shareXFiles([XFile(savedPath)],
+          text: 'FermentaCraft Backup');
+    }
 
-      if (context.mounted) {
-        snacks.show(const SnackBar(content: Text('Data backup successful!')));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        snacks.show(SnackBar(content: Text('Export failed: $e')));
-      }
+    if (context.mounted) {
+      snacks.show(const SnackBar(content: Text('Data backup successful!')));
+    }
+  } catch (e) {
+    if (context.mounted) {
+      snacks.show(SnackBar(content: Text('Export failed: $e')));
     }
   }
+}
 
   /// Imports data from a user-selected JSON file.
   static Future<void> importData(BuildContext context) async {

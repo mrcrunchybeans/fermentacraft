@@ -4,6 +4,8 @@ import 'fermentation_stage.dart';
 import 'measurement.dart';
 import 'planned_event.dart';
 import 'tag.dart'; // kept for legacy reads (tagsLegacy)
+import 'package:fermentacraft/utils/sanitize.dart';
+
 
 part 'batch_model.g.dart';
 
@@ -237,50 +239,54 @@ set tags(List<Tag> v) => tagsLegacy = v;
 
     // keep legacy tags nullable; do not populate new ones
   }
+// ---------------- JSON ----------------
+Map<String, dynamic> toJson() {
+  Map<String, dynamic> safeOut(Map m) => m.map((k, v) => MapEntry(k.toString(), v));
 
-  // ---------------- JSON ----------------
-  Map<String, dynamic> toJson() {
-    Map<String, dynamic> safeOut(Map m) => _toStringKeyedMap(m);
+  final base = <String, dynamic>{
+    'id': id,
+    'name': name,
+    'recipeId': recipeId,
+    'startDate': startDate.toIso8601String(),
+    'createdAt': createdAt.toIso8601String(),
+    'bottleDate': bottleDate?.toIso8601String(),
+    'batchVolume': batchVolume,
+    'fermentationStages': fermentationStages.map((fs) => fs.toJson()).toList(),
+    // measurementLogs may contain arbitrary keys/values (including DateTimes)
+    'measurementLogs': measurementLogs.map(safeOut).toList(),
+    'status': status,
+    'notes': notes,
+    'deductedIngredients': deductedIngredients,
+    'type': type,
+    'plannedOg': plannedOg,
+    'plannedAbv': plannedAbv,
+    // arbitrary ingredient/additive/yeast maps can also hide DateTimes
+    'ingredients': ingredients.map(safeOut).toList(),
+    'plannedEvents': plannedEvents?.map((e) => e.toJson()).toList(),
+    'additives': additives.map(safeOut).toList(),
+    'yeast': yeast.map(safeOut).toList(),
+    'og': og,
+    'fg': fg,
+    'abv': abv,
+    'measurements': measurements.map((m) => m.toJson()).toList(),
+    'fsuDate': fsuDate?.toIso8601String(),
+    'prepNotes': prepNotes,
+    'tastingRating': tastingRating,
+    'tastingNotes': tastingNotes,
+    'packagingMethod': packagingMethod,
+    'finalYield': finalYield,
+    'packagingDate': packagingDate?.toIso8601String(),
+    'finalNotes': finalNotes,
+    'finalYieldUnit': finalYieldUnit,
+    'isArchived': isArchived,
+    'category': category,
+    // (legacy tags intentionally omitted as in your code)
+  };
 
-    return {
-      'id': id,
-      'name': name,
-      'recipeId': recipeId,
-      'startDate': startDate.toIso8601String(),
-      'createdAt': createdAt.toIso8601String(),
-      'bottleDate': bottleDate?.toIso8601String(),
-      'batchVolume': batchVolume,
-      'fermentationStages': fermentationStages.map((fs) => fs.toJson()).toList(),
-      'measurementLogs': measurementLogs.map(safeOut).toList(),
-      'status': status,
-      'notes': notes,
-      'deductedIngredients': deductedIngredients,
-      'type': type,
-      'plannedOg': plannedOg,
-      'plannedAbv': plannedAbv,
-      'ingredients': ingredients.map(safeOut).toList(),
-      'plannedEvents': plannedEvents?.map((e) => e.toJson()).toList(),
-      'additives': additives.map(safeOut).toList(),
-      'yeast': yeast.map(safeOut).toList(),
-      'og': og,
-      'fg': fg,
-      'abv': abv,
-      'measurements': measurements.map((m) => m.toJson()).toList(),
-      'fsuDate': fsuDate?.toIso8601String(),
-      'prepNotes': prepNotes,
-      'tastingRating': tastingRating,
-      'tastingNotes': tastingNotes,
-      'packagingMethod': packagingMethod,
-      'finalYield': finalYield,
-      'packagingDate': packagingDate?.toIso8601String(),
-      'finalNotes': finalNotes,
-      'finalYieldUnit': finalYieldUnit,
-      'isArchived': isArchived,
-      // new schema
-      'category': category,
-      // we intentionally do NOT output tagsLegacy; you can add it if you need export
-    };
-  }
+  // Deep sanitize to ensure nested DateTimes/Durations are encodable
+  return sanitizeForJson(base);
+}
+
 
   factory BatchModel.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>> maps(dynamic v) =>
