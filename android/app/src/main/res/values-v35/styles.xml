@@ -1,0 +1,8 @@
+<resources>
+  <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <!-- Edge-to-edge: let Flutter draw under the bars -->
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <!-- Divider color is deprecated on A15; omit it -->
+  </style>
+</resources>

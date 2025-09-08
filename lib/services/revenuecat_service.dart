@@ -237,10 +237,20 @@ Future<void> _syncRCWithFirebaseUser(User? user) async {
         .collection('premium')
         .doc('status'); // users/{uid}/premium/status
 
-    _premiumDocSub = docRef.snapshots().listen((snap) {
-      final data = snap.data();
-      final active = (data?['active'] as bool?) ?? false;
-      FeatureGate.instance.setFromBackend(active);
-    });
+_premiumDocSub = docRef.snapshots().listen((snap) async {
+  final data = snap.data();
+  final premiumActive   = (data?['active'] as bool?) ?? false;
+  final proOfflineOwned = (data?['proOffline'] as bool?) ?? false;
+
+  if (premiumActive) {
+    FeatureGate.instance.setFromBackend(true);
+  } else {
+    // Clear backend premium; allow Pro-Offline if set in mirror
+    FeatureGate.instance.setFromBackend(false);
+    if (proOfflineOwned) {
+      await FeatureGate.instance.activateProOffline();
+    }
+  }
+});
   }
 }

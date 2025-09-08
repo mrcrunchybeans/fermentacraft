@@ -10,6 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logger/logger.dart';
+
+import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/utils/sanitize.dart';
 import '../utils/boxes.dart';
 import '../models/batch_model.dart';
@@ -46,6 +48,7 @@ class FirestoreSyncService {
 
   String? _uid;
 
+  // ---- Central plan/sign-in/enable gate ------------------------------------
   bool _enabled = true;
   bool get isEnabled => _enabled;
   set isEnabled(bool v) {
@@ -53,12 +56,28 @@ class FirestoreSyncService {
     _enabled = v;
     if (!_enabled) {
       _pauseWatchers();
-    } else {
-      final uid = _uid;
-      if (uid != null) {
-        _resumeForUid(uid);
-      }
+      return;
     }
+    if (!_allowSyncByPlan) {
+      // refuse enabling if user is not Premium
+      _enabled = false;
+      _debugWhyCantSync('isEnabled -> denied (not Premium)');
+      return;
+    }
+    final uid = _uid;
+    if (uid != null) _resumeForUid(uid);
+  }
+
+  bool get _allowSyncByPlan => FeatureGate.instance.allowSync; // Premium only
+  bool get _signedIn => _uid != null;
+  bool get _canSync => _enabled && _signedIn && _allowSyncByPlan;
+
+  void _debugWhyCantSync([String where = '']) {
+    assert(() {
+      debugPrint('[Sync] blocked @ $where '
+          'enabled=$_enabled signedIn=$_signedIn allowSyncByPlan=$_allowSyncByPlan');
+      return true;
+    }());
   }
 
   void enable() => isEnabled = true;
@@ -67,9 +86,7 @@ class FirestoreSyncService {
 
   bool _started = false;
 
-  // -----------------------------
-  // Optimizations state
-  // -----------------------------
+  // ----------------------------- Optimizations -------------------------------
 
   // Prevent echo loops (remote -> local -> remote)
   final Set<String> _suppressLocalEcho = {}; // key: box::id
@@ -184,62 +201,100 @@ class FirestoreSyncService {
     return out;
   }
 
-  // -----------------------------
-  // Lifecycle
-  // -----------------------------
+  // ------------------------------- Lifecycle ---------------------------------
 
   Future<void> init() async {
     await SyncMetaStore.init();
 
     // Auth: sign-in/out & user switching
     _authSub ??= FirebaseAuth.instance.authStateChanges().listen((user) async {
-      final oldUid = _uid;
       final newUid = user?.uid;
-
       if (newUid == null) {
-        // Signed out → stop syncing and clear local user data
         await _stop();
         await _clearLocalUserData();
         return;
       }
-
-      if (oldUid != null && oldUid != newUid) {
-        // Switched account → stop, purge, then start fresh
+      if (_uid != null && _uid != newUid) {
         await _stop();
         await _clearLocalUserData();
       }
-
       await _start(newUid);
     });
 
     // Connectivity: best-effort flush when network returns
     _connSub ??= _connectivity.onConnectivityChanged.listen((_) {
-      if (_uid != null && _enabled) {
-        _bootstrapPushLocal(_uid!);
-      }
+      if (_canSync) _bootstrapPushLocal(_uid!);
     });
+
+    // React to plan changes (Premium <-> Pro-Offline/Free)
+    FeatureGate.instance.addListener(_onGateChanged);
+  }
+
+  void _onGateChanged() {
+    if (!_signedIn) return;
+    if (_canSync) {
+      _resumeForUid(_uid!);
+    } else {
+      _pauseWatchers();
+    }
   }
 
   Future<void> _start(String uid) async {
     _uid = uid;
     if (_started) return;
-    if (!_enabled) return;
+    if (!_canSync) {
+      _debugWhyCantSync('_start');
+      return;
+    }
     _started = true;
 
-    // First time on this device: pull remote, then push local (converge)
-    await _bootstrapMerge(uid);
+    await _bootstrapMerge(uid); // pull → push converge
+    for (final box in _userBoxNames) {
+      _attachHiveWatcher(uid, box);
+    }
+    for (final box in _userBoxNames) {
+      _attachFirestoreWatcher(uid, box);
+    }
+    _attachSettingsWatchers(uid);
+  }
 
-    // Local -> Remote
+  Future<void> _pauseWatchers() async {
+    _started = false;
+
+    for (final s in _hiveSubs.values) {
+      await s.cancel();
+    }
+    _hiveSubs.clear();
+
+    for (final s in _fireSubs.values) {
+      await s.cancel();
+    }
+    _fireSubs.clear();
+
+    for (final t in _debouncers.values) {
+      t.cancel();
+    }
+    _debouncers.clear();
+    _pendingPayloads.clear();
+    // Keep _uid; we’re only pausing.
+  }
+
+  Future<void> _resumeForUid(String uid) async {
+    await _pauseWatchers();
+    if (!_canSync) {
+      _debugWhyCantSync('_resumeForUid');
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    _started = true;
+
+    await _bootstrapMerge(uid);
     for (final boxName in _userBoxNames) {
       _attachHiveWatcher(uid, boxName);
     }
-
-    // Remote -> Local
     for (final boxName in _userBoxNames) {
       _attachFirestoreWatcher(uid, boxName);
     }
-
-    // Settings sync
     _attachSettingsWatchers(uid);
   }
 
@@ -269,73 +324,34 @@ class FirestoreSyncService {
     await _stop();
     await _authSub?.cancel();
     await _connSub?.cancel();
+    FeatureGate.instance.removeListener(_onGateChanged);
     _authSub = null;
     _connSub = null;
   }
 
-  // -----------------------------
-  // Pause / Resume (for isEnabled)
-  // -----------------------------
-
-  Future<void> _pauseWatchers() async {
-    _started = false;
-
-    for (final s in _hiveSubs.values) {
-      await s.cancel();
-    }
-    _hiveSubs.clear();
-
-    for (final s in _fireSubs.values) {
-      await s.cancel();
-    }
-    _fireSubs.clear();
-
-    for (final t in _debouncers.values) {
-      t.cancel();
-    }
-    _debouncers.clear();
-    _pendingPayloads.clear();
-    // Keep _uid; we’re only pausing.
-  }
-
-  Future<void> _resumeForUid(String uid) async {
-    await _pauseWatchers();
-    if (!_enabled) return;
-
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    _started = true;
-
-    await _bootstrapMerge(uid);
-
-    for (final boxName in _userBoxNames) {
-      _attachHiveWatcher(uid, boxName);
-    }
-    for (final boxName in _userBoxNames) {
-      _attachFirestoreWatcher(uid, boxName);
-    }
-    _attachSettingsWatchers(uid);
-  }
-
-  // -----------------------------
-  // Bootstrapping
-  // -----------------------------
+  // ------------------------------- Bootstrapping ------------------------------
 
   Future<void> _bootstrapMerge(String uid) async {
+    if (!_canSync) {
+      _debugWhyCantSync('_bootstrapMerge');
+      return;
+    }
     await _bootstrapPullRemote(uid);
     await _bootstrapPushLocal(uid);
   }
 
   Future<void> _bootstrapPullRemote(String uid) async {
+    if (!_canSync) {
+      _debugWhyCantSync('_bootstrapPullRemote');
+      return;
+    }
+
     for (final boxName in _userBoxNames) {
       try {
         final snap = await FirestorePaths.coll(uid, boxName).get();
         for (final doc in snap.docs) {
           try {
-            await _applyRemoteDoc(
-              boxName,
-              doc.id,
-              doc.data(),
-            );
+            await _applyRemoteDoc(boxName, doc.id, doc.data());
           } catch (e, st) {
             if (kDebugMode) {
               print('bootstrapPull apply fail [$boxName]: $e\n$st');
@@ -362,6 +378,11 @@ class FirestoreSyncService {
   }
 
   Future<void> _bootstrapPushLocal(String uid) async {
+    if (!_canSync) {
+      _debugWhyCantSync('_bootstrapPushLocal');
+      return;
+    }
+
     for (final boxName in _userBoxNames) {
       try {
         final box = DataManagementService.getTypedBox(boxName);
@@ -405,15 +426,13 @@ class FirestoreSyncService {
     }
   }
 
-  // -----------------------------
-  // Watchers
-  // -----------------------------
+  // -------------------------------- Watchers ---------------------------------
 
   void _attachHiveWatcher(String uid, String boxName) {
     final box = DataManagementService.getTypedBox(boxName);
     _hiveSubs[boxName]?.cancel();
     _hiveSubs[boxName] = box.watch().listen((event) async {
-      if (!_enabled || _uid != uid) return;
+      if (!_canSync || _uid != uid) return;
 
       final id = event.key.toString();
       final k = _keyOf(boxName, id);
@@ -458,16 +477,12 @@ class FirestoreSyncService {
     _fireSubs[boxName]?.cancel();
     _fireSubs[boxName] =
         FirestorePaths.coll(uid, boxName).snapshots().listen((querySnap) async {
-      if (!_enabled || _uid != uid) return;
+      if (!_canSync || _uid != uid) return;
       for (final change in querySnap.docChanges) {
         try {
           final data = change.doc.data();
           if (data == null) continue;
-          await _applyRemoteDoc(
-            boxName,
-            change.doc.id,
-            data,
-          );
+          await _applyRemoteDoc(boxName, change.doc.id, data);
         } catch (e, st) {
           if (kDebugMode) print('applyRemoteDoc fail [$boxName]: $e\n$st');
           _log.w('applyRemoteDoc fail [$boxName]', error: e, stackTrace: st);
@@ -485,7 +500,7 @@ class FirestoreSyncService {
     _hiveSubs['__settings_local__']?.cancel();
     Timer? settingsDebounce;
     _hiveSubs['__settings_local__'] = settings.watch().listen((_) async {
-      if (!_enabled || _uid != uid) return;
+      if (!_canSync || _uid != uid) return;
       settingsDebounce?.cancel();
       settingsDebounce = Timer(const Duration(milliseconds: 500), () async {
         try {
@@ -516,7 +531,7 @@ class FirestoreSyncService {
     _fireSubs['__settings_remote__']?.cancel();
     _fireSubs['__settings_remote__'] =
         FirestorePaths.settingsDoc(uid).snapshots().listen((doc) async {
-      if (!_enabled || _uid != uid) return;
+      if (!_canSync || _uid != uid) return;
       try {
         final data = doc.data();
         if (data == null) return;
@@ -528,9 +543,7 @@ class FirestoreSyncService {
     });
   }
 
-  // -----------------------------
-  // Helpers
-  // -----------------------------
+  // -------------------------------- Helpers ----------------------------------
 
   Future<Box> _ensureTypedOpen(String name) {
     if (Hive.isBoxOpen(name)) {
@@ -561,6 +574,11 @@ class FirestoreSyncService {
     JsonMap json, {
     dynamic sourceObject,
   }) async {
+    if (!_canSync) {
+      _debugWhyCantSync('_pushLocalDocWithId');
+      return;
+    }
+
     final cleanId = id.trim();
     if (cleanId.isEmpty) {
       if (kDebugMode) print('Skip push: empty key id for $boxName: $json');
@@ -571,21 +589,32 @@ class FirestoreSyncService {
     if (boxName == Boxes.recipes || boxName == Boxes.batches) {
       final rawTags = (json['tags'] as List?);
 
+      // Drop volatile local-only fields for recipes before comparing/sending
+      if (boxName == Boxes.recipes) {
+        json.remove('lastOpened');
+      }
+
       // Canonical local sources (tri-state: unknown vs empty vs non-empty)
       dynamic refsList;
       dynamic legacyList;
       List? plainList;
-      try { refsList = (sourceObject as dynamic).tagRefs; } catch (_) {}
-      try { legacyList = (sourceObject as dynamic).tagsLegacy; } catch (_) {}
-      try { plainList = (sourceObject as dynamic).tags as List?; } catch (_) {}
+      try {
+        refsList = (sourceObject as dynamic).tagRefs;
+      } catch (_) {}
+      try {
+        legacyList = (sourceObject as dynamic).tagsLegacy;
+      } catch (_) {}
+      try {
+        plainList = (sourceObject as dynamic).tags as List?;
+      } catch (_) {}
 
-      final refsKnown     = refsList != null;
-      final refsNonEmpty  = refsKnown && (refsList is Iterable) && refsList.isNotEmpty;
+      final refsKnown = refsList != null;
+      final refsNonEmpty = refsKnown && (refsList is Iterable) && refsList.isNotEmpty;
 
-      final legacyKnown   = legacyList != null;
-      final legacyNonEmpty= legacyKnown && (legacyList is Iterable) && legacyList.isNotEmpty;
+      final legacyKnown = legacyList != null;
+      final legacyNonEmpty = legacyKnown && (legacyList is Iterable) && legacyList.isNotEmpty;
 
-      final plainKnown    = plainList != null;
+      final plainKnown = plainList != null;
       final plainNonEmpty = (plainList?.isNotEmpty ?? false);
 
       // What did we last send (to gate intentional clears)?
@@ -601,7 +630,7 @@ class FirestoreSyncService {
       } catch (_) {}
 
       // Only treat "clear" as intentional if:
-      //  - the payload explicitly carries [] AND
+      //  - payload explicitly carries [] AND
       //  - we previously sent non-empty tags AND
       //  - every known local canonical source has no tags.
       final payloadExplicitlyEmpty =
@@ -615,23 +644,19 @@ class FirestoreSyncService {
       final shouldExplicitClear =
           lastSentHadTags && payloadExplicitlyEmpty && canonicalKnownEmpty;
 
-      // Only write tags when we truly mean to (any local source has tags),
-      // otherwise omit the field so Firestore preserves whatever it has.
+      // Only write tags when we truly mean to; otherwise omit to preserve server value.
       final hasLocalTags =
           (rawTags is List && rawTags.isNotEmpty) ||
-          refsNonEmpty ||
-          legacyNonEmpty ||
-          plainNonEmpty;
+              refsNonEmpty ||
+              legacyNonEmpty ||
+              plainNonEmpty;
 
       if (hasLocalTags || shouldExplicitClear) {
-        // ignore: unnecessary_type_check
-        final preferred = (rawTags != null && (rawTags is List))
-            ? rawTags
-            : (plainList ?? const []);
-        json['tags'] =
-            _normalizeTagsForJson(sourceObject: sourceObject, rawTags: preferred);
+        final preferred =
+            (rawTags != null) ? rawTags : (plainList ?? const []);
+        json['tags'] = _normalizeTagsForJson(sourceObject: sourceObject, rawTags: preferred);
       } else {
-        json.remove('tags'); // preserve server value
+        json.remove('tags');
       }
     }
     // ----------------------------------------------------------------------
@@ -681,6 +706,11 @@ class FirestoreSyncService {
   }
 
   Future<void> _markRemoteDeleted(String uid, String boxName, String id) async {
+    if (!_canSync) {
+      _debugWhyCantSync('_markRemoteDeleted');
+      return;
+    }
+
     final cleanId = id.trim();
     if (cleanId.isEmpty) return;
 
@@ -771,15 +801,21 @@ class FirestoreSyncService {
         final remoteHasTags = remoteTags.isNotEmpty;
 
         dynamic localObj;
-        try { localObj = await box.get(id); } catch (_) {}
+        try {
+          localObj = await box.get(id);
+        } catch (_) {}
 
         bool localHasRefs = false;
         bool localHasLegacy = false;
         List? localTagsArray;
         bool localHasTagsArray = false;
 
-        try { localHasRefs = (localObj?.tagRefs as dynamic)?.isNotEmpty == true; } catch (_) {}
-        try { localHasLegacy = (localObj?.tagsLegacy as dynamic)?.isNotEmpty == true; } catch (_) {}
+        try {
+          localHasRefs = (localObj?.tagRefs as dynamic)?.isNotEmpty == true;
+        } catch (_) {}
+        try {
+          localHasLegacy = (localObj?.tagsLegacy as dynamic)?.isNotEmpty == true;
+        } catch (_) {}
         try {
           localTagsArray = (localObj as dynamic)?.tags as List?;
           localHasTagsArray = localTagsArray != null && localTagsArray.isNotEmpty;
@@ -801,12 +837,12 @@ class FirestoreSyncService {
           }
         } catch (_) {}
 
-        if (!remoteHasTags && (localHasRefs || localHasLegacy || localHasTagsArray || lastSentHadTags)) {
-          final chosenRaw = localHasTagsArray ? localTagsArray : (lastSentHadTags ? lastSentTags : null);
-          clean['tags'] = _normalizeTagsForJson(
-            sourceObject: localObj,
-            rawTags: chosenRaw,
-          );
+        if (!remoteHasTags &&
+            (localHasRefs || localHasLegacy || localHasTagsArray || lastSentHadTags)) {
+          final chosenRaw =
+              localHasTagsArray ? localTagsArray : (lastSentHadTags ? lastSentTags : null);
+          clean['tags'] =
+              _normalizeTagsForJson(sourceObject: localObj, rawTags: chosenRaw);
         } else {
           // Otherwise sanitize what we got from remote (upgrade strings, dedupe)
           final raw = (clean['tags'] as List?) ?? const [];
@@ -991,7 +1027,10 @@ class FirestoreSyncService {
 
   Future<void> forceSync() async {
     final uid = _uid;
-    if (uid == null || !_enabled) return;
+    if (uid == null || !_canSync) {
+      _debugWhyCantSync('forceSync');
+      return;
+    }
 
     // 1) Flush any debounced local changes
     await _flushPendingNow(uid);
@@ -1017,37 +1056,38 @@ class FirestoreSyncService {
   }
 
   Future<void> restoreBatch(BatchModel batch) async {
-  final uid = _uid;
-  if (uid == null) return;
+    final uid = _uid;
+    if (uid == null || !_canSync) {
+      _debugWhyCantSync('restoreBatch');
+      return;
+    }
 
-  final id = batch.id.trim();
-  if (id.isEmpty) return;
+    final id = batch.id.trim();
+    if (id.isEmpty) return;
 
-  final json = batch.toJson();
+    final json = batch.toJson();
 
-  // device-side timestamp in epoch millis (int)
-  final nowMs = DateTime.now().millisecondsSinceEpoch;
+    // device-side timestamp in epoch millis (int)
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-  // Firestore-friendly payload + ensure required fields
-  final payload = sanitizeForFirestore({
-    ...json,
-    'id': id,                // rules require id == docId
-    'ownerUid': uid,         // helps if client filters on owner
-    '_meta': {
-      'updatedAt': FieldValue.serverTimestamp(), // server authoritative
-      'deviceUpdatedAt': nowMs,                  // int (millis)
-      'deleted': false,
-    },
-  });
+    // Firestore-friendly payload + ensure required fields
+    final payload = sanitizeForFirestore({
+      ...json,
+      'id': id, // rules require id == docId
+      'ownerUid': uid,
+      '_meta': {
+        'updatedAt': FieldValue.serverTimestamp(),
+        'deviceUpdatedAt': nowMs,
+        'deleted': false,
+      },
+    });
 
-  await FirestorePaths.doc(uid, Boxes.batches, id)
-      .set(payload, SetOptions(merge: true));
+    await FirestorePaths.doc(uid, Boxes.batches, id).set(payload, SetOptions(merge: true));
 
-  // cache last-sent JSON (so we can skip identical re-sends)
-  _lastSentJson[_keyOf(Boxes.batches, id)] = jsonEncode(json);
+    // cache last-sent JSON (so we can skip identical re-sends)
+    _lastSentJson[_keyOf(Boxes.batches, id)] = jsonEncode(json);
 
-  // record last-synced time in millis
-  await SyncMetaStore.setLastSyncedNow(Boxes.batches, id, nowMs);
-}
-
+    // record last-synced time in millis
+    await SyncMetaStore.setLastSyncedNow(Boxes.batches, id, nowMs);
+  }
 }

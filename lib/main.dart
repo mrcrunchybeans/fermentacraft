@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- added (edge-to-edge)
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,19 +40,18 @@ bool get _crashlyticsSupported =>
 Future<void> _wireCrashlytics() async {
   if (!_crashlyticsSupported) return;
 
-  // Enable/disable collection (off in debug by default)
   await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
-
-  // Forward Flutter framework errors
   FlutterError.onError = (details) {
     FirebaseCrashlytics.instance.recordFlutterFatalError(details);
   };
 }
 
 void main() {
-  // Only install a zone error handler that calls Crashlytics on supported platforms
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Edge-to-edge once at startup (Android)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     // Web-only housekeeping (no-op on mobile)
     wb.hideHtmlSplash();
@@ -64,24 +64,23 @@ void main() {
     }());
 
     // Core services (Firebase init, Hive, adapters, boxes, etc.)
-    // IMPORTANT: This must initialize Firebase before we touch Crashlytics.
     await setupAppServices();
 
-    // Now it’s safe to wire Crashlytics (and only on supported platforms)
+    // Crashlytics (supported platforms only)
     await _wireCrashlytics();
 
-    // Pre-warm SharedPreferences to avoid channel error on first run
+    // Pre-warm SharedPreferences
     await SharedPreferences.getInstance();
 
-    // Cloud sync: enable from saved setting
+    // Cloud sync
     final settingsBox = Hive.box(Boxes.settings);
     final syncEnabled = settingsBox.get('syncEnabled') == true;
     await (FirestoreSyncService.instance..isEnabled = syncEnabled).init();
 
-    // RevenueCat: initialize & bind to FeatureGate
+    // RevenueCat
     await RevenueCatService.instance.init();
 
-    // Presets: construct & load before runApp
+    // Presets
     final presets = PresetsService();
     await presets.ensureLoaded();
 
@@ -99,20 +98,16 @@ void main() {
       ),
     );
 
-    // After first frame: finish splash cleanup.
     WidgetsBinding.instance.addPostFrameCallback((_) => wb.postSplashComplete());
 
-    // Optional watchdog (debug-only)
     assert(() {
       wb.startSplashWatchdog(timeout: const Duration(minutes: 2));
       return true;
     }());
   }, (error, stack) async {
-    // Only call Crashlytics on supported platforms (and after init above)
     if (_crashlyticsSupported) {
       await FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     } else {
-      // Fallback for web/Windows/Linux
       // ignore: avoid_print
       print('Uncaught error: $error\n$stack');
     }

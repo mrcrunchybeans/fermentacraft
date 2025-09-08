@@ -341,18 +341,48 @@ export const stripeWebhook = onRequest(
     }
     try {
       switch (event.type) {
-        case "checkout.session.completed": {
-          const sess = event.data.object as Stripe.Checkout.Session;
-          const uid = (sess.metadata?.uid as string | undefined) ?? null;
-          if (uid) {
-            await setPremium(uid, true, {
-              source: "stripe",
-              customer: sess.customer ?? null,
-              subscriptionId: sess.subscription ?? null,
-            });
-          }
-          break;
-        }
+       case "checkout.session.completed": {
+  const sess = event.data.object as Stripe.Checkout.Session;
+  const uid = (sess.metadata?.uid as string | undefined) ?? null;
+  if (!uid) break;
+
+  // If you want to scope specifically to your Pro-Offline price:
+  const proOfflinePriceId = "price_1S4n7wE9CXcdIoFtyl8t9cMZ";
+
+  if (sess.mode === "payment") {
+    // One-time purchase → Pro-Offline lifetime
+    const line = (sess.line_items?.data?.[0] || undefined) as any;
+    const priceId = (line?.price?.id as string | undefined) ?? (sess.metadata?.priceId as string | undefined);
+
+    // If you don’t expand line_items, you can skip this check and just set proOffline.
+    if (!priceId || priceId === proOfflinePriceId) {
+      await db.doc(`users/${uid}/premium/status`).set({
+        proOffline: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        source: "stripe",
+      }, { merge: true });
+    }
+  } else {
+    // Subscription → Premium
+    await db.doc(`users/${uid}/premium/status`).set({
+      active: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      source: "stripe",
+    }, { merge: true });
+  }
+  break;
+}
+case "charge.refunded": {
+  const charge = event.data.object as Stripe.Charge;
+  const uid = (charge.metadata?.uid as string | undefined) ?? null;
+  if (!uid) break;
+  await db.doc(`users/${uid}/premium/status`).set({
+    proOffline: false,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: "stripe",
+  }, { merge: true });
+  break;
+}
         case "invoice.payment_succeeded": {
           const inv = event.data.object as Stripe.Invoice;
           const uid = (inv as any)?.subscription_details?.metadata?.uid ?? inv.metadata?.uid ?? null;

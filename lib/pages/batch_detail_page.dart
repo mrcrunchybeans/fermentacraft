@@ -150,8 +150,7 @@ class _PremiumHint extends StatelessWidget {
 }
 
 
-
-
+enum _OverflowAction { archiveToggle, attachDevice, exportCsv }
 
 class BatchDetailPage extends StatefulWidget {
   const BatchDetailPage({
@@ -855,52 +854,99 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
               measuredOg: extras.measuredOg,
             );
 
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Measured OG', style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      key: ValueKey(extras.measuredOg),
-                      initialValue: (extras.measuredOg != null && extras.measuredOg! > 1.0)
-                          ? extras.measuredOg!.toStringAsFixed(3)
-                          : '',
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Measured OG (e.g., 1.072)',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (val) async {
-                        final parsed = double.tryParse(val);
-                        final newValue = (parsed != null && parsed > 1.0) ? parsed : null;
-                        if (newValue != extras.measuredOg) {
-                          await BatchExtrasRepo().setMeasuredOg(batch.id, newValue);
-                          if (mounted) setState(() {});
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Use measured OG for ABV'),
-                      value: (extras.useMeasuredOg == true),
-                      onChanged: (v) async {
-                        await BatchExtrasRepo().setUseMeasuredOg(batch.id, v);
-                        if (mounted) setState(() {});
-                      },
-                    ),
-                    if (abvFromThisCard != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text('ABV (with current setting): ${abvFromThisCard.toStringAsFixed(2)}%'),
-                      ),
-                  ],
-                ),
+            return Theme(
+  // hide the ExpansionTile divider for a cleaner look
+  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+  child: Container(
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.18),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: Theme.of(context).dividerColor.withOpacity(.20),
+      ),
+    ),
+    child: ExpansionTile(
+      initiallyExpanded: false, // collapsed by default = less visual weight
+      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      childrenPadding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      leading: Icon(
+        Icons.show_chart,
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(.6),
+      ),
+      title: Text(
+        'Measured OG',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+      subtitle: Builder(builder: (_) {
+        final ogLabel = (extras.measuredOg != null && extras.measuredOg! > 1.0)
+            ? extras.measuredOg!.toStringAsFixed(3)
+            : 'Not set';
+        final using = extras.useMeasuredOg == true ? 'On' : 'Off';
+        final abvStr = (abvFromThisCard != null)
+            ? ' • ABV ${abvFromThisCard.toStringAsFixed(1)}%'
+            : '';
+        return Text(
+          'OG: $ogLabel • Use for ABV: $using$abvStr',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withOpacity(.7),
               ),
-            );
+        );
+      }),
+      children: [
+        // Input
+        TextFormField(
+          key: ValueKey(extras.measuredOg),
+          initialValue: (extras.measuredOg != null && extras.measuredOg! > 1.0)
+              ? extras.measuredOg!.toStringAsFixed(3)
+              : '',
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Measured OG (e.g., 1.072)',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          onChanged: (val) async {
+            final parsed = double.tryParse(val);
+            final newValue = (parsed != null && parsed > 1.0) ? parsed : null;
+            if (newValue != extras.measuredOg) {
+              await BatchExtrasRepo().setMeasuredOg(batch.id, newValue);
+              if (mounted) setState(() {});
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+
+        // Toggle
+        SwitchListTile.adaptive(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Use measured OG for ABV'),
+          value: (extras.useMeasuredOg == true),
+          onChanged: (v) async {
+            await BatchExtrasRepo().setUseMeasuredOg(batch.id, v);
+            if (mounted) setState(() {});
+          },
+        ),
+
+        // ABV preview (small)
+        if (abvFromThisCard != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'ABV (with current setting): ${abvFromThisCard.toStringAsFixed(2)}%',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+      ],
+    ),
+  ),
+);
+
           },
         ),
 
@@ -3486,6 +3532,9 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
 Widget build(BuildContext context) {
   final box = Hive.box<BatchModel>(Boxes.batches);
 
+final isTight = MediaQuery.of(context).size.width < 420 ||
+    MediaQuery.textScaleFactorOf(context) > 1.10;
+
   return ValueListenableBuilder<Box<BatchModel>>(
     valueListenable: box.listenable(keys: [_hiveKey]),
     builder: (context, b, _) {
@@ -3505,115 +3554,201 @@ Widget build(BuildContext context) {
       final fg = context.watch<FeatureGate>();
 
       return Scaffold(
-        appBar: AppBar(
-          title: Text(batch.name),
-          actions: [
-  IconButton(
-    icon: Icon(
-      _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
-      color: _isBrewModeEnabled ? Colors.amber : null,
+
+
+appBar: AppBar(
+  automaticallyImplyLeading: true,
+  leadingWidth: 40,
+  titleSpacing: 8,
+  centerTitle: false,
+
+  // Title that auto-shrinks (never clipped)
+  title: Tooltip(
+    message: batch.name.trim().isEmpty ? 'Batch' : batch.name,
+    waitDuration: const Duration(milliseconds: 400),
+    child: FittedBox(
+      alignment: Alignment.centerLeft,
+      fit: BoxFit.scaleDown, // scales down text to fit available width
+      child: Text(
+        batch.name.trim().isEmpty ? 'Batch' : batch.name,
+        maxLines: 1,
+        softWrap: false,
+      ),
     ),
-    tooltip: 'Toggle Brew Mode',
-    onPressed: _toggleBrewMode,
   ),
-IconButton(
-  tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
-  icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
-  onPressed: () => _onArchiveToggle(batch),
+
+  actionsIconTheme: const IconThemeData(size: 22),
+
+  actions: [
+    // Brew Mode (always visible)
+    IconButton(
+      tooltip: _isBrewModeEnabled ? 'Disable Brew Mode' : 'Enable Brew Mode',
+      icon: Icon(
+        _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
+        color: _isBrewModeEnabled ? Colors.amber : null,
+      ),
+      onPressed: _toggleBrewMode,
+    ),
+
+    // Show extra icons only if we truly have room
+    if (!needsScroll && !isTight) ...[
+      // Archive / Unarchive
+      IconButton(
+        tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
+        icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
+        onPressed: () async => _onArchiveToggle(batch),
+      ),
+
+      // Devices (signed-in only)
+      ifSignedIn((uid) => IconButton(
+        tooltip: 'Attach / change device',
+        icon: const Icon(Icons.sensors),
+        onPressed: () async {
+          if (!fg.allowDevices) { showPaywall(context); return; }
+          final dialogContext = context;
+          final currentId = await _currentDeviceIdForBatch(uid, batch.id);
+          if (!dialogContext.mounted) return;
+
+          final result = await showAttachDeviceSheet(
+            context: dialogContext,
+            currentlyAttachedDeviceId: currentId,
+            fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batch.id),
+            showAssignedToo: true,
+            batchId: batch.id,
+          );
+          if (result == null) return;
+
+          await _attachDeviceToBatch(uid: uid, batchId: batch.id, deviceId: result.deviceId);
+          if (!dialogContext.mounted) return;
+
+          ScaffoldMessenger.of(dialogContext).showSnackBar(
+            SnackBar(content: Text(result.deviceId == null ? 'Device detached' : 'Device attached')),
+          );
+        },
+      )),
+
+      // Export CSV
+      IconButton(
+        tooltip: 'Export CSV (device raw)',
+        icon: const Icon(Icons.download),
+        onPressed: () async {
+          if (!fg.allowDeviceExport) { showPaywall(context); return; }
+          final uid = _uid; if (uid == null) return;
+
+          final dialogContext = context;
+          final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+          final rawName = 'device_data_${batch.name}_$ts.csv';
+          final filename = sanitizeFilename(rawName);
+
+          final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batch.id);
+          if (!dialogContext.mounted) return;
+
+          await promptSaveCsv(context: dialogContext, filename: filename, csv: csv);
+          if (!dialogContext.mounted) return;
+
+          ScaffoldMessenger.of(dialogContext).showSnackBar(
+            SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
+          );
+        },
+      ),
+    ]
+    // Otherwise: overflow to protect the title width
+    else
+      PopupMenuButton<_OverflowAction>(
+        tooltip: 'More',
+        onSelected: (choice) async {
+          switch (choice) {
+            case _OverflowAction.archiveToggle:
+              await _onArchiveToggle(batch);
+              break;
+
+            case _OverflowAction.attachDevice:
+              if (!fg.allowDevices) { showPaywall(context); break; }
+              final uid = _uid; if (uid == null) break;
+              final dialogContext = context;
+              final currentId = await _currentDeviceIdForBatch(uid, batch.id);
+              if (!dialogContext.mounted) break;
+
+              final result = await showAttachDeviceSheet(
+                context: dialogContext,
+                currentlyAttachedDeviceId: currentId,
+                fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batch.id),
+                showAssignedToo: true,
+                batchId: batch.id,
+              );
+              if (result == null) break;
+
+              await _attachDeviceToBatch(uid: uid, batchId: batch.id, deviceId: result.deviceId);
+              if (!dialogContext.mounted) break;
+
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                SnackBar(content: Text(result.deviceId == null ? 'Device detached' : 'Device attached')),
+              );
+              break;
+
+            case _OverflowAction.exportCsv:
+              if (!fg.allowDeviceExport) { showPaywall(context); break; }
+              final uid2 = _uid; if (uid2 == null) break;
+              final dialogContext2 = context;
+              final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+              final rawName = 'device_data_${batch.name}_$ts.csv';
+              final filename = sanitizeFilename(rawName);
+              final csv = await exportRawMeasurementsCsv(uid: uid2, batchId: batch.id);
+              if (!dialogContext2.mounted) break;
+              await promptSaveCsv(context: dialogContext2, filename: filename, csv: csv);
+              if (!dialogContext2.mounted) break;
+              ScaffoldMessenger.of(dialogContext2).showSnackBar(
+                SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
+              );
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: _OverflowAction.archiveToggle,
+            child: ListTile(
+              dense: true,
+              leading: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
+              title: Text(batch.isArchived ? 'Unarchive' : 'Archive'),
+            ),
+          ),
+          if (_uid != null)
+            const PopupMenuItem(
+              value: _OverflowAction.attachDevice,
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.sensors),
+                title: Text('Attach / change device'),
+              ),
+            ),
+          const PopupMenuItem(
+            value: _OverflowAction.exportCsv,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.download),
+              title: Text('Export CSV'),
+            ),
+          ),
+        ],
+      ),
+  ],
+
+  bottom: TabBar(
+    controller: _tabController,
+    isScrollable: needsScroll,
+    tabAlignment: needsScroll ? TabAlignment.start : TabAlignment.center,
+    labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+    tabs: const [
+      Tab(text: 'Plan'),
+      Tab(text: 'Prep'),
+      Tab(text: 'Ferment'),
+      Tab(text: 'Complete'),
+    ],
+  ),
 ),
 
-  // ---- Device: Link to this batch (Premium) ----
-ifSignedIn((uid) => IconButton(
-  tooltip: 'Attach / change device',
-  icon: const Icon(Icons.sensors),
-  onPressed: () async {
-    if (!fg.allowDevices) { showPaywall(context); return; }
-
-    final dialogContext = context;
-
-    final currentId = await _currentDeviceIdForBatch(uid, batch.id);
-    if (!dialogContext.mounted) return;
-
-    final result = await showAttachDeviceSheet(
-      context: dialogContext,
-      currentlyAttachedDeviceId: currentId,
-      fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batch.id),
-      showAssignedToo: true,
-      batchId: batch.id,
-    );
-    if (result == null) return;
-
-    await _attachDeviceToBatch(uid: uid, batchId: batch.id, deviceId: result.deviceId);
-    if (!dialogContext.mounted) return;
-
-    snacks.show(SnackBar(
-      content: Text(result.deviceId == null ? 'Device detached' : 'Device attached'),
-    ));
-    if (mounted) setState(() {});
-  },
-)),
 
 
-// --- Export CSV (use fresh `batch.name` / `batch.id`) ---
-// --- Export CSV (use fresh `batch.name` / `batch.id`) ---
-ifSignedIn((uid) => IconButton(
-  tooltip: 'Export CSV (device raw)',
-  icon: const Icon(Icons.download),
-  onPressed: () async {
-    if (!fg.allowDeviceExport) {
-      showPaywall(context);
-      return;
-    }
-
-    // Capture the BuildContext before the first async gap.
-    final dialogContext = context;
-
-    // Build a safe, timestamped filename.
-    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final rawBase = 'device_data_${batch.name}_$ts.csv';
-    final filename = sanitizeFilename(rawBase);
-
-    // First async operation: build CSV text.
-    final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batch.id);
-
-    // Ensure we’re still mounted before any UI work.
-    if (!dialogContext.mounted) return;
-
-    // Second async operation: save/share (desktop save dialog; mobile share from memory).
-    await promptSaveCsv(
-      context: dialogContext,
-      filename: filename,
-      csv: csv,
-    );
-
-    if (!dialogContext.mounted) return;
-
-    // Friendly toast.
-    ScaffoldMessenger.of(dialogContext).showSnackBar(
-      SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
-    );
-  },
-))
-
-
-
-
-
-          ],
-
-          bottom: TabBar(
-            controller: _tabController,
-            isScrollable: needsScroll,
-            tabAlignment: needsScroll ? TabAlignment.start : TabAlignment.center,
-            labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-            tabs: const [
-              Tab(text: 'Plan'),
-              Tab(text: 'Prep'),
-              Tab(text: 'Ferment'),
-              Tab(text: 'Complete'),
-            ],
-          ),
-        ),
         body: Column(
           children: [
             if (batch.isArchived)
@@ -3657,5 +3792,3 @@ ifSignedIn((uid) => IconButton(
   );
 }
 }
-
-

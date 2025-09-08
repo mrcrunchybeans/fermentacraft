@@ -1,3 +1,4 @@
+// android/app/build.gradle.kts
 import java.util.Properties
 
 val keystorePropsFile = rootProject.file("key.properties")
@@ -7,12 +8,18 @@ val keystoreProps = Properties().apply {
     }
 }
 
+/** Read version from local.properties (pubspec.yaml's `version: x.y.z+NN`) */
+val flutterVersionCode: Int =
+    (project.findProperty("flutterVersionCode") as String?)?.toInt() ?: 46
+val flutterVersionName: String =
+    (project.findProperty("flutterVersionName") as String?) ?: "1.0"
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics") // Firebase services
-    id("dev.flutter.flutter-gradle-plugin") // Must come after android & kotlin
+    id("com.google.firebase.crashlytics")
+    id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
@@ -22,10 +29,12 @@ android {
 
     defaultConfig {
         applicationId = "com.fermentacraft"
-        minSdkVersion(flutter.minSdkVersion)
-        targetSdkVersion(flutter.targetSdkVersion)
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+
+        // CRITICAL: these populate manifest version fields
+        versionCode = flutterVersionCode
+        versionName = flutterVersionName
 
         manifestPlaceholders["appAuthRedirectScheme"] =
             "com.googleusercontent.apps.747130944683-add6ufd63i82lh8ispnosi2ii3vu6hbn"
@@ -35,14 +44,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-
     kotlinOptions {
         jvmTarget = "11"
     }
 
     signingConfigs {
         create("release") {
-            // These can be null if the file is missing; fail early if so
             val storeFilePath = keystoreProps.getProperty("storeFile") ?: ""
             if (storeFilePath.isNotBlank()) {
                 storeFile = file(storeFilePath)
@@ -53,7 +60,6 @@ android {
         }
     }
 
-
     buildTypes {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
@@ -63,4 +69,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Not required for our edge-to-edge approach, but harmless if you keep it
+    implementation("androidx.activity:activity:1.10.1")
 }

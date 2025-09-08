@@ -7,4 +7,6 @@ class Boxes {
   static const String shoppingList = 'shopping_list';
   static const String syncMeta = 'sync_meta';
   static const String tags = 'tags';
+  static const String featureGate = 'feature_gate';
+
 }

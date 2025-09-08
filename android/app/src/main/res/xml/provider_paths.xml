@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <external-path name="external_files" path="." />
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Internal cache dir -->
+    <cache-path name="cache" path="." />
+    <!-- External cache dir (optional) -->
+    <external-cache-path name="external_cache" path="." />
+    <!-- If you ever write to files dir instead -->
+    <!-- <files-path name="files" path="." /> -->
 </paths>

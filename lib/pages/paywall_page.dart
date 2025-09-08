@@ -9,27 +9,54 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import 'package:fermentacraft/utils/platforms.dart';
-
-
 import 'package:fermentacraft/utils/snacks.dart';
+
 import '../services/feature_gate.dart';
 import '../services/revenuecat_service.dart';
 import '../services/stripe_billing_service.dart';
 import '../services/stripe_pricing_service.dart';
 
-class PaywallPage extends StatelessWidget {
+/* ============================================================
+   PAYWALL (Premium + Pro-Offline)
+   - Pro-Offline unlocks all OFFLINE premium features locally
+   - Premium unlocks everything, including cloud/sync
+   - Users can switch both ways
+   ============================================================ */
+
+class PaywallPage extends StatefulWidget {
   const PaywallPage({super.key, this.asDialog = false});
   final bool asDialog;
 
   @override
+  State<PaywallPage> createState() => _PaywallPageState();
+}
+
+class _PaywallPageState extends State<PaywallPage> {
+  // Anchor for the plans section
+  final GlobalKey _plansKey = GlobalKey();
+
+  // Smooth scroll to the plans section
+  Future<void> _scrollToPlans() async {
+    final ctx = _plansKey.currentContext;
+    if (ctx != null) {
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+        alignment: 0.05,
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final mq = MediaQuery.of(context);
     final isShort = mq.size.height < 700;
 
-    final header = _HeroHeader(asDialog: asDialog);
+    final header = _HeroHeader(asDialog: widget.asDialog);
 
     final body = SafeArea(
       bottom: false,
@@ -38,47 +65,33 @@ class PaywallPage extends StatelessWidget {
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: mq.size.height * (asDialog ? 0.7 : 0.9)),
+            constraints: BoxConstraints(minHeight: mq.size.height * (widget.asDialog ? 0.7 : 0.9)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 header,
                 const SizedBox(height: 16),
 
-                // Benefits – compact, scannable
-                const _SectionTitle('Why upgrade'),
-                const SizedBox(height: 10),
-                const _BenefitTile(
-                  icon: Icons.all_inclusive,
-                  title: 'Unlimited everything',
-                  subtitle: 'No caps on recipes, batches, or inventory.',
-                ),
-                const _BenefitTile(
-                  icon: Icons.science_outlined,
-                  title: 'Pro tools unlocked',
-                  subtitle: 'Gravity/ABV, pH & acid, SO₂, strip readers—always available.',
-                ),
-                const _BenefitTile(
-                  icon: Icons.cloud_sync_outlined,
-                  title: 'Sync & export',
-                  subtitle: 'Cross-device sync and full data export at any time.',
-                ),
-                const SizedBox(height: 14),
-                const _Divider(),
-                const SizedBox(height: 14),
+                // Dynamic status + switcher
+                _CurrentPlanNotice(onUpgradeTap: () => _onUpgradeTap(context, _scrollToPlans)),
 
-                // Secondary bullets (denser)
-                const _SectionTitle('Included with Premium'),
-                const SizedBox(height: 10),
-                const _FeatureBullet(text: 'Unlimited recipes, batches, inventory, and archives'),
-                const _FeatureBullet(text: 'No soft-lock interruptions'),
-                const _FeatureBullet(text: 'Directly support development'),
+                const SizedBox(height: 12),
+
+                // Why upgrade (generic)
+                const Center(
+                  child: _SectionTitle('Why upgrade?'),
+                ),
+                const SizedBox(height: 12),
+                const _BenefitsGrid(),
                 const SizedBox(height: 18),
 
-                // Plans – responsive, swipe on narrow
-                const _PlansSection(),
+
+                // Plans
+                _PlansSection(key: _plansKey),
+
                 SizedBox(height: isShort ? 8 : 16),
 
+                // Legal
                 const _LegalFooter(),
                 const SizedBox(height: 12),
               ],
@@ -88,9 +101,9 @@ class PaywallPage extends StatelessWidget {
       ),
     );
 
-    final bottom = asDialog ? const _BottomActionsCompact() : const _BottomActionsBar();
+    final bottom = widget.asDialog ? const _BottomActionsCompact() : const _BottomActionsBar();
 
-    if (asDialog) {
+    if (widget.asDialog) {
       return Material(
         color: cs.surface,
         child: Column(
@@ -104,7 +117,7 @@ class PaywallPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Go Premium'),
+        title: const Text('Upgrade options'),
         scrolledUnderElevation: 0,
       ),
       body: body,
@@ -114,7 +127,529 @@ class PaywallPage extends StatelessWidget {
 }
 
 /* ============================
-    HERO / HEADER (mobile-first)
+   Plan comparison (vertical)
+   ============================ */
+
+enum _Avail { yes, no, limited }
+
+/// Row model for the table
+class _RowSpec {
+  const _RowSpec(
+    this.title, {
+    required this.free,
+    required this.pro,
+    required this.premium,
+    this.tooltip,
+    this.freeSymbol,
+    this.proSymbol,
+    this.premiumSymbol,
+    this.freeLabelOverride,
+    this.proLabelOverride,
+    this.premiumLabelOverride,
+  });
+
+  final String title;
+  final _Avail free;
+  final _Avail pro;
+  final _Avail premium;
+  final String? tooltip;
+
+  // Optional tiny symbols per cell (e.g., "1×", "↻", "—")
+  final String? freeSymbol;
+  final String? proSymbol;
+  final String? premiumSymbol;
+
+  // Optional full label overrides per cell (e.g., "One-time", "Subscription")
+  final String? freeLabelOverride;
+  final String? proLabelOverride;
+  final String? premiumLabelOverride;
+}
+
+/// The little “Included / Not included / Limited” pill
+class _AvailMark extends StatelessWidget {
+  const _AvailMark({
+    required this.value,
+    this.tooltip,
+    this.symbol, // optional per-cell symbol like "1×" or "↻"
+    this.labelOverride, // optional full text label (overrides icon & symbol)
+  });
+
+  final _Avail value;
+  final String? tooltip;
+  final String? symbol;
+  final String? labelOverride;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    
+    // Use Material 3 container roles so contrast is correct in dark & light.
+    // - YES      → primaryContainer / onPrimaryContainer
+    // - NO       → errorContainer / onErrorContainer
+    // - LIMITED  → secondaryContainer / onSecondaryContainer (softer than orange)
+    late Color bg;
+    late Color fg;
+    late IconData icon;
+    switch (value) {
+      case _Avail.yes:
+        bg = cs.primaryContainer;
+        fg = cs.onPrimaryContainer;
+        icon = Icons.check_rounded;
+        break;
+      case _Avail.no:
+        bg = cs.errorContainer;
+        fg = cs.onErrorContainer;
+        icon = Icons.close_rounded;
+        break;
+      case _Avail.limited:
+        bg = cs.secondaryContainer;
+        fg = cs.onSecondaryContainer;
+        icon = Icons.remove_rounded;
+        break;
+    }
+
+    // Shape
+    final BorderRadius radius = switch (value) {
+      _Avail.yes => BorderRadius.circular(999),
+      _Avail.no => BorderRadius.circular(8),
+      _Avail.limited => BorderRadius.circular(999),
+    };
+
+    // Symbol logic (unchanged)
+    const String limitedAutoSymbol = '≈';
+    final bool hasLabel = (labelOverride != null && labelOverride!.trim().isNotEmpty);
+    final String? effectiveSymbol = (symbol != null && symbol!.trim().isNotEmpty)
+        ? symbol
+        : (value == _Avail.limited && !hasLabel ? limitedAutoSymbol : null);
+
+    // Build UI
+    Widget pillContent;
+    if (hasLabel) {
+      pillContent = Container(
+        constraints: const BoxConstraints(minHeight: 28, maxWidth: 96),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: radius,
+          border: Border.all(color: cs.outlineVariant.withOpacity(.5)),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            labelOverride!.trim(),
+            maxLines: 1,
+            softWrap: false,
+            textAlign: TextAlign.center,
+            // Use the FG we computed so it’s legible on bg in dark & light
+            style: theme.textTheme.labelMedium!.copyWith(
+              height: 1.1,
+              fontWeight: FontWeight.w800,
+              color: fg,
+            ),
+          ),
+        ),
+      );
+    } else {
+      pillContent = Container(
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: radius,
+          border: Border.all(color: cs.outlineVariant.withOpacity(.5)),
+        ),
+        child: (effectiveSymbol != null)
+            ? Text(
+                effectiveSymbol,
+                style: theme.textTheme.labelMedium!.copyWith(
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                  color: fg, // make the symbol readable on both themes
+                ),
+              )
+            : Icon(icon, size: 18, color: fg),
+      );
+    }
+
+    final semanticsLabel = hasLabel
+        ? labelOverride!.trim()
+        : (effectiveSymbol ??
+            (value == _Avail.yes ? 'Included' : value == _Avail.no ? 'Not included' : 'Limited'));
+
+    final result = Semantics(label: semanticsLabel, child: pillContent);
+
+    if (tooltip != null && tooltip!.isNotEmpty) {
+      return Tooltip(
+        message: tooltip!,
+        waitDuration: const Duration(milliseconds: 250),
+        child: result,
+      );
+    }
+    return result;
+  }
+}
+
+/// Legend chips under the table
+class _Legend extends StatelessWidget {
+  const _Legend();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    Widget chip(_Avail value, String label, {String? symbol}) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          // neutral surface to avoid color-on-color clashes in dark mode
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: _AvailMark(
+                value: value,
+                symbol: symbol, // keep the explicit symbols in the legend
+              ),
+            ),
+            Text(label, style: TextStyle(color: cs.onSurface)),
+          ],
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: [
+        chip(_Avail.yes, 'Included', symbol: _kYesSymbol),
+        chip(_Avail.no, 'Not included', symbol: _kNoSymbol),
+        chip(_Avail.limited, 'Limited*', symbol: _kLimitedSymbol),
+        const Padding(
+          padding: EdgeInsets.only(left: 4),
+          child: Text(
+            '* Free is limited to 3 active batches, 5 recipes, 12 inventory items, and a limited toolset.',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+
+const String _kYesSymbol = '✓'; // Included
+const String _kNoSymbol = '✕'; // Not included
+const String _kLimitedSymbol = '≈'; // Limited / partial
+
+/// Shared spacing used by header and rows so columns always line up
+const double _kColGap = 10.0;
+/// Breakpoint where we switch to vertical cards (tweak to taste)
+const double _kStackBp = 380.0;
+
+class _BenefitsGrid extends StatelessWidget {
+  const _BenefitsGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    final benefits = [
+      (icon: Icons.all_inclusive_rounded, title: 'Unlimited recipes, batches & inventory'),
+      (icon: Icons.tune_rounded, title: 'All Pro-Tools enabled'),
+      (icon: Icons.backup_rounded, title: 'Cloud sync & backup'),
+      (icon: Icons.devices_rounded, title: 'Cross-device access & streaming'),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Show as a grid on wide screens, a column on narrow ones
+        final isNarrow = constraints.maxWidth < 600;
+
+        return isNarrow
+            ? Column(
+                children: [
+                  for (final b in benefits)
+                    _BenefitTile(icon: b.icon, title: b.title),
+                ],
+              )
+            : GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 3, // Adjust for tile height
+                ),
+                itemCount: benefits.length,
+                itemBuilder: (context, index) {
+                  final b = benefits[index];
+                  return _BenefitTile(icon: b.icon, title: b.title);
+                },
+              );
+      },
+    );
+  }
+}
+
+class _PlanComparison extends StatelessWidget {
+  const _PlanComparison();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final gate = FeatureGate.instance;
+
+    String currentPlan() {
+      if (gate.isPremium) return 'Premium';
+      if (gate.isProOffline) return 'Pro-Offline';
+      return 'Free';
+    }
+
+    // Compact symbol defaults for common labels (used if you don't set explicit symbols)
+    String? symbolForLabel(String? label) {
+      if (label == null) return null;
+      final l = label.toLowerCase().trim();
+      if (l == 'n/a' || l == 'na') return '—';
+      if (l.contains('one-time')) return '1×';
+      if (l.contains('subscription')) return 'S';
+      return null;
+    }
+
+    final rows = <_RowSpec>[
+      _RowSpec(
+        'Unlimited recipes, batches, inventory, shopping list',
+        free: _Avail.limited,
+        pro: _Avail.yes,
+        premium: _Avail.yes,
+        tooltip:
+            'Free has limit of 3 active batches, 5 recipes, and 12 inventory items. Pro-Offline and Premium remove all caps.',
+      ),
+      _RowSpec(
+        'Pro tools (Gravity adjuster, SO₂, TA, strip reader, etc.)',
+        free: _Avail.limited,
+        pro: _Avail.yes,
+        premium: _Avail.yes,
+        tooltip: 'Free includes only basic tools. Full toolset requires Pro-Offline or Premium.',
+      ),
+      _RowSpec('Local backup & restore', free: _Avail.yes, pro: _Avail.yes, premium: _Avail.yes),
+      _RowSpec('Cloud sync & cross-device access', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
+      _RowSpec('Online backup & restore', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
+      _RowSpec('Live device streaming & cloud exports (iSpindel/Tilt)', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
+      _RowSpec(
+        'Billing type',
+        free: _Avail.limited,
+        pro: _Avail.yes,
+        premium: _Avail.yes,
+        tooltip: 'Pro-Offline is a one-time purchase. Premium is a subscription. Free is limited.',
+        freeLabelOverride: 'Free',
+        proLabelOverride: 'Lifetime',
+        premiumLabelOverride: 'Subscription',
+        freeSymbol: '—',
+        proSymbol: '1×',
+        premiumSymbol: 'S',
+      ),
+    ];
+
+    // Breakpoint: below this we use vertical stacks
+    final bool stack = MediaQuery.of(context).size.width < _kStackBp;
+
+    if (stack) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle('Compare plans'),
+          const SizedBox(height: 10),
+          for (final r in rows) _verticalRow(context, r),
+          const SizedBox(height: 8),
+          const _Legend(),
+        ],
+      );
+    }
+
+    // ==== Horizontal grid version =====
+
+    Widget headCell(String text, {bool highlight = false}) {
+      // Keep “Pro-Offline” unbroken; auto-shrink to fit
+      final label = text.replaceAll('Pro-Offline', 'Pro\u2011Offline');
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          style: theme.textTheme.labelLarge!.copyWith(
+            fontWeight: FontWeight.w800,
+            color: highlight ? cs.primary : null,
+          ),
+        ),
+      );
+    }
+
+    Widget planCell({
+      required bool tight,
+      required _Avail value,
+      required String? tooltip,
+      required String? labelOverride,
+      required String? symbol,
+    }) {
+      final effectiveSymbol = symbol ??
+          symbolForLabel(labelOverride) ??
+          (value == _Avail.yes ? _kYesSymbol : value == _Avail.no ? _kNoSymbol : _kLimitedSymbol);
+
+      final child = _AvailMark(
+        value: value,
+        tooltip: tooltip,
+        symbol: tight ? effectiveSymbol : null,   // symbols on tight screens
+        labelOverride: tight ? null : labelOverride, // labels on wide screens
+      );
+
+      return Align(alignment: Alignment.center, child: tight ? FittedBox(child: child) : child);
+    }
+
+    Widget row(_RowSpec r) {
+      return Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: cs.outlineVariant.withOpacity(.6)),
+        ),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final tight = c.maxWidth < 460; // allow icons on compact widths
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 3, child: Text(r.title, style: theme.textTheme.bodyMedium)),
+                SizedBox(width: _kColGap),
+                Expanded(
+                  flex: 1,
+                  child: planCell(
+                    tight: tight,
+                    value: r.free,
+                    tooltip: r.tooltip,
+                    labelOverride: r.freeLabelOverride,
+                    symbol: r.freeSymbol,
+                  ),
+                ),
+                SizedBox(width: _kColGap),
+                Expanded(
+                  flex: 1,
+                  child: planCell(
+                    tight: tight,
+                    value: r.pro,
+                    tooltip: r.tooltip,
+                    labelOverride: r.proLabelOverride,
+                    symbol: r.proSymbol,
+                  ),
+                ),
+                SizedBox(width: _kColGap),
+                Expanded(
+                  flex: 1,
+                  child: planCell(
+                    tight: tight,
+                    value: r.premium,
+                    tooltip: r.tooltip,
+                    labelOverride: r.premiumLabelOverride,
+                    symbol: r.premiumSymbol,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    final header = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 3, child: headCell('Feature')),
+          SizedBox(width: _kColGap),
+          Expanded(flex: 1, child: headCell('Free',        highlight: currentPlan() == 'Free')),
+          SizedBox(width: _kColGap),
+          Expanded(flex: 1, child: headCell('Pro-Offline', highlight: currentPlan() == 'Pro-Offline')),
+          SizedBox(width: _kColGap),
+          Expanded(flex: 1, child: headCell('Premium',     highlight: currentPlan() == 'Premium')),
+        ],
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle('Compare plans'),
+        const SizedBox(height: 10),
+        header,
+        for (final r in rows) row(r),
+        const SizedBox(height: 8),
+        const _Legend(),
+      ],
+    );
+  }
+
+  // ---------- Vertical (stacked) card row ----------
+  Widget _verticalRow(BuildContext context, _RowSpec r) {
+    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    Widget status(String planName, _Avail status, String? label, String? tooltip) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(planName, style: theme.textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          _AvailMark(value: status, labelOverride: label, tooltip: tooltip),
+        ],
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(r.title, style: theme.textTheme.titleSmall!.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              status('Free',        r.free,     r.freeLabelOverride,     r.tooltip),
+              status('Pro\u2011Offline', r.pro,      r.proLabelOverride,      r.tooltip),
+              status('Premium',     r.premium,  r.premiumLabelOverride,  r.tooltip),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ============================
+   Header
    ============================ */
 
 class _HeroHeader extends StatelessWidget {
@@ -127,7 +662,7 @@ class _HeroHeader extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      margin: const EdgeInsets.fromLTRB(8, 12, 8, 0), // Adjusted margin for smaller screens
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -156,11 +691,11 @@ class _HeroHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Unlock FermentaCraft Premium',
+                Text('Choose Premium or Pro-Offline',
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text(
-                  'Designed for phones. Everything you need to ferment smarter.',
+                  'Premium adds cloud/sync. Pro-Offline unlocks everything offline as a one-time purchase.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: cs.onPrimaryContainer.withOpacity(.9),
                   ),
@@ -181,28 +716,234 @@ class _HeroHeader extends StatelessWidget {
 }
 
 /* ============================
-    Plans switcher (inline)
+   Current plan notice + switches
    ============================ */
 
-class _PlansSection extends StatelessWidget {
-  const _PlansSection();
+class _CurrentPlanNotice extends StatefulWidget {
+  const _CurrentPlanNotice({required this.onUpgradeTap});
+  final VoidCallback onUpgradeTap;
 
   @override
+  State<_CurrentPlanNotice> createState() => _CurrentPlanNoticeState();
+}
+
+class _CurrentPlanNoticeState extends State<_CurrentPlanNotice> {
+  @override
   Widget build(BuildContext context) {
-    final bool useStripe = kIsWeb || !RevenueCatService.instance.isSupported;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionTitle('Choose your plan'),
-        const SizedBox(height: 10),
-        if (useStripe) const _StripePlans() else const _RevenueCatPlans(),
+    final gate = FeatureGate.instance;
+
+    Widget banner(
+      IconData icon,
+      String title,
+      String subtitle,
+      List<Widget> actions,
+    ) {
+      final cs = Theme.of(context).colorScheme;
+      final theme = Theme.of(context);
+
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cs.surfaceVariant, // 👈 works in dark & light
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface, // always legible
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodyMedium!.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: actions),
+          ],
+        ),
+      );
+    }
+
+    if (gate.isPremium) {
+      // PREMIUM → allow switching to Pro-Offline
+      return banner(
+        Icons.verified,
+        'You have Premium',
+        'Cloud sync, backup, device streaming enabled. Prefer local-only? Switch to Pro-Offline (you can switch back anytime).',
+        [
+          OutlinedButton.icon( // Changed from FilledButton.tonalIcon to OutlinedButton.icon
+            icon: const Icon(Icons.cloud_off),
+            onPressed: () async {
+              final ok = await _confirm(
+                context,
+                title: 'Switch to Pro-Offline?',
+                msg:
+                    'This disables cloud sync/backup and live device streaming in the app. '
+                    'If you have an active subscription, you must cancel it in the App Store/Google Play or Stripe to stop future charges.\n\nProceed?',
+                confirmLabel: 'Switch',
+              );
+              if (ok != true) return;
+              await FeatureGate.instance.activateProOffline();
+              if (!context.mounted) return;
+              snacks.show(const SnackBar(content: Text('Switched to Pro-Offline on this device.')));
+              setState(() {});
+            },
+            label: const Text('Switch to Pro-Offline'),
+          ),
+        ],
+      );
+    }
+
+    if (gate.isProOffline) {
+      return banner(
+        Icons.cloud_off,
+        'You have Pro-Offline',
+        'All offline premium features are unlocked. Need cloud sync, device streaming, or cross-platform? Upgrade to Premium.',
+        [
+          FilledButton.icon( // Changed from OutlinedButton to FilledButton for primary action
+            icon: const Icon(Icons.cloud_done),
+            onPressed: widget.onUpgradeTap, // 👈 use it here
+            label: const Text('See Premium plans'),
+          ),
+        ],
+      );
+    }
+
+    return banner(
+      Icons.star_border,
+      'Free plan',
+      'Unlock Pro tools and unlimited everything offline with Pro-Offline, or add cloud sync with Premium.',
+      [
+        FilledButton.tonalIcon( // Kept FilledButton.tonalIcon but ensure it uses primary color tonal
+          icon: const Icon(Icons.cloud_off),
+          onPressed: () async {
+            if (RevenueCatService.instance.isSupported) {
+              await _purchaseProOffline(context);
+            } else {
+              try {
+                await StripeBillingService.instance.startCheckout(
+                  priceId: _StripeProOfflineCard._proOfflinePriceId, // keep as a public const or re-declare here
+                  successUrl: Uri.parse('https://fermentacraft.com/checkout-success/'),
+                  cancelUrl: Uri.parse('https://fermentacraft.com/checkout-cancel/'),
+                );
+              } catch (e) {
+                snacks.show(SnackBar(content: Text('Checkout error: $e')));
+              }
+            }
+          },
+          label: const Text('Buy Pro-Offline'),
+        ),
+        FilledButton.tonalIcon( // Changed from FilledButton to OutlinedButton
+          icon: const Icon(Icons.cloud_sync),
+          label: const Text('Upgrade to Premium'),
+          onPressed: widget.onUpgradeTap, // 👈 use it here
+        ),
       ],
     );
   }
 }
 
 /* ============================
-    RevenueCat (Android / iOS)
+   Plans section
+   ============================ */
+
+class _PlansSection extends StatelessWidget {
+  const _PlansSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final gate = FeatureGate.instance;
+    final bool isMobileRC = RevenueCatService.instance.isSupported; // Android/iOS
+    final bool isWebOrDesktop = kIsWeb || !isMobileRC;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle('Choose your plan'),
+        const SizedBox(height: 10),
+
+        // Pro-Offline (only show if not already owned)
+        if (!gate.isProOffline) ...[
+          if (isMobileRC)
+            _ProOfflineCard(
+              onBuyProOffline: () async => _purchaseProOffline(context),
+            )
+          else
+            const _StripeProOfflineCard(),
+          const SizedBox(height: 12),
+        ],
+
+        // Premium subscription
+        if (isWebOrDesktop)
+          const _StripePlans()
+        else
+          const _RevenueCatPlans(),
+        const SizedBox(height: 18),
+        
+        // Detailed comparison table (re-added here)
+        const _PlanComparison(),
+      ],
+    );
+  }
+}
+
+/* ============================
+   Pro-Offline card (local / RC on mobile)
+   ============================ */
+
+// Helper to get the Pro-Offline price from RevenueCat offerings
+Future<String?> _getProOfflinePrice() async {
+  final offerings = await RevenueCatService.instance.getOfferings();
+  final pkg = _pickProOfflinePackage(offerings);
+  return pkg?.storeProduct.priceString;
+}
+
+class _ProOfflineCard extends StatelessWidget {
+  const _ProOfflineCard({
+    required this.onBuyProOffline,
+  });
+
+  final VoidCallback onBuyProOffline;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _getProOfflinePrice(),
+      builder: (context, snap) {
+        final priceText = snap.data ?? '';
+        return _PlanCardsRow(
+          cards: [
+            _PlanOptionCard.compact(
+              title: 'Pro-Offline',
+              price: priceText.isEmpty ? '—' : priceText,
+              badge: 'One-time purchase',
+              note: 'All offline premium features',
+              primary: true,
+              onPressed: onBuyProOffline,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/* ============================
+   RevenueCat (Android / iOS)  Premium
    ============================ */
 
 class _RevenueCatPlans extends StatelessWidget {
@@ -246,7 +987,7 @@ class _RevenueCatPlans extends StatelessWidget {
         return _PlanCardsRow(
           cards: [
             _PlanOptionCard.compact(
-              title: 'Yearly',
+              title: 'Premium Yearly',
               price: annual?.storeProduct.priceString ?? '—',
               badge: 'Best value',
               note: 'Billed yearly',
@@ -258,7 +999,7 @@ class _RevenueCatPlans extends StatelessWidget {
               },
             ),
             _PlanOptionCard.compact(
-              title: 'Monthly',
+              title: 'Premium Monthly',
               price: monthly?.storeProduct.priceString ?? '—',
               note: 'Billed monthly',
               trialText: _buildIntroText(monthly),
@@ -275,13 +1016,13 @@ class _RevenueCatPlans extends StatelessWidget {
 }
 
 /* ============================
-    Stripe (Web / Desktop)
+   Stripe (Web / Desktop) – Premium
    ============================ */
 
 class _StripePlans extends StatelessWidget {
   const _StripePlans();
 
-  // Replace with your real Price IDs
+  // Premium subscription Price IDs (replace with your real ones if needed)
   static const _yearlyPriceId = 'price_1RuoNRE9CXcdIoFtbE2wYOZj';
   static const _monthlyPriceId = 'price_1RuoNTE9CXcdIoFtrLcI8ujI';
 
@@ -302,10 +1043,7 @@ class _StripePlans extends StatelessWidget {
         const SizedBox(height: 10),
 
         FutureBuilder<Map<String, StripePrice>>(
-          future: StripePricingService.instance.fetchPrices([
-            _yearlyPriceId,
-            _monthlyPriceId,
-          ]),
+          future: StripePricingService.instance.fetchPrices([_yearlyPriceId, _monthlyPriceId]),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
               return const _LoadingStrip();
@@ -331,13 +1069,12 @@ class _StripePlans extends StatelessWidget {
             return _PlanCardsRow(
               cards: [
                 _PlanOptionCard.compact(
-                  title: 'Yearly',
+                  title: 'Premium Yearly',
                   price: yearly,
                   badge: 'Best value',
                   note: 'Billed yearly',
                   primary: true,
                   onPressed: () async {
-                    final messenger = snacks;
                     try {
                       await StripeBillingService.instance.startCheckout(
                         priceId: _yearlyPriceId,
@@ -345,16 +1082,15 @@ class _StripePlans extends StatelessWidget {
                         cancelUrl: _cancelUrl,
                       );
                     } catch (e) {
-                      messenger.show(SnackBar(content: Text('Checkout error: $e')));
+                      snacks.show(SnackBar(content: Text('Checkout error: $e')));
                     }
                   },
                 ),
                 _PlanOptionCard.compact(
-                  title: 'Monthly',
+                  title: 'Premium Monthly',
                   price: monthly,
                   note: 'Billed monthly',
                   onPressed: () async {
-                    final messenger = snacks;
                     try {
                       await StripeBillingService.instance.startCheckout(
                         priceId: _monthlyPriceId,
@@ -362,7 +1098,7 @@ class _StripePlans extends StatelessWidget {
                         cancelUrl: _cancelUrl,
                       );
                     } catch (e) {
-                      messenger.show(SnackBar(content: Text('Checkout error: $e')));
+                      snacks.show(SnackBar(content: Text('Checkout error: $e')));
                     }
                   },
                 ),
@@ -376,35 +1112,50 @@ class _StripePlans extends StatelessWidget {
 }
 
 /* ============================
-    Responsive plan row
+   Stripe (Web / Desktop) – Pro-Offline Lifetime
    ============================ */
 
-class _PlanCardsRow extends StatelessWidget {
-  const _PlanCardsRow({required this.cards});
-  final List<Widget> cards;
+class _StripeProOfflineCard extends StatelessWidget {
+  const _StripeProOfflineCard();
+
+  static const _proOfflinePriceId = 'price_1S4n7wE9CXcdIoFtyl8t9cMZ';
+  static final _successUrl = Uri.parse('https://app.fermentacraft.com/checkout/success');
+  static final _cancelUrl = Uri.parse('https://app.fermentacraft.com/checkout/cancel');
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        final narrow = c.maxWidth < 380;
-        if (narrow) {
-          return SizedBox(
-            height: 180,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: cards.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (_, i) => SizedBox(width: c.maxWidth * .88, child: cards[i]),
-            ),
-          );
+    return FutureBuilder<Map<String, StripePrice>>(
+      future: StripePricingService.instance.fetchPrices([_proOfflinePriceId]),
+      builder: (context, snap) {
+        final priceText = (snap.hasData)
+            ? (snap.data![_proOfflinePriceId]?.toMoney() ?? '—')
+            : (snap.connectionState == ConnectionState.waiting ? '—' : '—');
+
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const _LoadingStrip();
         }
-        return Row(
-          children: [
-            Expanded(child: cards[0]),
-            const SizedBox(width: 12),
-            Expanded(child: cards[1]),
+
+        return _PlanCardsRow(
+          cards: [
+            _PlanOptionCard.compact(
+              title: 'Pro-Offline (Lifetime)',
+              price: priceText,
+              badge: 'No subscription',
+              note: 'All offline premium features',
+              primary: true,
+              onPressed: () async {
+                try {
+                  await StripeBillingService.instance.startCheckout(
+                    priceId: _proOfflinePriceId,
+                    successUrl: _successUrl,
+                    cancelUrl: _cancelUrl,
+                    // Server must use mode: 'payment' for one-time
+                  );
+                } catch (e) {
+                  snacks.show(SnackBar(content: Text('Checkout error: $e')));
+                }
+              },
+            ),
           ],
         );
       },
@@ -413,7 +1164,54 @@ class _PlanCardsRow extends StatelessWidget {
 }
 
 /* ============================
-    Bottom actions (sticky)
+   Responsive plan cards row
+   ============================ */
+
+class _PlanCardsRow extends StatelessWidget {
+  const _PlanCardsRow({required this.cards});
+  final List<Widget> cards;
+
+  // Tweak to taste
+  static const double _kStackBreakpoint = 450.0;
+  static const double _kRowGap = 12.0;
+  static const double _kColGap = 12.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final isNarrow = c.maxWidth < _kStackBreakpoint;
+
+        if (isNarrow) {
+          // Vertical stack for small widths (easier to read & tap)
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < cards.length; i++) ...[
+                cards[i],
+                if (i != cards.length - 1) const SizedBox(height: _kColGap),
+              ],
+            ],
+          );
+        }
+
+        // Row for wider widths
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < cards.length; i++) ...[
+              Expanded(child: cards[i]),
+              if (i != cards.length - 1) const SizedBox(width: _kRowGap),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/* ============================
+   Bottom actions
    ============================ */
 
 class _BottomActionsBar extends StatelessWidget {
@@ -462,90 +1260,91 @@ class _RestoreRowContent extends StatelessWidget {
         ? (isAndroid ? 'Refreshing purchases…' : 'Restoring purchases…')
         : 'Checking account…';
 
-
     return LayoutBuilder(
       builder: (context, c) {
         final stack = c.maxWidth < 380;
         final children = <Widget>[
-          _SmallTonalButton(
-            label: restoreLabel,
-           onPressed: () async {
-  try {
-    if (!context.mounted) return;
+          OutlinedButton( // Changed from _SmallTonalButton to OutlinedButton
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              minimumSize: const Size(0, 40),
+            ),
+            onPressed: () async {
+              try {
+                if (!context.mounted) return;
 
-    if (!canUseRevenueCat) {
-      // Desktop: RevenueCat restore doesn’t apply. Tell user what to do.
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Restore is only for App Store/Google Play purchases. '
-            'If you bought via Stripe on web/desktop, use “Refresh status”.',
-          ),
-        ),
-      );
-      return;
-    }
+                // Capture up front
+                final messenger = ScaffoldMessenger.of(context);
+                final nav = Navigator.of(context);
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(inProgress)));
+                if (!canUseRevenueCat) {
+                  messenger.showSnackBar(const SnackBar(
+                    content: Text(
+                      'Restore is only for App Store/Google Play purchases. '
+                      'If you bought via Stripe on web/desktop, use “Refresh status”.',
+                    ),
+                  ));
+                  return;
+                }
 
-    if (isAndroid) {
-      await RevenueCatService.instance.sync();
-    } else {
-      await RevenueCatService.instance.restore();
-    }
+                messenger.showSnackBar(SnackBar(content: Text(inProgress)));
 
-    final refreshed = await RevenueCatService.instance.refreshCustomerInfo();
-    final hasPremium = (refreshed.entitlements
-                .all[RevenueCatService.entitlementId]
-                ?.isActive ??
-            false);
+                if (isAndroid) {
+                  await RevenueCatService.instance.sync();
+                } else {
+                  await RevenueCatService.instance.restore();
+                }
 
-    if (!context.mounted) return;
+                final refreshed = await RevenueCatService.instance.refreshCustomerInfo();
+                final hasPremium = (refreshed.entitlements
+                        .all[RevenueCatService.entitlementId]
+                        ?.isActive ??
+                    false);
 
-    if (hasPremium) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Purchases restored.')));
-      Navigator.of(context).maybePop(true);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No previous purchases found.')),
-      );
-    }
-  } on PlatformException catch (e) {
-    if (!context.mounted) return;
-    final code = PurchasesErrorHelper.getErrorCode(e);
-    if (code == PurchasesErrorCode.purchaseCancelledError) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
-    );
-  } catch (e) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Restore error: $e')));
-  }
+                if (!context.mounted) return;
+
+                if (hasPremium) {
+                  messenger.showSnackBar(const SnackBar(content: Text('Purchases restored.')));
+                  nav.maybePop(true);
+                } else {
+                  messenger.showSnackBar(const SnackBar(content: Text('No previous purchases found.')));
+                }
+              } on PlatformException catch (e) {
+                if (!context.mounted) return;
+                final code = PurchasesErrorHelper.getErrorCode(e);
+                if (code == PurchasesErrorCode.purchaseCancelledError) return;
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Restore failed: ${e.message ?? code.name}')),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(SnackBar(content: Text('Restore error: $e')));
+              }
             },
-          ),  
-_SmallTextButton(
-  label: 'Already upgraded? Refresh status',
-  onPressed: () async {
-    final messenger = snacks;
-    try {
-      final active = await refreshPremiumStatusUnified();
-      messenger.show(SnackBar(
-        content: Text(
-          active
-              ? 'Premium active ✅'
-              : (supportsFirebaseFunctionsClient
-                  ? 'No premium found'
-                  : 'No premium found. If you purchased on Google Play/App Store, open the mobile app and use Restore.'),
-        ),
-      ));
-    } catch (e) {
-      messenger.show(SnackBar(content: Text('Couldn’t refresh: $e')));
-    }
-  },
-),
-
+            child: Text(restoreLabel),
+          ),
+          _SmallTextButton(
+            label: 'Already upgraded? Refresh status',
+            onPressed: () async {
+              final messenger = snacks;
+              try {
+                final active = await refreshPremiumStatusUnified();
+                messenger.show(SnackBar(
+                  content: Text(
+                    active
+                        ? 'Premium active ✅'
+                        : (supportsFirebaseFunctionsClient
+                            ? 'No premium found'
+                            : 'No premium found. If you purchased on Google Play/App Store, open the mobile app and use Restore.'),
+                  ),
+                ));
+              } catch (e) {
+                messenger.show(SnackBar(content: Text('Couldn’t refresh: $e')));
+              }
+            },
+          ),
         ];
 
         if (stack) {
@@ -572,8 +1371,20 @@ _SmallTextButton(
 }
 
 /* ============================
-    Shared helpers / widgets
+   Shared helpers / widgets
    ============================ */
+
+/// After RC purchase, ensure plan flips to Premium even if device was Pro-Offline.
+/// Strategy: clear local Pro-Offline first, then refresh RC customer info.
+/// (FeatureGate will mirror RC and land on Premium.)
+Future<void> _afterSuccessfulPurchaseEnsurePremium(BuildContext context) async {
+  await FeatureGate.instance.deactivateProOffline(); // clears local override if set
+  await RevenueCatService.instance.refreshCustomerInfo();
+  if (FeatureGate.instance.isPremium && context.mounted) {
+    snacks.show(const SnackBar(content: Text('Thanks for upgrading! Premium is active.')));
+    Navigator.of(context).maybePop(true);
+  }
+}
 
 /// Unified refresh:
 /// - Mobile/web/macOS: call callable Function to sync RC, then read Firestore mirror
@@ -584,16 +1395,11 @@ Future<bool> refreshPremiumStatusUnified() async {
 
   if (supportsFirebaseFunctionsClient) {
     try {
-      final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
-          .httpsCallable('syncPremiumFromRC');
+      final fn = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('syncPremiumFromRC');
       await fn.call(<String, dynamic>{});
     } catch (e) {
-      // Don’t crash the user if the callable flaked; we still read the mirror.
       debugPrint('syncPremiumFromRC callable failed: $e');
     }
-  } else {
-    // Windows/Linux: callable isn't available; rely on the Firestore mirror only.
-    debugPrint('Skipping syncPremiumFromRC on this platform (no client impl).');
   }
 
   final snap = await FirebaseFirestore.instance
@@ -603,9 +1409,16 @@ Future<bool> refreshPremiumStatusUnified() async {
       .doc('status')
       .get();
 
-  final active = (snap.data()?['active'] as bool?) ?? false;
-  FeatureGate.instance.setFromBackend(active);
-  return active;
+  final data = snap.data() ?? const {};
+  final premiumActive = (data['active'] as bool?) ?? false;
+  final proOfflineOwned = (data['proOffline'] as bool?) ?? false;
+
+  FeatureGate.instance.applyBackendMirror(
+    premiumActive: premiumActive,
+    proOfflineOwned: proOfflineOwned,
+  );
+
+  return premiumActive;
 }
 
 Package? _findPkg(Offering? current, {required String idHint}) {
@@ -620,6 +1433,118 @@ Package? _findPkg(Offering? current, {required String idHint}) {
   } catch (_) {
     return null;
   }
+}
+
+// Try to find the Pro-Offline package from Offerings.
+Package? _pickProOfflinePackage(Offerings offerings) {
+  bool matches(Package p) {
+    final id = p.identifier.toLowerCase();
+    final spId = p.storeProduct.identifier.toLowerCase();
+    final title = p.storeProduct.title.toLowerCase();
+    return id.contains('pro') ||
+        spId.contains('pro_offline') ||
+        title.contains('pro-offline') ||
+        title.contains('pro offline');
+  }
+
+  final current = offerings.current;
+  if (current != null) {
+    for (final p in current.availablePackages) {
+      if (matches(p)) return p;
+    }
+  }
+
+  final def = offerings.all['default'];
+  if (def != null) {
+    for (final p in def.availablePackages) {
+      if (matches(p)) return p;
+    }
+  }
+
+  for (final entry in offerings.all.values) {
+    for (final p in entry.availablePackages) {
+      if (matches(p)) return p;
+    }
+  }
+
+  return null;
+}
+
+Future<void> _purchaseProOffline(BuildContext context) async {
+  final messenger = ScaffoldMessenger.of(context);
+
+  try {
+    final offerings = await RevenueCatService.instance.getOfferings();
+    final pkg = _pickProOfflinePackage(offerings);
+
+    if (pkg == null) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Pro-Offline product not available right now.')),
+      );
+      return;
+    }
+
+    await RevenueCatService.instance.purchasePackage(pkg);
+    // After purchase, ensure FeatureGate gets the RC entitlement.
+    await FeatureGate.instance.deactivateProOffline(); // clear any local override
+    await RevenueCatService.instance.refreshCustomerInfo();
+
+    if (!context.mounted) return;
+    if (FeatureGate.instance.isProOffline || FeatureGate.instance.isPremium) {
+      messenger.showSnackBar(const SnackBar(content: Text('Pro-Offline unlocked.')));
+      Navigator.of(context).maybePop(true);
+    } else {
+      messenger.showSnackBar(const SnackBar(content: Text('Purchase complete, updating status…')));
+    }
+  } on PlatformException catch (e) {
+    if (!context.mounted) return;
+    final code = PurchasesErrorHelper.getErrorCode(e);
+    if (code == PurchasesErrorCode.purchaseCancelledError) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Purchase failed: ${e.message ?? code.name}')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text('Purchase error: $e')));
+  }
+}
+
+Future<void> _onUpgradeTap(
+  BuildContext context,
+  Future<void> Function() scrollToPlans,
+) async {
+  if (RevenueCatService.instance.isSupported) {
+    try {
+      final offerings = await RevenueCatService.instance.getOfferings();
+
+      // ✅ Guard after the await
+      if (!context.mounted) return;
+
+      final pkgs = offerings.current?.availablePackages ?? const <Package>[];
+
+      Package? annual = _firstByType(pkgs, PackageType.annual);
+      Package? monthly = _firstByType(pkgs, PackageType.monthly);
+      final target = annual ?? monthly ?? (pkgs.isNotEmpty ? pkgs.first : null);
+
+      if (target == null) {
+        if (!context.mounted) return;
+        snacks.show(const SnackBar(content: Text('No Premium products available right now.')));
+        return;
+      }
+
+      if (!context.mounted) return;
+      await _purchase(context, target);
+    } catch (e) {
+      if (!context.mounted) return;
+      snacks.show(SnackBar(content: Text('Couldn’t start purchase: $e')));
+    }
+    return;
+  }
+
+  // Stripe/web/desktop → scroll user to plans
+  await scrollToPlans();
 }
 
 Package? _firstByType(List<Package> list, PackageType type) {
@@ -699,28 +1624,46 @@ String? _formatPeriod(String? iso) {
 }
 
 Future<void> _purchase(BuildContext context, Package pkg) async {
+  final messenger = ScaffoldMessenger.of(context);
   try {
     await RevenueCatService.instance.purchasePackage(pkg);
-    if (FeatureGate.instance.isPremium && context.mounted) {
-      snacks.show(const SnackBar(content: Text('Thanks for upgrading!')));
-      Navigator.of(context).maybePop(true);
-    }
+    if (!context.mounted) return;
+    await _afterSuccessfulPurchaseEnsurePremium(context);
   } on PlatformException catch (e) {
     final code = PurchasesErrorHelper.getErrorCode(e);
     if (code == PurchasesErrorCode.purchaseCancelledError) return;
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Purchase failed: ${e.message ?? code.name}')));
-    }
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('Purchase failed: ${e.message ?? code.name}')),
+    );
   } catch (e) {
-    if (context.mounted) {
-      snacks.show(SnackBar(content: Text('Purchase error: $e')));
-    }
+    if (!context.mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text('Purchase error: $e')));
   }
 }
 
+Future<bool?> _confirm(
+  BuildContext context, {
+  required String title,
+  required String msg,
+  String confirmLabel = 'OK',
+  String cancelLabel = 'Cancel',
+}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Text(msg),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(cancelLabel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(confirmLabel)),
+      ],
+    ),
+  );
+}
+
 /* ============================
-    UI bits (polished for mobile)
+   UI bits
    ============================ */
 
 class _SectionTitle extends StatelessWidget {
@@ -739,18 +1682,17 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _Divider extends StatelessWidget {
   const _Divider();
   @override
-  Widget build(BuildContext context) =>
-      Divider(color: Theme.of(context).colorScheme.outlineVariant);
+  Widget build(BuildContext context) => Divider(color: Theme.of(context).colorScheme.outlineVariant);
 }
 
 class _BenefitTile extends StatelessWidget {
-  const _BenefitTile({required this.icon, required this.title, required this.subtitle});
+  const _BenefitTile({required this.icon, required this.title});
   final IconData icon;
   final String title;
-  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -774,8 +1716,6 @@ class _BenefitTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(subtitle),
               ],
             ),
           ),
@@ -785,25 +1725,6 @@ class _BenefitTile extends StatelessWidget {
   }
 }
 
-class _FeatureBullet extends StatelessWidget {
-  const _FeatureBullet({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.check_circle_outline, size: 20, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text)),
-        ],
-      ),
-    );
-  }
-}
 
 class _PlanOptionCard extends StatelessWidget {
   const _PlanOptionCard({
@@ -815,7 +1736,7 @@ class _PlanOptionCard extends StatelessWidget {
     this.enabled = true,
     this.badge,
     this.compact = false,
-    this.primary = false,
+    this.primary = false, // <- when true, we emphasize (used by Premium Yearly)
   });
 
   factory _PlanOptionCard.compact({
@@ -841,7 +1762,7 @@ class _PlanOptionCard extends StatelessWidget {
       );
 
   final String title;
-  final String price; // e.g. "$29.99"
+  final String price;
   final String? trialText;
   final String? billingNote;
   final String? badge;
@@ -854,19 +1775,85 @@ class _PlanOptionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
-    final bg = primary ? cs.primaryContainer : cs.surface;
-    final stroke = cs.outlineVariant;
+    // --- Emphasis when primary == true (Premium Yearly) ---
+    final bool emphasized = primary;
+
+    // Background: gradient for emphasized, flat for normal
+    final BoxDecoration deco = emphasized
+        ? BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            // Soft two-stop gradient that works in light & dark using container roles
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                cs.primaryContainer,
+                Color.alphaBlend(cs.primary.withOpacity(isDark ? .10 : .06), cs.primaryContainer),
+              ],
+            ),
+            border: Border.all(
+              color: cs.primary, // crisper outline around the hero card
+              width: 1.25,
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 22,
+                spreadRadius: 0,
+                offset: const Offset(0, 10),
+                color: Colors.black.withOpacity(isDark ? 0.40 : 0.10),
+              ),
+            ],
+          )
+        : BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.outlineVariant),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 18,
+                spreadRadius: 0,
+                offset: const Offset(0, 8),
+                color: Colors.black.withOpacity(isDark ? 0.35 : 0.06),
+              ),
+            ],
+          );
+
+    // Text colors adapt to the card bg automatically
+    final Color onBg = emphasized ? cs.onPrimaryContainer : cs.onSurface;
+
     final titleStyle = theme.textTheme.titleMedium!.copyWith(
       fontWeight: FontWeight.w800,
-      color: primary ? cs.onPrimaryContainer : null,
+      color: onBg,
     );
-    final priceStyle = theme.textTheme.titleLarge!.copyWith(
+
+    final priceStyle = theme.textTheme.headlineSmall!.copyWith(
+      // a little larger than titleLarge for emphasis
       fontWeight: FontWeight.w900,
-      color: primary ? cs.onPrimaryContainer : null,
+      color: onBg,
+      height: 1.1,
     );
-    final noteStyle =
-        theme.textTheme.labelSmall!.copyWith(color: primary ? cs.onPrimaryContainer.withOpacity(.9) : cs.onSurfaceVariant);
+
+    final noteStyle = theme.textTheme.labelSmall!.copyWith(
+      color: emphasized ? cs.onPrimaryContainer.withOpacity(.9) : cs.onSurfaceVariant,
+    );
+
+    final badgeTextColor = emphasized ? cs.onPrimaryContainer : cs.primary;
+    final badgeBg = (emphasized ? cs.onPrimaryContainer : cs.primary).withOpacity(isDark ? .18 : .12);
+
+    // Button: strong contrast on emphasized card
+    final ButtonStyle ctaStyle = emphasized
+        ? FilledButton.styleFrom(
+            backgroundColor: cs.primary, // Use primary color for emphasized button
+            foregroundColor: cs.onPrimary,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            minimumSize: const Size.fromHeight(42),
+          )
+        : FilledButton.styleFrom( // Default FilledButton
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            minimumSize: const Size.fromHeight(42),
+          );
 
     return Opacity(
       opacity: enabled ? 1.0 : 0.6,
@@ -874,19 +1861,7 @@ class _PlanOptionCard extends StatelessWidget {
         ignoring: !enabled,
         child: Container(
           padding: EdgeInsets.all(compact ? 12 : 16),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: stroke),
-            boxShadow: [
-              BoxShadow(
-                blurRadius: 18,
-                spreadRadius: 0,
-                offset: const Offset(0, 8),
-                color: Colors.black.withOpacity(0.06),
-              ),
-            ],
-          ),
+          decoration: deco,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -896,45 +1871,53 @@ class _PlanOptionCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: (primary ? cs.onPrimaryContainer : cs.primary).withOpacity(.12),
+                      color: badgeBg,
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: emphasized ? cs.onPrimaryContainer.withOpacity(.24) : cs.primary.withOpacity(.24),
+                      ),
                     ),
                     child: Text(
                       badge!,
                       style: theme.textTheme.labelSmall!.copyWith(
-                        color: primary ? cs.onPrimaryContainer : cs.primary,
+                        color: badgeTextColor,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: .2,
                       ),
                     ),
                   ),
                 ),
               const SizedBox(height: 6),
-              Text(title, style: titleStyle),
+              Text(title, style: titleStyle, textAlign: TextAlign.center),
               if (trialText != null) ...[
                 const SizedBox(height: 2),
                 Text(
                   trialText!,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall!.copyWith(
-                    color: primary ? cs.onPrimaryContainer : cs.primary,
+                    color: emphasized ? cs.onPrimaryContainer : cs.primary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
               const SizedBox(height: 6),
-              Text(price, style: priceStyle),
+              Text(price, style: priceStyle, textAlign: TextAlign.center),
               if (billingNote != null)
-                Text(billingNote!, style: noteStyle),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(billingNote!, style: noteStyle, textAlign: TextAlign.center),
+                ),
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    minimumSize: const Size.fromHeight(42),
-                  ),
+                  style: ctaStyle,
                   onPressed: onPressed,
-                  child: Text('Continue', style: theme.textTheme.labelLarge),
+                  child: Text('Continue', style: theme.textTheme.labelLarge!.copyWith(
+                    // ensure label keeps contrast on both themes
+                    color: emphasized ? cs.onPrimary : null,
+                    fontWeight: FontWeight.w800,
+                  )),
                 ),
               ),
             ],
@@ -945,8 +1928,8 @@ class _PlanOptionCard extends StatelessWidget {
   }
 }
 
-class _SmallTonalButton extends StatelessWidget {
-  const _SmallTonalButton({required this.label, required this.onPressed});
+class TonalButton extends StatelessWidget {
+  const TonalButton({super.key, required this.label, required this.onPressed});
   final String label;
   final VoidCallback onPressed;
 

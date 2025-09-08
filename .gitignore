@@ -13,7 +13,7 @@
 migrate_working_dir/
 # Local secrets (never commit)
 .secrets/
-
+android/app/src/main/java/io/flutter/plugins/
 
 # IntelliJ related
 *.iml

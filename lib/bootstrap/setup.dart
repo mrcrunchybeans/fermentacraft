@@ -115,6 +115,7 @@ Future<void> _openHiveBoxes() async {
     Hive.openBox(Boxes.settings),
     Hive.openBox<ShoppingListItem>(Boxes.shoppingList),
     Hive.openBox(Boxes.syncMeta),
+    Hive.openBox(Boxes.featureGate),
   ]);
 }
 

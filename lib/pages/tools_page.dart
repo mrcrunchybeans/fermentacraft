@@ -9,7 +9,7 @@ import 'gravity_adjuster_page.dart';
 import 'sg_correction_page.dart';
 import 'unit_converter_page.dart';
 import 'package:fermentacraft/services/review_prompter.dart';
-
+import 'package:fermentacraft/pages/co2_carb_page.dart';
 
 
 class ToolsPage extends StatefulWidget {
@@ -37,6 +37,7 @@ class _ToolsPageState extends State<ToolsPage> {
       ToolData("ABV Calculator", Icons.percent, const ABVCalculatorPage()),
       ToolData("SG Correction", Icons.device_thermostat, const SgCorrectionPage()),
       ToolData("SO₂ Estimator", Icons.bubble_chart, const So2CalculatorPage()),
+      ToolData("CO₂ & Carbonation", Icons.bubble_chart, const CO2CarbPage()), // ← NEW
       ToolData("FSU Calculator", Icons.speed, const FSUCalculatorTab()),
       ToolData("Gravity Adjuster", Icons.scale, const GravityAdjustTool()),
       ToolData("Bubble Counter", Icons.timelapse, const BubbleCounterTab()),

@@ -85,8 +85,11 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final box = Hive.box<RecipeModel>(Boxes.recipes);
-      final updated = widget.recipe..lastOpened = DateTime.now();
+      DateTime roundToHour(DateTime t) => DateTime(t.year, t.month, t.day, t.hour);
+
+      final updated = widget.recipe..lastOpened = roundToHour(DateTime.now());
       await box.put(widget.recipeKey, updated);
+
     });
   }
 

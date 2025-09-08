@@ -14,7 +14,7 @@ import '../../utils/data_management.dart';
 import '../../models/settings_model.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
 import 'package:fermentacraft/widgets/devices_selection.dart';
-
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -25,6 +25,160 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   // --- helpers ---------------------------------------------------------------
+Future<bool?> _confirm({
+  required String title,
+  required String message,
+  String confirmLabel = 'OK',
+  String cancelLabel = 'Cancel',
+}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(cancelLabel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(confirmLabel)),
+      ],
+    ),
+  );
+}
+
+Widget _manageSubscriptionCard(FeatureGate fg) {
+  final theme = Theme.of(context);
+  final cs = theme.colorScheme;
+
+  // Change the URL to your customer portal / help page
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              fg.isPremium ? Icons.verified : (fg.isProOffline ? Icons.cloud_off : Icons.star_border),
+              color: cs.primary,
+            ),
+            title: const Text('Subscription & Premium'),
+            subtitle: Text(
+              fg.isPremium
+                  ? 'Premium is active (cloud + sync).'
+                  : (fg.isProOffline
+                      ? 'Pro-Offline is active (all offline premium features).'
+                      : 'Free plan.'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              // Open your paywall to upgrade/downgrade
+              FilledButton.icon(
+                icon: const Icon(Icons.upgrade),
+                label: Text(fg.isPremium ? 'Switch Plan' : 'Upgrade / Switch Plan'),
+                onPressed: () async {
+                  await showPaywall(context);
+                },
+              ),
+
+              // External manage link (App Store / Play / Stripe portal, or FAQ)
+              
+
+              if (fg.isPremium)
+                FilledButton.tonalIcon(
+                  icon: const Icon(Icons.cloud_off),
+                  label: const Text('Switch to Pro-Offline'),
+                  onPressed: () async {
+                    final ok = await _confirm(
+                      title: 'Switch to Pro-Offline?',
+                      message:
+                          'This disables cloud sync/backup and live device streaming in the app. '
+                          'If you have an active subscription, cancel it in your store/Stripe to stop future charges.\n\nProceed?',
+                      confirmLabel: 'Switch',
+                    );
+                    if (ok != true) return;
+                    await FeatureGate.instance.activateProOffline();
+                    if (!mounted) return;
+                    snacks.show(const SnackBar(content: Text('Switched to Pro-Offline on this device.')));
+                    setState(() {});
+                  },
+                ),
+
+                
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _debugPlanCard(FeatureGate fg) {
+  if (!kDebugMode) return const SizedBox.shrink();
+
+  return Card(
+    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(.4),
+    child: Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.bug_report),
+            title: Text('Developer / Debug'),
+            subtitle: Text('Quickly test plan gates on this device.'),
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonal(
+                onPressed: () async {
+                  await FeatureGate.instance.deactivateProOffline();
+                  FeatureGate.instance.setFromBackend(false); // Free
+                  if (!mounted) return;
+                  snacks.show(const SnackBar(content: Text('Plan set to Free (debug).')));
+                  setState(() {});
+                },
+                child: const Text('Set Free'),
+              ),
+              FilledButton.tonal(
+                onPressed: () async {
+                  await FeatureGate.instance.activateProOffline();
+                  if (!mounted) return;
+                  snacks.show(const SnackBar(content: Text('Plan set to Pro-Offline (debug).')));
+                  setState(() {});
+                },
+                child: const Text('Set Pro-Offline'),
+              ),
+              FilledButton.tonal(
+                onPressed: () async {
+                  // Premium: clear Pro-Offline override, then mirror backend/RC as Premium.
+                  await FeatureGate.instance.deactivateProOffline();
+                  FeatureGate.instance.setFromBackend(true); // Pretend backend says Premium
+                  if (!mounted) return;
+                  snacks.show(const SnackBar(content: Text('Plan set to Premium (debug).')));
+                  setState(() {});
+                },
+                child: const Text('Set Premium'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Note: Debug actions affect only this device. For real Premium, purchase via Paywall.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 
   Widget _sectionTitle(String title, BuildContext context) {
     return Padding(
@@ -109,116 +263,107 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // --- cards -----------------------------------------------------------------
 
-  Widget _cloudSyncCard({
-    required FeatureGate fg,
-    required FirestoreSyncService sync,
-    required User? user,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ListTile(
-              contentPadding: const EdgeInsets.all(12.0),
-              leading: const Icon(Icons.person_outline),
-              title: Text(
-                user == null
-                    ? "Signed in as: Not signed in"
-                    : "Signed in as: ${user.email ?? "Signed in"}",
-              ),
-              subtitle: Text(
-                user == null ? "Sign in to enable online sync across devices." : "",
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+Widget _cloudSyncCard({
+  required FeatureGate fg,
+  required FirestoreSyncService sync,
+  required User? user,
+}) {
+  final canToggleSync = fg.allowSync && user != null; // Premium + signed in
+  final switchValue = canToggleSync ? sync.isEnabled : false;
+
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            contentPadding: const EdgeInsets.all(12.0),
+            leading: const Icon(Icons.person_outline),
+            title: Text(
+              user == null
+                  ? "Signed in as: Not signed in"
+                  : "Signed in as: ${user.email ?? "Signed in"}",
             ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text("Enable Sync"),
-              subtitle: const Text(
-                "Sync recipes, batches, inventory, shopping list, tags, and settings",
-              ),
-              value: fg.allowSync ? sync.isEnabled : false, // force OFF if free
-              onChanged: (v) async {
-                if (!fg.allowSync) {
-                  _upsell(context, "Cloud Sync is a Premium feature");
-                  return;
-                }
-                if (v && user == null) {
-                  snacks.show(
-                    const SnackBar(content: Text("Please sign in to enable sync.")),
-                  );
-                  return;
-                }
-
-                final messenger = snacks;
-                // Persist the preference
-                Hive.box(Boxes.settings).put('syncEnabled', v);
-
-                setState(() {
-                  sync.isEnabled = v;
-                });
-
-                if (v) {
-                  await sync.init();      // ensure listeners are wired
-                  await sync.forceSync(); // optional initial merge
-                  if (!mounted) return;
-                  messenger.show(
-                    const SnackBar(content: Text("Sync enabled. Merging changes…")),
-                  );
-                } else {
-                  // If your service exposes a stop(), you can call it here.
-                  messenger.show(
-                    const SnackBar(content: Text("Sync disabled.")),
-                  );
-                }
-              },
+            subtitle: Text(
+              user == null ? "Sign in to enable online sync across devices." : "",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: (fg.allowSync && user != null && sync.isEnabled)
-                      ? () {
-                          snacks.show(
-                            const SnackBar(content: Text('Sync queued…')),
-                          );
-                          sync.forceSync();
+          ),
+          const SizedBox(height: 4),
+
+          // Use computed value + keep handler defensive
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text("Enable Sync"),
+            subtitle: const Text(
+              "Sync recipes, batches, inventory, shopping list, tags, and settings",
+            ),
+            value: switchValue,
+            onChanged: (v) async {
+              // Guardrails (also serve as messages for disabled state)
+              if (!fg.allowSync) {
+                _upsell(context, "Cloud Sync is a Premium feature");
+                return;
+              }
+              if (user == null) {
+                snacks.show(const SnackBar(content: Text("Please sign in to enable sync.")));
+                return;
+              }
+
+              // Persist + apply
+              Hive.box(Boxes.settings).put('syncEnabled', v);
+              setState(() => sync.isEnabled = v);
+
+              if (v) {
+                await sync.init();
+                await sync.forceSync();
+                if (!mounted) return;
+                snacks.show(const SnackBar(content: Text("Sync enabled. Merging changes…")));
+              } else {
+                snacks.show(const SnackBar(content: Text("Sync disabled.")));
+              }
+            },
+          ),
+
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.sync),
+                label: const Text("Sync now"),
+                onPressed: (canToggleSync && sync.isEnabled)
+                    ? () {
+                        snacks.show(const SnackBar(content: Text('Sync queued…')));
+                        sync.forceSync();
+                      }
+                    : () {
+                        if (!fg.allowSync) {
+                          _upsell(context, "Cloud Sync is a Premium feature");
+                        } else if (user == null) {
+                          snacks.show(const SnackBar(content: Text('Please sign in to sync.')));
+                        } else {
+                          snacks.show(const SnackBar(content: Text('Enable Sync first.')));
                         }
-                      : () {
-                          if (!fg.allowSync) {
-                            _upsell(context, "Cloud Sync is a Premium feature");
-                          } else if (user == null) {
-                            snacks.show(
-                              const SnackBar(content: Text('Please sign in to sync.')),
-                            );
-                          } else {
-                            snacks.show(
-                              const SnackBar(content: Text('Enable Sync first.')),
-                            );
-                          }
-                        },
-                  icon: const Icon(Icons.sync),
-                  label: const Text("Sync now"),
-                ),
-                const SizedBox(width: 12),
-                if (user == null)
-                  const Expanded(
-                    child: Text(
-                      "Tip: Sign in to enable syncing.",
-                      textAlign: TextAlign.right,
-                    ),
+                      },
+              ),
+              const SizedBox(width: 12),
+              if (user == null)
+                const Expanded(
+                  child: Text(
+                    "Tip: Sign in to enable syncing.",
+                    textAlign: TextAlign.right,
                   ),
-              ],
-            ),
-          ],
-        ),
+                ),
+            ],
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
+
 
   Widget _unitsCard(SettingsModel settings) {
     return Card(
@@ -428,6 +573,9 @@ class _SettingsPageState extends State<SettingsPage> {
           _sectionTitle("Cloud Sync", context),
           _cloudSyncCard(fg: fg, sync: sync, user: user),
 
+          _sectionTitle("Account & Subscription", context),
+          _manageSubscriptionCard(fg),
+
           _sectionTitle("Devices", context),
           _devicesCard(fg),
 
@@ -442,6 +590,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
           _sectionTitle("Data Management", context),
           _dataManagementCard(fg),
+
+          if (kDebugMode) _sectionTitle("Developer / Debug", context),
+          if (kDebugMode) _debugPlanCard(fg),
 
           _sectionTitle("Danger Zone", context),
           _dangerZoneCard(),
