@@ -1,16 +1,24 @@
 // functions/src/index.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import { setGlobalOptions } from "firebase-functions/v2";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import Stripe from "stripe";
 import type { Request, Response } from "express";
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Global Functions Config
+ * ────────────────────────────────────────────────────────────────────────── */
 setGlobalOptions({ region: "us-central1", timeoutSeconds: 60, memory: "256MiB" });
 
-admin.initializeApp();
+/* ──────────────────────────────────────────────────────────────────────────
+ * Firebase Admin Init
+ * ────────────────────────────────────────────────────────────────────────── */
+if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -20,18 +28,26 @@ const STRIPE_SECRET = defineSecret("STRIPE_SECRET");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const RC_SECRET_KEY = defineSecret("RC_SECRET_KEY");
 
-/** Stripe client (created on demand so hot-reload picks up new secrets). */
+/** Lazily constructed Stripe client (picks up rotated secrets). */
 const stripe = () => new Stripe(STRIPE_SECRET.value(), { apiVersion: "2024-06-20" });
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Constants
  * ────────────────────────────────────────────────────────────────────────── */
-const TRIAL_DAYS = 7;
-const ENTITLEMENT_ID = "premium";
-const USER_DATA_COLLECTIONS = ["tags", "recipes", "batches", "inventory", "shoppingList"] as const;
+const TRIAL_DAYS = 7; // Subscription trial (Premium)
+const ENTITLEMENT_ID = "premium"; // RevenueCat entitlement
+const OFFLINE_PRO_PRICE_ID = "price_1S4n7wE9CXcdIoFtyl8t9cMZ"; // One-time price for Offline-Pro
+
+const USER_DATA_COLLECTIONS = [
+  "tags",
+  "recipes",
+  "batches",
+  "inventory",
+  "shoppingList",
+] as const;
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Small helpers
+ * Helpers
  * ────────────────────────────────────────────────────────────────────────── */
 const allowCors = (res: Response) => {
   res.set("Access-Control-Allow-Origin", "*");
@@ -44,15 +60,17 @@ const assertAuthed = (uid?: string): string => {
   return uid;
 };
 
-const setPremium = async (
-  uid: string,
-  active: boolean,
-  extra: Record<string, unknown> = {}
-) => {
-  const ref = db.collection("users").doc(uid).collection("premium").doc("status");
-  const now = admin.firestore.FieldValue.serverTimestamp();
-  await ref.set({ active, updatedAt: now, ...extra }, { merge: true });
+const serverNow = () => admin.firestore.FieldValue.serverTimestamp();
+
+const setPremiumStatusDoc = async (uid: string, data: Record<string, unknown>) => {
+  await db.doc(`users/${uid}/premium/status`).set(
+    { updatedAt: serverNow(), ...data },
+    { merge: true }
+  );
 };
+
+const setPremium = async (uid: string, active: boolean, extra: Record<string, unknown> = {}) =>
+  setPremiumStatusDoc(uid, { active, ...extra });
 
 function toProductSummary(
   prod: string | Stripe.Product | Stripe.DeletedProduct
@@ -73,10 +91,21 @@ function normalizeEmail(email: string): string {
   return `${local}@${domain}`;
 }
 
+/** Verify Firebase ID token from `Authorization: Bearer <token>` header. */
+async function verifyFirebaseToken(authorization?: string): Promise<string> {
+  if (!authorization?.startsWith("Bearer ")) {
+    throw new Error("Missing or invalid Authorization header");
+  }
+  const idToken = authorization.substring("Bearer ".length);
+  const decoded = await admin.auth().verifyIdToken(idToken);
+  return decoded.uid;
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
- * RevenueCat helpers
+ * RevenueCat Helpers
  * ────────────────────────────────────────────────────────────────────────── */
 type RCMethod = "GET" | "POST" | "DELETE";
+
 async function rcFetchV(
   version: "v2" | "v1",
   path: string,
@@ -96,27 +125,23 @@ async function rcFetchV(
   return { r, url };
 }
 
-/**
- * Grant a promotional entitlement using the RevenueCat v1 API.
- */
 async function rcGrantPromo(
   uid: string,
   entitlementId = ENTITLEMENT_ID,
   opts?: { duration?: string; end_time?: string | number | Date; start_time?: string | number | Date }
 ): Promise<void> {
-  const path = `/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(entitlementId)}/promotional`;
-
+  const path = `/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(
+    entitlementId
+  )}/promotional`;
   const toMs = (d: string | number | Date) =>
     Math.floor(typeof d === "number" ? d : new Date(d).getTime());
 
   const body: Record<string, unknown> = {};
-
   if (opts?.end_time) {
     body.end_time_ms = toMs(opts.end_time);
     if (opts.start_time) body.start_time_ms = toMs(opts.start_time);
   } else if (opts?.duration) {
-    // Use RC’s native duration strings (e.g., "weekly", "monthly", "yearly", "lifetime")
-    body.duration = opts.duration;
+    body.duration = opts.duration; // "weekly" | "monthly" | "yearly" | "lifetime"
   }
 
   const { r } = await rcFetchV("v1", path, {
@@ -124,23 +149,20 @@ async function rcGrantPromo(
     body: Object.keys(body).length ? JSON.stringify(body) : undefined,
   });
 
-  if (r.ok || r.status === 409) return; // 409 = already has an overlapping promo
-
+  if (r.ok || r.status === 409) return; // 409 = already granted overlapping promo
   const txt = await r.text().catch(() => "");
   logger.error("RC v1 promo failed", { status: r.status, resp: txt });
   throw new HttpsError("internal", `RevenueCat grant failed: ${r.status} ${txt}`);
 }
 
-
-
 async function rcGetSubscriber(uid: string): Promise<any | null> {
-  const r = await rcFetchV("v1", `/subscribers/${encodeURIComponent(uid)}`);
-  if (r.r.status === 404) return null;
-  if (!r.r.ok) {
-    const text = await r.r.text().catch(() => "");
-    throw new HttpsError("internal", `RevenueCat GET failed: ${r.r.status} ${text}`);
+  const { r } = await rcFetchV("v1", `/subscribers/${encodeURIComponent(uid)}`);
+  if (r.status === 404) return null;
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new HttpsError("internal", `RevenueCat GET failed: ${r.status} ${text}`);
   }
-  return r.r.json();
+  return r.json();
 }
 
 function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boolean {
@@ -148,7 +170,7 @@ function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boole
     const ent = sub?.subscriber?.entitlements?.[entitlementId];
     if (!ent) return false;
     const expires = ent.expires_date;
-    if (expires == null) return true;
+    if (expires == null) return true; // no expiry ⇒ lifetime
     const ts = Date.parse(expires);
     if (Number.isNaN(ts)) return false;
     return ts > Date.now();
@@ -158,41 +180,53 @@ function rcHasActiveEntitlement(sub: any, entitlementId = ENTITLEMENT_ID): boole
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Stripe Functions
+ * Stripe: Checkout (Auto-detect mode by Price)
+ *  - If Price.recurring exists => subscription (Premium)
+ *  - Else => one-time payment (Offline-Pro)
  * ────────────────────────────────────────────────────────────────────────── */
-// ... (All your Stripe and other functions remain unchanged) ...
+type CheckoutPayload = {
+  priceId?: string;
+  successUrl?: string;
+  cancelUrl?: string;
+};
+
+const missingArgs = "Missing priceId/successUrl/cancelUrl";
+
+/** Callable version (from client SDKs). */
 export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) => {
   try {
     const uid = assertAuthed(req.auth?.uid);
-    const { priceId, successUrl, cancelUrl } = (req.data ?? {}) as {
-      priceId?: string; successUrl?: string; cancelUrl?: string;
-    };
+    const { priceId, successUrl, cancelUrl } = (req.data ?? {}) as CheckoutPayload;
     if (!priceId || !successUrl || !cancelUrl) {
-      throw new HttpsError("invalid-argument", "Missing priceId/successUrl/cancelUrl");
+      throw new HttpsError("invalid-argument", missingArgs);
     }
+
     const s = stripe();
-    let price: Stripe.Price;
-    try {
-      price = await s.prices.retrieve(priceId, { expand: ["product"] });
-      if (!price.active) throw new HttpsError("failed-precondition", "Price is inactive");
-    } catch (err: any) {
-      logger.error("Price lookup failed", { priceId, err: err?.message });
-      throw new HttpsError("invalid-argument", `Invalid or mismatched price: ${priceId}`);
-    }
+    const price = await s.prices.retrieve(priceId, { expand: ["product"] });
+    if (!price.active) throw new HttpsError("failed-precondition", "Price is inactive");
+
+    const isSubscription = !!price.recurring;
+
     const session = await s.checkout.sessions.create({
-      mode: "subscription",
+      mode: isSubscription ? "subscription" : "payment",
       line_items: [{ price: price.id, quantity: 1 }],
       success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl,
       client_reference_id: uid,
-      metadata: { uid },
-      payment_method_collection: "always",
-      subscription_data: {
-        metadata: { uid },
-        trial_period_days: TRIAL_DAYS,
-      },
+      metadata: { uid, priceId },
       allow_promotion_codes: true,
+      // ⚠️ Only for subscriptions:
+      ...(isSubscription ? ({ payment_method_collection: "always" as const }) : {}),
+      ...(isSubscription
+        ? {
+            subscription_data: {
+              metadata: { uid },
+              trial_period_days: TRIAL_DAYS,
+            },
+          }
+        : {}),
     });
+
     return { url: session.url };
   } catch (err: any) {
     logger.error("createCheckout error", { message: err?.message, type: err?.type, raw: err });
@@ -201,45 +235,53 @@ export const createCheckout = onCall({ secrets: [STRIPE_SECRET] }, async (req) =
   }
 });
 
+/** HTTP version (with Firebase ID token in Authorization header). */
 export const createCheckoutHttp = onRequest(
   { secrets: [STRIPE_SECRET] },
   async (req: Request, res: Response): Promise<void> => {
     allowCors(res);
     if (req.method === "OPTIONS") return void res.status(204).send("");
+
     try {
       const auth = req.headers.authorization || "";
-      if (!auth.startsWith("Bearer ")) return void res.status(401).json({ error: "Missing Authorization header" });
+      if (!auth.startsWith("Bearer ")) {
+        return void res.status(401).json({ error: "Missing Authorization header" });
+      }
       const idToken = auth.substring(7);
       const decoded = await admin.auth().verifyIdToken(idToken).catch(() => null);
       const uid = assertAuthed(decoded?.uid);
-      const { priceId, successUrl, cancelUrl } = (req.body ?? {}) as {
-        priceId?: string; successUrl?: string; cancelUrl?: string;
-      };
+
+      const { priceId, successUrl, cancelUrl } = (req.body ?? {}) as CheckoutPayload;
       if (!priceId || !successUrl || !cancelUrl) {
-        return void res.status(400).json({ error: "Missing priceId/successUrl/cancelUrl" });
+        return void res.status(400).json({ error: missingArgs });
       }
+
       const s = stripe();
-      try {
-        const p = await s.prices.retrieve(priceId);
-        if (!p.active) return void res.status(412).json({ error: "Price is inactive" });
-      } catch (err: any) {
-        logger.error("Price lookup failed (HTTP)", { priceId, err: err?.message });
-        return void res.status(400).json({ error: `Invalid or mismatched price: ${priceId}` });
-      }
+      const price = await s.prices.retrieve(priceId, { expand: ["product"] });
+      if (!price.active) return void res.status(412).json({ error: "Price is inactive" });
+
+      const isSubscription = !!price.recurring;
+
       const session = await s.checkout.sessions.create({
-        mode: "subscription",
+        mode: isSubscription ? "subscription" : "payment",
         line_items: [{ price: priceId, quantity: 1 }],
         success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: cancelUrl,
         client_reference_id: uid,
-        metadata: { uid },
-        payment_method_collection: "always",
-        subscription_data: {
-          metadata: { uid },
-          trial_period_days: TRIAL_DAYS,
-        },
+        metadata: { uid, priceId },
         allow_promotion_codes: true,
+        // ⚠️ Only for subscriptions:
+        ...(isSubscription ? ({ payment_method_collection: "always" as const }) : {}),
+        ...(isSubscription
+          ? {
+              subscription_data: {
+                metadata: { uid },
+                trial_period_days: TRIAL_DAYS,
+              },
+            }
+          : {}),
       });
+
       res.json({ url: session.url });
     } catch (e: any) {
       logger.error("createCheckoutHttp error", e);
@@ -248,10 +290,57 @@ export const createCheckoutHttp = onRequest(
   }
 );
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Stripe: (Optional) Explicit one-time checkout endpoint
+ * ────────────────────────────────────────────────────────────────────────── */
+export const createOneTimeCheckout = onRequest(
+  { secrets: [STRIPE_SECRET], region: "us-central1" },
+  async (req: Request, res: Response): Promise<void> => {
+    allowCors(res);
+    if (req.method === "OPTIONS") return void res.status(204).send("");
+    try {
+      if (req.method !== "POST") return void res.status(405).send("Method Not Allowed");
+
+      const uid = await verifyFirebaseToken(req.headers.authorization);
+      const { priceId, successUrl, cancelUrl } = (req.body ?? {}) as {
+        priceId?: string;
+        successUrl?: string;
+        cancelUrl?: string;
+      };
+
+      if (!priceId) return void res.status(400).json({ error: "Missing priceId" });
+
+      const s = stripe();
+      const session = await s.checkout.sessions.create({
+        mode: "payment", // one-time
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url:
+          (successUrl ?? "https://fermentacraft.com/checkout-success") +
+          "?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: cancelUrl ?? "https://fermentacraft.com/checkout-cancel",
+        client_reference_id: uid,
+        metadata: { uid, priceId },
+        allow_promotion_codes: true,
+        billing_address_collection: "auto",
+        // ⛔️ Do NOT add payment_method_collection here (one-time payments)
+        // ⛔️ Do NOT add subscription_data here (this is NOT a subscription)
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      logger.error("createOneTimeCheckout error", err);
+      res.status(400).json({ error: err.message || "Unknown error" });
+    }
+  }
+);
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Stripe: Billing Portal (subscriptions)
+ * ────────────────────────────────────────────────────────────────────────── */
 export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (request) => {
   try {
     const uid = assertAuthed(request.auth?.uid);
-    const snap = await db.collection("users").doc(uid).collection("premium").doc("status").get();
+    const snap = await db.doc(`users/${uid}/premium/status`).get();
     const customer = snap.data()?.customer as string | undefined;
     if (!customer) throw new HttpsError("not-found", "No Stripe customer found.");
     const s = stripe();
@@ -267,13 +356,18 @@ export const createBillingPortal = onCall({ secrets: [STRIPE_SECRET] }, async (r
   }
 });
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Stripe: Price fetchers
+ * ────────────────────────────────────────────────────────────────────────── */
 export const getStripePrices = onCall({ secrets: [STRIPE_SECRET] }, async (req) => {
   try {
     assertAuthed(req.auth?.uid);
     const priceIds = (req.data?.priceIds as string[] | undefined)?.filter(Boolean) ?? [];
     if (!priceIds.length) throw new HttpsError("invalid-argument", "priceIds required");
     const s = stripe();
-    const items = await Promise.all(priceIds.map((id) => s.prices.retrieve(id, { expand: ["product"] })));
+    const items = await Promise.all(
+      priceIds.map((id) => s.prices.retrieve(id, { expand: ["product"] }))
+    );
     return {
       prices: items.map((p) => ({
         id: p.id,
@@ -303,10 +397,14 @@ export const getStripePricesHttp = onRequest(
       const idToken = auth.substring(7);
       const decoded = await admin.auth().verifyIdToken(idToken).catch(() => null);
       assertAuthed(decoded?.uid);
+
       const priceIds = (req.body?.priceIds as string[] | undefined)?.filter(Boolean) ?? [];
       if (!priceIds.length) return void res.status(400).json({ error: "priceIds required" });
+
       const s = stripe();
-      const items = await Promise.all(priceIds.map((id) => s.prices.retrieve(id, { expand: ["product"] })));
+      const items = await Promise.all(
+        priceIds.map((id) => s.prices.retrieve(id, { expand: ["product"] }))
+      );
       res.json({
         prices: items.map((p) => ({
           id: p.id,
@@ -325,11 +423,17 @@ export const getStripePricesHttp = onRequest(
   }
 );
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Stripe: Webhook
+ *  - Grants Offline-Pro on one-time payment (mode: "payment")
+ *  - Mirrors subscription status for Premium
+ * ────────────────────────────────────────────────────────────────────────── */
 export const stripeWebhook = onRequest(
   { secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] },
   async (req: Request & { rawBody?: Buffer }, res: Response): Promise<void> => {
     const sig = req.headers["stripe-signature"] as string | undefined;
     let event: Stripe.Event;
+
     try {
       const rawBody = (req as any).rawBody as Buffer;
       const s = stripe();
@@ -339,59 +443,69 @@ export const stripeWebhook = onRequest(
       res.status(400).send(`Webhook Error: ${err?.message || "invalid signature"}`);
       return;
     }
+
     try {
       switch (event.type) {
-       case "checkout.session.completed": {
-  const sess = event.data.object as Stripe.Checkout.Session;
-  const uid = (sess.metadata?.uid as string | undefined) ?? null;
-  if (!uid) break;
+        case "checkout.session.completed": {
+          const s = stripe();
+          const base = event.data.object as Stripe.Checkout.Session;
+          // Expand price to reliably read price id(s)
+          const sess = await s.checkout.sessions.retrieve(base.id, {
+            expand: ["line_items.data.price"],
+          });
 
-  // If you want to scope specifically to your Pro-Offline price:
-  const proOfflinePriceId = "price_1S4n7wE9CXcdIoFtyl8t9cMZ";
+          const uid = (sess.metadata?.uid as string | undefined) ?? null;
+          if (!uid) break;
 
-  if (sess.mode === "payment") {
-    // One-time purchase → Pro-Offline lifetime
-    const line = (sess.line_items?.data?.[0] || undefined) as any;
-    const priceId = (line?.price?.id as string | undefined) ?? (sess.metadata?.priceId as string | undefined);
-
-    // If you don’t expand line_items, you can skip this check and just set proOffline.
-    if (!priceId || priceId === proOfflinePriceId) {
-      await db.doc(`users/${uid}/premium/status`).set({
-        proOffline: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        source: "stripe",
-      }, { merge: true });
-    }
-  } else {
-    // Subscription → Premium
-    await db.doc(`users/${uid}/premium/status`).set({
-      active: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: "stripe",
-    }, { merge: true });
-  }
-  break;
-}
-case "charge.refunded": {
-  const charge = event.data.object as Stripe.Charge;
-  const uid = (charge.metadata?.uid as string | undefined) ?? null;
-  if (!uid) break;
-  await db.doc(`users/${uid}/premium/status`).set({
-    proOffline: false,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    source: "stripe",
-  }, { merge: true });
-  break;
-}
-        case "invoice.payment_succeeded": {
-          const inv = event.data.object as Stripe.Invoice;
-          const uid = (inv as any)?.subscription_details?.metadata?.uid ?? inv.metadata?.uid ?? null;
-          if (uid) {
-            const periodEnd = inv.lines?.data?.[0]?.period?.end ?? (inv as any)?.period_end ?? null;
-            await setPremium(uid, true, { source: "stripe", currentPeriodEnd: periodEnd });
+          if (sess.mode === "payment") {
+            // One-time purchase ⇒ Offline-Pro
+            const linePriceId = sess.line_items?.data?.[0]?.price?.id;
+            if (!linePriceId || linePriceId === OFFLINE_PRO_PRICE_ID) {
+              await setPremiumStatusDoc(uid, {
+                proOffline: true,
+                source: "stripe",
+                lastStripeCheckoutId: sess.id,
+              });
+              logger.info("Offline-Pro granted", { uid, session: sess.id });
+            }
+          } else {
+            // Subscription ⇒ Premium active
+            await setPremium(uid, true, {
+              source: "stripe",
+              lastStripeCheckoutId: sess.id,
+            });
+            logger.info("Premium (subscription) mirrored active", { uid, session: sess.id });
           }
           break;
         }
+
+        case "charge.refunded": {
+          // Optional: revoke Offline-Pro upon refund (business choice)
+          const charge = event.data.object as Stripe.Charge;
+          const uid = (charge.metadata?.uid as string | undefined) ?? null;
+          if (uid) {
+            await setPremiumStatusDoc(uid, { proOffline: false, source: "stripe" });
+            logger.info("Offline-Pro revoked (refund)", { uid, charge: charge.id });
+          }
+          break;
+        }
+
+        case "invoice.payment_succeeded": {
+          // Mirror subscription billing period
+          const inv = event.data.object as Stripe.Invoice;
+          const uid =
+            (inv as any)?.subscription_details?.metadata?.uid ??
+            inv.metadata?.uid ??
+            null;
+          if (uid) {
+            const periodEnd =
+              inv.lines?.data?.[0]?.period?.end ?? (inv as any)?.period_end ?? null;
+            await setPremium(uid, true, { source: "stripe", currentPeriodEnd: periodEnd });
+            logger.info("Premium mirrored via invoice.payment_succeeded", { uid });
+          }
+          break;
+        }
+
         case "customer.subscription.updated": {
           const sub = event.data.object as Stripe.Subscription;
           const uid = sub.metadata?.uid ?? null;
@@ -403,20 +517,26 @@ case "charge.refunded": {
               currentPeriodEnd: sub.current_period_end,
               status: sub.status,
             });
+            logger.info("Premium subscription updated", { uid, status: sub.status });
           }
           break;
         }
+
         case "customer.subscription.deleted": {
           const sub = event.data.object as Stripe.Subscription;
           const uid = sub.metadata?.uid ?? null;
           if (uid) {
             await setPremium(uid, false, { source: "stripe", status: sub.status });
+            logger.info("Premium subscription deleted", { uid });
           }
           break;
         }
+
         default:
+          // no-op
           break;
       }
+
       res.json({ received: true });
     } catch (e) {
       logger.error("Webhook handler error:", e);
@@ -426,21 +546,25 @@ case "charge.refunded": {
 );
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Unified refresh: check RC → allowlist → grant promo → mirror Firestore
+ * Unified refresh: RC → allowlist → promotional grant → Firestore mirror
  * ────────────────────────────────────────────────────────────────────────── */
 export const syncPremiumFromRC = onCall({ secrets: [RC_SECRET_KEY] }, async (req) => {
   const uid = assertAuthed(req.auth?.uid);
   const email = (req.auth?.token?.email as string | undefined)?.trim().toLowerCase();
+
   try {
     const sub = await rcGetSubscriber(uid);
     if (sub && rcHasActiveEntitlement(sub, ENTITLEMENT_ID)) {
       await setPremium(uid, true, { source: "rc" });
       return { ok: true, active: true, source: "rc" };
     }
+
     if (!email) {
       await setPremium(uid, false, { source: "rc" });
       return { ok: true, active: false, source: "rc", reason: "no-email" };
     }
+
+    // Allowlist check (exact + gmail-normalized)
     const exactRef = db.collection("tester_allowlist").doc(email);
     const exactSnap = await exactRef.get();
     const gmailNorm = normalizeEmail(email);
@@ -448,17 +572,18 @@ export const syncPremiumFromRC = onCall({ secrets: [RC_SECRET_KEY] }, async (req
     const normSnap = gmailNorm !== email ? await normRef.get() : null;
     const allowData = exactSnap.exists ? exactSnap.data() : normSnap?.data();
     const isApproved = !!(allowData && (allowData.approved === true || allowData.allowed === true));
+
     if (!isApproved) {
       await setPremium(uid, false, { source: "rc" });
       return { ok: true, active: false, source: "rc", reason: "not-allowlisted", email, gmailNorm };
     }
 
-    // WORKAROUND: Grant a 100-year promotional instead of "forever" to satisfy the API.
+    // Grant long promotional (100y) instead of literal forever
     const expires = new Date();
     expires.setFullYear(expires.getFullYear() + 100);
     await rcGrantPromo(uid, ENTITLEMENT_ID, { end_time: expires });
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = serverNow();
     await db.collection("rc_grants").doc(uid).set(
       { premium: true, at: now, by: "syncPremiumFromRC" },
       { merge: true }
@@ -480,6 +605,7 @@ export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (r
     const uid = assertAuthed(req.auth?.uid);
     const email = (req.auth?.token.email as string | undefined)?.trim().toLowerCase();
     if (!email) throw new HttpsError("failed-precondition", "Email required on account.");
+
     const exactRef = db.collection("tester_allowlist").doc(email);
     const exactSnap = await exactRef.get();
     const gmailNorm = normalizeEmail(email);
@@ -487,20 +613,20 @@ export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (r
     const normSnap = gmailNorm !== email ? await normRef.get() : null;
     const allowData = exactSnap.exists ? exactSnap.data() : normSnap?.data();
     const isApproved = !!(allowData && (allowData.approved === true || allowData.allowed === true));
+
     if (!isApproved) {
       logger.warn("ensureTesterPremium: not allowlisted", { uid, email, gmailNorm });
       return { ok: false, reason: "not-allowlisted", email, gmailNorm };
     }
+
     const grantRef = db.collection("rc_grants").doc(uid);
     const grantSnap = await grantRef.get();
     if (grantSnap.exists && grantSnap.get("premium") === true) {
       await setPremium(uid, true, { source: "rc_promo" });
       return { ok: true, already: true };
     }
-    await grantRef.set(
-      { premium: true, at: admin.firestore.FieldValue.serverTimestamp(), by: "ensureTesterPremium" },
-      { merge: true }
-    );
+
+    await grantRef.set({ premium: true, at: serverNow(), by: "ensureTesterPremium" }, { merge: true });
     await setPremium(uid, true, { source: "rc_promo" });
     logger.info("ensureTesterPremium: granted", { uid, email });
     return { ok: true, granted: true };
@@ -521,14 +647,13 @@ async function sweepUserCollection(
   let deleted = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const snap = await userRef.collection(coll)
-      .where("_meta.deleted", "==", true)
-      .limit(500)
-      .get();
+    const snap = await userRef.collection(coll).where("_meta.deleted", "==", true).limit(500).get();
     if (snap.empty) break;
+
     const batch = db.batch();
     snap.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
+
     deleted += snap.size;
     if (snap.size < 500) break;
   }
@@ -545,25 +670,35 @@ export const purgeSoftDeletes = onSchedule(
   async () => {
     const userRefs = await db.collection("users").listDocuments();
     let totalDeleted = 0;
+
     for (const userRef of userRefs) {
       for (const coll of USER_DATA_COLLECTIONS) {
         try {
           const n = await sweepUserCollection(userRef, coll);
           if (n > 0) {
             logger.info("purgeSoftDeletes: collection purged", {
-              user: userRef.id, collection: coll, deleted: n,
+              user: userRef.id,
+              collection: coll,
+              deleted: n,
             });
             totalDeleted += n;
           }
         } catch (err: any) {
           logger.error("purgeSoftDeletes: sweep error", {
-            user: userRef.id, collection: coll, message: err?.message,
+            user: userRef.id,
+            collection: coll,
+            message: err?.message,
           });
         }
       }
     }
+
     logger.info("purgeSoftDeletes complete", { totalDeleted, usersScanned: userRefs.length });
   }
 );
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Other function exports (keep your existing ingest endpoints)
+ * ────────────────────────────────────────────────────────────────────────── */
 export { ingestDevice } from "./ingestDevice";
 export { ingest } from "./ingest";

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'pages/login_page.dart';
 import 'app_shell.dart';
+import 'services/local_mode_service.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -11,11 +12,12 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        final isLocal = LocalModeService.instance.isLocalOnly;
+        if (snapshot.connectionState == ConnectionState.waiting && !isLocal) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        if (snapshot.hasData) {
+        if (snapshot.hasData || isLocal) {
           return const AppShell(); // ✅ use the full app shell, not just a page
         }
 

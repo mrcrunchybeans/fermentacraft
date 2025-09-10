@@ -10,7 +10,7 @@ val keystoreProps = Properties().apply {
 
 /** Read version from local.properties (pubspec.yaml's `version: x.y.z+NN`) */
 val flutterVersionCode: Int =
-    (project.findProperty("flutterVersionCode") as String?)?.toInt() ?: 46
+    (project.findProperty("flutterVersionCode") as String?)?.toInt() ?: 50
 val flutterVersionName: String =
     (project.findProperty("flutterVersionName") as String?) ?: "1.0"
 

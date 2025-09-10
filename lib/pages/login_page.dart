@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-
+import '../../services/local_mode_service.dart';
 import '../../services/auth_service.dart';
 import 'register_page.dart';
+import '/auth_gate.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -345,7 +346,38 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // ── Local-only entry point ────────────────────────────────────────
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.cloud_off),
+                label: const Text('Continue without account'),
+onPressed: isLoading
+    ? null
+    : () async {
+        setState(() => isLoading = true);
+        try {
+          // Cache navigator before the await
+          final navigator = Navigator.of(context);
+
+          await LocalModeService.instance.enableLocalOnly();
+
+          if (!mounted) return; // guard State after the await
+
+          navigator.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthGate()),
+            (route) => false,
+          );
+        } finally {
+          if (mounted) setState(() => isLoading = false);
+        }
+      },
+
+              ),
+            ),
+            const SizedBox(height: 8),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,

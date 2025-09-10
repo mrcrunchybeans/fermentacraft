@@ -4,7 +4,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -837,8 +837,8 @@ class _CurrentPlanNoticeState extends State<_CurrentPlanNotice> {
               try {
                 await StripeBillingService.instance.startCheckout(
                   priceId: _StripeProOfflineCard._proOfflinePriceId, // keep as a public const or re-declare here
-                  successUrl: Uri.parse('https://fermentacraft.com/checkout-success/'),
-                  cancelUrl: Uri.parse('https://fermentacraft.com/checkout-cancel/'),
+                  successUrl: Uri.parse('https://fermentacraft.com/checkout-success'),
+                  cancelUrl: Uri.parse('https://fermentacraft.com/checkout-cancel'),
                 );
               } catch (e) {
                 snacks.show(SnackBar(content: Text('Checkout error: $e')));
@@ -907,6 +907,7 @@ class _PlansSection extends StatelessWidget {
 
 // Helper to get the Pro-Offline price from RevenueCat offerings
 Future<String?> _getProOfflinePrice() async {
+  if (!RevenueCatService.instance.isSupported) return null;
   final offerings = await RevenueCatService.instance.getOfferings();
   final pkg = _pickProOfflinePackage(offerings);
   return pkg?.storeProduct.priceString;
@@ -1027,8 +1028,8 @@ class _StripePlans extends StatelessWidget {
   static const _monthlyPriceId = 'price_1RuoNTE9CXcdIoFtrLcI8ujI';
 
   // Where Stripe redirects after success/cancel (must be HTTPS & yours)
-  static final _successUrl = Uri.parse('https://app.fermentacraft.com/checkout/success');
-  static final _cancelUrl = Uri.parse('https://app.fermentacraft.com/checkout/cancel');
+  static final _successUrl = Uri.parse('https://fermentacraft.com/checkout-success');
+  static final _cancelUrl = Uri.parse('https://fermentacraft.com/checkout-cancel');
 
   @override
   Widget build(BuildContext context) {
@@ -1119,8 +1120,8 @@ class _StripeProOfflineCard extends StatelessWidget {
   const _StripeProOfflineCard();
 
   static const _proOfflinePriceId = 'price_1S4n7wE9CXcdIoFtyl8t9cMZ';
-  static final _successUrl = Uri.parse('https://app.fermentacraft.com/checkout/success');
-  static final _cancelUrl = Uri.parse('https://app.fermentacraft.com/checkout/cancel');
+  static final _successUrl = Uri.parse('https://fermentacraft.com/checkout-success');
+  static final _cancelUrl = Uri.parse('https://fermentacraft.com/checkout-cancel');
 
   @override
   Widget build(BuildContext context) {
@@ -1281,7 +1282,7 @@ class _RestoreRowContent extends StatelessWidget {
                   messenger.showSnackBar(const SnackBar(
                     content: Text(
                       'Restore is only for App Store/Google Play purchases. '
-                      'If you bought via Stripe on web/desktop, use “Refresh status”.',
+                      'If you purchased via Stripe (web/desktop), use “Refresh status”.',
                     ),
                   ));
                   return;
@@ -1736,7 +1737,7 @@ class _PlanOptionCard extends StatelessWidget {
     this.enabled = true,
     this.badge,
     this.compact = false,
-    this.primary = false, // <- when true, we emphasize (used by Premium Yearly)
+    this.primary = false,
   });
 
   factory _PlanOptionCard.compact({
@@ -1771,20 +1772,39 @@ class _PlanOptionCard extends StatelessWidget {
   final bool compact;
   final bool primary;
 
+  // --- Helpers ---------------------------------------------------------------
+
+  // Simple luminance delta check; higher means more contrast.
+  static double _contrastDelta(Color a, Color b) =>
+      (a.computeLuminance() - b.computeLuminance()).abs();
+
+  // Pick the first (bg, fg) pair that contrasts well with the given surface.
+  static (Color bg, Color fg) _pickHighContrastAgainst(
+    Color surface, {
+    required List<(Color bg, Color fg)> candidates,
+    double minDelta = 0.28, // tweak threshold to taste
+  }) {
+    for (final pair in candidates) {
+      if (_contrastDelta(pair.$1, surface) >= minDelta) return pair;
+    }
+    // Fallback: black/white based on surface brightness.
+    final bool lightSurface = ThemeData.estimateBrightnessForColor(surface) == Brightness.light;
+    return (lightSurface ? const Color(0xFF111111) : const Color(0xFFFFFFFF),
+            lightSurface ? const Color(0xFFFFFFFF) : const Color(0xFF000000));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    // --- Emphasis when primary == true (Premium Yearly) ---
     final bool emphasized = primary;
 
-    // Background: gradient for emphasized, flat for normal
+    // Card background
     final BoxDecoration deco = emphasized
         ? BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            // Soft two-stop gradient that works in light & dark using container roles
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -1793,14 +1813,10 @@ class _PlanOptionCard extends StatelessWidget {
                 Color.alphaBlend(cs.primary.withOpacity(isDark ? .10 : .06), cs.primaryContainer),
               ],
             ),
-            border: Border.all(
-              color: cs.primary, // crisper outline around the hero card
-              width: 1.25,
-            ),
+            border: Border.all(color: cs.primary, width: 1.25),
             boxShadow: [
               BoxShadow(
                 blurRadius: 22,
-                spreadRadius: 0,
                 offset: const Offset(0, 10),
                 color: Colors.black.withOpacity(isDark ? 0.40 : 0.10),
               ),
@@ -1813,14 +1829,13 @@ class _PlanOptionCard extends StatelessWidget {
             boxShadow: [
               BoxShadow(
                 blurRadius: 18,
-                spreadRadius: 0,
                 offset: const Offset(0, 8),
                 color: Colors.black.withOpacity(isDark ? 0.35 : 0.06),
               ),
             ],
           );
 
-    // Text colors adapt to the card bg automatically
+    // Text on card
     final Color onBg = emphasized ? cs.onPrimaryContainer : cs.onSurface;
 
     final titleStyle = theme.textTheme.titleMedium!.copyWith(
@@ -1829,7 +1844,6 @@ class _PlanOptionCard extends StatelessWidget {
     );
 
     final priceStyle = theme.textTheme.headlineSmall!.copyWith(
-      // a little larger than titleLarge for emphasis
       fontWeight: FontWeight.w900,
       color: onBg,
       height: 1.1,
@@ -1842,18 +1856,20 @@ class _PlanOptionCard extends StatelessWidget {
     final badgeTextColor = emphasized ? cs.onPrimaryContainer : cs.primary;
     final badgeBg = (emphasized ? cs.onPrimaryContainer : cs.primary).withOpacity(isDark ? .18 : .12);
 
-    // Button: strong contrast on emphasized card
-    final ButtonStyle ctaStyle = emphasized
-        ? FilledButton.styleFrom(
-            backgroundColor: cs.primary, // Use primary color for emphasized button
-            foregroundColor: cs.onPrimary,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            minimumSize: const Size.fromHeight(42),
-          )
-        : FilledButton.styleFrom( // Default FilledButton
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            minimumSize: const Size.fromHeight(42),
-          );
+    // >>> Choose a non-blending CTA color for non-primary cards
+    final Color cardSurface = emphasized ? cs.primaryContainer : cs.surface;
+    final (Color normalCtaBg, Color normalCtaFg) = _pickHighContrastAgainst(
+      cardSurface,
+      candidates: <(Color, Color)>[
+        (cs.secondary, cs.onSecondary),
+        (cs.tertiary, cs.onTertiary),
+        (cs.inverseSurface, cs.onInverseSurface),
+        (cs.primary, cs.onPrimary),
+        (cs.errorContainer, cs.onErrorContainer),
+      ],
+      // If your palette is very close-toned, bump to ~0.34
+      minDelta: 0.30,
+    );
 
     return Opacity(
       opacity: enabled ? 1.0 : 0.6,
@@ -1874,7 +1890,9 @@ class _PlanOptionCard extends StatelessWidget {
                       color: badgeBg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: emphasized ? cs.onPrimaryContainer.withOpacity(.24) : cs.primary.withOpacity(.24),
+                        color: emphasized
+                            ? cs.onPrimaryContainer.withOpacity(.24)
+                            : cs.primary.withOpacity(.24),
                       ),
                     ),
                     child: Text(
@@ -1908,16 +1926,33 @@ class _PlanOptionCard extends StatelessWidget {
                   child: Text(billingNote!, style: noteStyle, textAlign: TextAlign.center),
                 ),
               const SizedBox(height: 10),
+
+              // CTA: never blends with the card
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  style: ctaStyle,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: emphasized ? cs.primary : normalCtaBg,
+                    foregroundColor: emphasized ? cs.onPrimary : normalCtaFg,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    minimumSize: const Size.fromHeight(42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: emphasized ? cs.primary : cs.outlineVariant,
+                        width: emphasized ? 0.0 : 1.0,
+                      ),
+                    ),
+                    elevation: emphasized ? 2 : 1,
+                  ),
                   onPressed: onPressed,
-                  child: Text('Continue', style: theme.textTheme.labelLarge!.copyWith(
-                    // ensure label keeps contrast on both themes
-                    color: emphasized ? cs.onPrimary : null,
-                    fontWeight: FontWeight.w800,
-                  )),
+                  child: Text(
+                    'Continue',
+                    style: theme.textTheme.labelLarge!.copyWith(
+                      color: emphasized ? cs.onPrimary : normalCtaFg,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -1927,6 +1962,7 @@ class _PlanOptionCard extends StatelessWidget {
     );
   }
 }
+
 
 class TonalButton extends StatelessWidget {
   const TonalButton({super.key, required this.label, required this.onPressed});

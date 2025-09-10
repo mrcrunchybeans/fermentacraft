@@ -267,13 +267,15 @@ showPaywall(context);
       body: ValueListenableBuilder<Box<InventoryItem>>(
         valueListenable: inventoryBox.listenable(),
         builder: (context, box, _) {
+          // final activeCount = _activeCount(box);
+          // final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
           final activeCount = _activeCount(box);
-          final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+          final atLimit = !fg.canAddInventoryItem(activeCount);
 
           return Column(
             children: [
-              // Small limit banner for Free users on Active view
-              if (!_showArchived && !fg.isPremium)
+              // Small limit banner for truly Free users on Active view
+              if (!_showArchived && fg.isFree)
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -286,7 +288,10 @@ showPaywall(context);
                     children: [
                       const Icon(Icons.info_outline),
                       const SizedBox(width: 8),
-                      Expanded(
+                      // Expanded(
+                      //   child: Text('Free plan: $activeCount / ${fg.inventoryLimitFree} active items'),
+                      // ),
+                     Expanded(
                         child: Text('Free plan: $activeCount / ${fg.inventoryLimitFree} active items'),
                       ),
                       if (atLimit)
@@ -357,7 +362,8 @@ floatingActionButton: ValueListenableBuilder<Box<InventoryItem>>(
   builder: (context, box, _) {
     final fg = context.watch<FeatureGate>();
     final activeCount = box.values.where((i) => !i.isArchived).length;
-    final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+    // final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+    final atLimit = !fg.canAddInventoryItem(activeCount);
 
     return FloatingActionButton(
       heroTag: 'addInventoryFab',

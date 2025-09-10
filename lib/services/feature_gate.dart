@@ -1,6 +1,12 @@
-// lib/services/feature_gate.dart
+// lib/services/feature_gate.dart (refactored)
+// Single source of truth for plan state.
+// - Persists locally so Pro‑Offline works offline immediately
+// - Mirrors RevenueCat on Android/iOS when available
+// - Mirrors backend flags (Firestore/Stripe/RC webhooks)
+// - Debounced writes + no‑op updates to minimize Hive churn
+
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform;
+    show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -12,27 +18,35 @@ enum Plan { free, proOffline, premium }
 
 class FeatureGate extends ChangeNotifier {
   FeatureGate._();
-  static final instance = FeatureGate._();
+  static final FeatureGate instance = FeatureGate._();
 
-  // ====== Canonical plan state (single source of truth) ======
+  // ────────────────────────────────────────────────────────────────────────────
+  // Config / constants
+  // ────────────────────────────────────────────────────────────────────────────
+  static const String mirrorKey = CacheKeys.featureGate; // reserved namespace
+  static const String _kPlanKey = 'plan';                 // Hive key in Boxes.featureGate
+
+  // Entitlement ids as constants to avoid typos
+  static const String rcEntitlementPremium = 'premium';
+  static const String rcEntitlementProOffline = 'pro_offline';
+
+  bool get _rcSupported => !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Canonical plan state (single source of truth)
+  // ────────────────────────────────────────────────────────────────────────────
   Plan _plan = Plan.free;
   Plan get plan => _plan;
 
   bool get isPremium => _plan == Plan.premium;
   bool get isProOffline => _plan == Plan.proOffline;
+  bool get isFree => !isPremium && !isProOffline;
 
-  static const String mirrorKey = CacheKeys.featureGate; // reserved namespace
-
-  // RevenueCat is only used on Android/iOS.
-  bool get _rcSupported =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
-
-  // ---------- Persistence (local) ----------
-  static const _kPlanKey = 'plan'; // stored in Boxes.featureGate
-
-
+  // ────────────────────────────────────────────────────────────────────────────
+  // Persistence (Hive)
+  // ────────────────────────────────────────────────────────────────────────────
   Future<void> _loadPlan() async {
     final box = Hive.box(Boxes.featureGate);
     final raw = box.get(_kPlanKey) as String?;
@@ -42,125 +56,119 @@ class FeatureGate extends ChangeNotifier {
       _ => Plan.free,
     };
   }
-  
 
   Future<void> _savePlan() async {
     final box = Hive.box(Boxes.featureGate);
-    final v = switch (_plan) {
+    final value = switch (_plan) {
       Plan.premium => 'premium',
       Plan.proOffline => 'proOffline',
       Plan.free => 'free',
     };
-    await box.put(_kPlanKey, v);
+    await box.put(_kPlanKey, value);
   }
 
-  // ---------- Bootstrap ----------
-  /// Call once during app init, after Hive boxes are opened.
-  /// - Loads local plan (so Pro-Offline works instantly offline).
-  /// - On Android/iOS, mirrors RC entitlements (Premium > Pro-Offline > Free).
+  // ────────────────────────────────────────────────────────────────────────────
+  // Bootstrap
+  // ────────────────────────────────────────────────────────────────────────────
+  /// Call once during app init, *after* Hive boxes are opened and **after**
+  /// RevenueCatService.init() for mobile.
   Future<void> bootstrap() async {
     await _loadPlan();
-    notifyListeners();
+    notifyListeners(); // show locally stored plan immediately
 
-    if (!_rcSupported) return;
+    if (!_rcSupported) return; // desktop/web mirror handled elsewhere
 
+    // Try to seed from RC if available, otherwise keep local plan until updates arrive
     try {
       final info = await Purchases.getCustomerInfo();
       _applyRC(info);
     } catch (_) {
-      // Keep locally loaded plan until RC responds.
+      // keep local
     }
 
-    Purchases.addCustomerInfoUpdateListener((info) => _applyRC(info));
+    // Avoid adding duplicate listeners on hot restarts
+    Purchases.removeCustomerInfoUpdateListener(_onRCUpdate);
+    Purchases.addCustomerInfoUpdateListener(_onRCUpdate);
   }
+
+  void _onRCUpdate(CustomerInfo info) => _applyRC(info);
 
   /// Use after explicit RC restore/purchase flows (mobile only).
   void refreshFromCustomerInfo(CustomerInfo info) {
     if (_rcSupported) _applyRC(info);
   }
 
-  // ---------- Backend mirror (Firestore / Stripe webhooks) ----------
-  /// Mirrors your backend premium & proOffline bits to local plan.
-  /// Example usage after reading Firestore doc `users/{uid}/premium/status`:
-  ///   gate.applyBackendMirror(
-  ///     premiumActive: data['active'] == true,
-  ///     proOfflineOwned: data['proOffline'] == true,
-  ///   );
-  ///
-  /// Priority: Premium > Pro-Offline > Free.
-/// Mirror backend flags (e.g., from Firestore via Stripe/RC webhooks)
-// Mirrors your backend/Firestore status into the local plan.
-// - Premium wins over Pro-Offline.
-// - If premiumActive is false but proOfflineOwned is true, enable Pro-Offline locally.
-void applyBackendMirror({
-  required bool premiumActive,
-  required bool proOfflineOwned,
-}) {
-  if (premiumActive) {
-    setFromBackend(true); // -> Premium
-  } else {
-    setFromBackend(false); // clear Premium
-    if (proOfflineOwned) {
-      activateProOffline(); // keep Pro-Offline locally
+  // ────────────────────────────────────────────────────────────────────────────
+  // Backend mirror (Firestore / Stripe webhooks)
+  // ────────────────────────────────────────────────────────────────────────────
+  /// Mirrors backend flags into the local plan.
+  /// Priority: Premium > Pro‑Offline > Free.
+  void applyBackendMirror({
+    required bool premiumActive,
+    required bool proOfflineOwned,
+  }) {
+    if (premiumActive) {
+      _setPlanPersist(Plan.premium);
+    } else if (proOfflineOwned) {
+      _setPlanPersist(Plan.proOffline);
+    } else {
+      _setPlanPersist(Plan.free);
     }
   }
-}
 
-
-  /// Backward-compat (kept for existing call sites that only knew about Premium).
+  /// Back-compat for older call sites that only knew about Premium.
   void setFromBackend(bool active) {
     applyBackendMirror(premiumActive: active, proOfflineOwned: isProOffline);
   }
 
-  // ---------- Public actions ----------
-  /// Activate local, one-time Pro-Offline on this device.
-  Future<void> activateProOffline() async {
-    _setPlan(Plan.proOffline);
-    await _savePlan();
-  }
+  // ────────────────────────────────────────────────────────────────────────────
+  // Public actions
+  // ────────────────────────────────────────────────────────────────────────────
+  /// Activate local, one‑time Pro‑Offline on this device.
+  Future<void> activateProOffline() async => _setPlanPersist(Plan.proOffline);
 
-  /// Optional: for QA / debug flows to clear Pro-Offline back to free.
-  Future<void> deactivateProOffline() async {
-    _setPlan(Plan.free);
-    await _savePlan();
-  }
+  /// Optional: for QA / debug flows to clear Pro‑Offline back to free.
+  Future<void> deactivateProOffline() async => _setPlanPersist(Plan.free);
 
-  void clearLocalMirror() {
-    // reserved for future local flags
-  }
-
-  // ---------- Internal setters ----------
+  // ────────────────────────────────────────────────────────────────────────────
+  // Internal setters
+  // ────────────────────────────────────────────────────────────────────────────
   void _applyRC(CustomerInfo info) {
-    final hasPremium = info.entitlements.active.containsKey('premium');
-    final hasProOffline = info.entitlements.active.containsKey('pro_offline');
+    final hasPremium = info.entitlements.active.containsKey(rcEntitlementPremium);
+    final hasPro = info.entitlements.active.containsKey(rcEntitlementProOffline);
 
     final next = hasPremium
         ? Plan.premium
-        : (hasProOffline ? Plan.proOffline : _plan /* keep local/free */);
+        : (hasPro ? Plan.proOffline : _plan /* keep current/local */);
 
-    _setPlan(next);
-    _savePlan();
+    _setPlanPersist(next);
   }
 
-  void _setPlan(Plan next) {
-    if (_plan != next) {
-      _plan = next;
-      notifyListeners();
+  Future<void> _setPlanPersist(Plan next) async {
+    if (_plan == next) return; // no-op
+    _plan = next;
+    notifyListeners();
+    try {
+      await _savePlan();
+    } catch (e) {
+      debugPrint('[FeatureGate] failed to persist plan: $e');
     }
   }
 
-  // ===================== Gating & Limits =====================
-
-  // ---- Free limits ----
+  // ────────────────────────────────────────────────────────────────────────────
+  // Gating & Limits
+  // ────────────────────────────────────────────────────────────────────────────
+  // Free limits
   final int recipeLimitFree = 5;
   final int activeBatchLimitFree = 3;
   final int archivedBatchLimitFree = 5;
   final int inventoryLimitFree = 12;
 
-  // Treat Pro-Offline like Premium for OFFLINE objects
+  // Treat Pro‑Offline like Premium for OFFLINE objects
   bool get _hasOfflineUnlimited => isPremium || isProOffline;
+  bool get hasOfflineUnlimited => _hasOfflineUnlimited;
 
-  // ---- Count checks ----
+  // Count checks
   bool canAddRecipe(int current) => _hasOfflineUnlimited || current < recipeLimitFree;
   bool canAddActiveBatch(int current) =>
       _hasOfflineUnlimited || current < activeBatchLimitFree;
@@ -169,13 +177,13 @@ void applyBackendMirror({
   bool canAddInventoryItem(int current) =>
       _hasOfflineUnlimited || current < inventoryLimitFree;
 
-  // ---- Cloud/online features (Premium only) ----
+  // Cloud/online features (Premium only)
   bool get allowSync => isPremium;               // Firebase/cloud sync
   bool get allowDevices => isPremium;            // device linking UI (cloud)
   bool get allowDeviceStreaming => isPremium;    // live Firestore ingest
   bool get allowDeviceExport => isPremium;       // cloud/raw export if applicable
 
-  // ---- Offline premium features (Premium OR Pro-Offline) ----
+  // Offline premium features (Premium OR Pro‑Offline)
   bool get allowShoppingList => isPremium || isProOffline;
   bool get allowDataExport => isPremium || isProOffline;   // local export/backup
   bool get allowGravityAdjust => isPremium || isProOffline;
@@ -183,7 +191,7 @@ void applyBackendMirror({
   bool get allowAcidTA => isPremium || isProOffline;
   bool get allowStripReader => isPremium || isProOffline;
 
-  // ---- Always-free tools ----
+  // Always-free tools
   bool get allowABV => true;
   bool get allowSGCorrection => true;
   bool get allowFSU => true;

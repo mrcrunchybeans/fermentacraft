@@ -99,30 +99,33 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
         (i) => i.name.toLowerCase() == _name.toLowerCase(),
       );
 
-      // Gate only on *new* items (merges allowed on Free)
-      if (existingItem == null) {
-        final fg = FeatureGate.instance; // ✅ singleton, not Provider
-        final activeCount = box.values.where((i) => !i.isArchived).length;
-        final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+// Gate only on *new* items (merges allowed on Free)
+if (existingItem == null) {
+  final fg = FeatureGate.instance; // ✅ singleton, not Provider
+  final activeCount = box.values.where((i) => !i.isArchived).length;
+  final atLimit = !fg.canAddInventoryItem(activeCount);
 
-        if (atLimit) {
-          if (!mounted) return;
-          snacks.show(
-            SnackBar(
-              content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-          await showPaywall(context);
-          if (!mounted) return;
+  if (atLimit) {
+    if (!mounted) return;
+    snacks.show(
+      SnackBar(
+        content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to unlock unlimited offline.'),
+        duration: const Duration(seconds: 3),
+      ),
+    );
 
-          // If still not premium after paywall, stop
-          if (!FeatureGate.instance.isPremium) {
-            setState(() => _saving = false);
-            return;
-          }
-        }
-      }
+    await showPaywall(context);
+    if (!mounted) return;
+
+    // 🔁 Re-check using the SAME gate (handles Pro-Offline or Premium)
+    final fgAfter = FeatureGate.instance;
+    final stillAtLimit = !fgAfter.canAddInventoryItem(activeCount);
+    if (stillAtLimit) {
+      setState(() => _saving = false);
+      return;
+    }
+  }
+}
 
       if (existingItem != null) {
         // ---- MERGE PATH ----

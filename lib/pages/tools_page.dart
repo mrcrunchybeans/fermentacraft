@@ -35,8 +35,8 @@ class _ToolsPageState extends State<ToolsPage> {
 
     final tools = [
       ToolData("ABV Calculator", Icons.percent, const ABVCalculatorPage()),
-      ToolData("SG Correction", Icons.device_thermostat, const SgCorrectionPage()),
-      ToolData("SO₂ Estimator", Icons.bubble_chart, const So2CalculatorPage()),
+      ToolData("SG Correction", Icons.thermostat, const SgCorrectionPage()),
+      ToolData("SO₂ Estimator", Icons.science, const So2CalculatorPage()),
       ToolData("CO₂ & Carbonation", Icons.bubble_chart, const CO2CarbPage()), // ← NEW
       ToolData("FSU Calculator", Icons.speed, const FSUCalculatorTab()),
       ToolData("Gravity Adjuster", Icons.scale, const GravityAdjustTool()),

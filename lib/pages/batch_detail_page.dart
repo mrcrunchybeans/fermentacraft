@@ -557,13 +557,11 @@ void _persistFinalYield() {
 Future<void> _onArchiveToggle(BatchModel batch) async {
   final wantArchive = !batch.isArchived;
 
-  if (wantArchive && !FeatureGate.instance.isPremium) {
+  final fg = context.read<FeatureGate>();
+  if (wantArchive) {
     final archived = CountsService.instance.archivedBatchCount();
-    if (archived >= FeatureGate.instance.archivedBatchLimitFree) {
-      if (!mounted) return;
-      snacks.show(
-        SnackBar(content: Text('Free allows ${FeatureGate.instance.archivedBatchLimitFree} archived batches')),
-      );
+    if (!fg.canAddArchivedBatch(archived)) {
+      // show paywall...
       showPaywall(context);
       return;
     }
@@ -2098,15 +2096,11 @@ Widget _buildChecklistItem({
  trailing: (!sufficient && !shouldDeduct)
             ? ElevatedButton(
                 onPressed: () {
-                  if (!FeatureGate.instance.isPremium) {
-                    snacks.show(
-                      const SnackBar(
-                        content: Text('Shopping List is a Premium feature'),
-                      ),
-                    );
-                    showPaywall(context);
-                    return;
-                  }
+  if (!FeatureGate.instance.allowShoppingList) {
+    snacks.show(const SnackBar(content: Text('Shopping List is a Premium/Pro-Offline feature')));
+    showPaywall(context);
+    return;
+  }
                   final shoppingBox = Hive.box<ShoppingListItem>(Boxes.shoppingList);
                   final amountNeeded = amount - inStock;
                   if (amountNeeded > 0) {

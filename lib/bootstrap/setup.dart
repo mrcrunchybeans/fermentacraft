@@ -1,11 +1,13 @@
 // lib/bootstrap/setup.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import '../utils/data_management.dart';
 
+import 'package:hive_flutter/hive_flutter.dart';
 import '../firebase_options.dart';
+
 import '../utils/boxes.dart';
+import '../utils/data_management.dart';
 import 'package:fermentacraft/utils/tag_icons.dart';
 
 // Adapters / models
@@ -23,14 +25,21 @@ import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:fermentacraft/models/shopping_list_item.dart';
 
+bool _didSetup = false;
+
 /// Call this once before runApp().
 Future<void> setupAppServices() async {
+  if (_didSetup) return;
+  _didSetup = true;
+
   // --- Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  try {
-    FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
-  } catch (_) {
-    // Already applied / not supported.
+  if (!kIsWeb) {
+    try {
+      FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+    } catch (_) {
+      // Already applied or not supported on this platform/runtime.
+    }
   }
 
   // --- Hive
@@ -38,8 +47,7 @@ Future<void> setupAppServices() async {
   _registerHiveAdapters();
   await _openHiveBoxes();
 
-
-  // 🚨 IMPORTANT: re-key first so downstream migrations see canonical keys
+  // 🚨 Re-key immediately after boxes are open so downstream migrations see canonical keys
   await DataManagementService.migrateHiveKeysToStableIds();
 
   // --- Migrations / sanitizers (idempotent via settings flags)
@@ -58,13 +66,13 @@ Future<void> setupAppServices() async {
     await settings.put('migrated.tags.v4_fix_keys', true);
   }
 
-  // v4: migrate RecipeModel embedded tags -> HiveList<Tag> (noop if already repointed)
+  // v4: migrate RecipeModel embedded tags -> HiveList<Tag> (mostly no-op after v4a)
   if (settings.get('migrated.tags.v4_refs') != true) {
     await _migrateRecipeEmbeddedToRefs();
     await settings.put('migrated.tags.v4_refs', true);
   }
 
-  // v3: sanitize embedded tags in batches (safe after v2/v4)
+  // v3: sanitize embedded tags in batches + light recheck of recipes
   if (settings.get('migrated.tags.v3') != true) {
     await _sanitizeBatchEmbeddedTags();
     await _lightRecheckRecipes();
@@ -83,6 +91,9 @@ void _registerHiveAdapters() {
     }
   }
 
+  // 👉 Tag FIRST (others embed Tag)
+  reg<Tag>(TagAdapter());
+
   // Adapters with no Tag dependency
   reg<ut.UnitType>(ut.UnitTypeAdapter());
   reg<PurchaseTransaction>(PurchaseTransactionAdapter());
@@ -95,9 +106,6 @@ void _registerHiveAdapters() {
   reg<FermentationStage>(FermentationStageAdapter());
   reg<ShoppingListItem>(ShoppingListItemAdapter());
 
-  // 👉 Tag FIRST (others embed Tag)
-  reg<Tag>(TagAdapter());
-
   // Models that embed Tag (must come AFTER TagAdapter)
   reg<BatchModel>(BatchModelAdapter());
   reg<RecipeModel>(RecipeModelAdapter());
@@ -105,18 +113,34 @@ void _registerHiveAdapters() {
 
 Future<void> _openHiveBoxes() async {
   // Open Tags BEFORE Recipes/Batches (since they embed/refer to Tag)
-  await Hive.openBox<Tag>(Boxes.tags);
+  await _safeOpenBox<Tag>(Boxes.tags, critical: true);
 
   await Future.wait([
-    Hive.openBox<BatchModel>(Boxes.batches),
-    Hive.openBox<InventoryItem>(Boxes.inventory),
-    Hive.openBox<InventoryAction>(Boxes.inventoryActions),
-    Hive.openBox<RecipeModel>(Boxes.recipes),
-    Hive.openBox(Boxes.settings),
-    Hive.openBox<ShoppingListItem>(Boxes.shoppingList),
-    Hive.openBox(Boxes.syncMeta),
-    Hive.openBox(Boxes.featureGate),
+    _safeOpenBox<BatchModel>(Boxes.batches, critical: true),
+    _safeOpenBox<InventoryItem>(Boxes.inventory, critical: true),
+    _safeOpenBox<InventoryAction>(Boxes.inventoryActions, critical: true),
+    _safeOpenBox<RecipeModel>(Boxes.recipes, critical: true),
+    _safeOpenBox(Boxes.settings, critical: true),
+    _safeOpenBox<ShoppingListItem>(Boxes.shoppingList, critical: false),
+    _safeOpenBox(Boxes.syncMeta, critical: false),
+    _safeOpenBox(Boxes.featureGate, critical: false),
   ]);
+}
+
+/// Opens a box; if non-critical and corrupted, attempts recovery by deleting the box from disk.
+/// Critical boxes will throw on failure.
+Future<Box<T>> _safeOpenBox<T>(String name, {required bool critical}) async {
+  try {
+    return await Hive.openBox<T>(name);
+  } catch (e) {
+    if (critical) rethrow;
+    try {
+      await Hive.deleteBoxFromDisk(name);
+      return await Hive.openBox<T>(name);
+    } catch (_) {
+      rethrow;
+    }
+  }
 }
 
 /* ----------------------------------------------------------------------------
@@ -136,8 +160,9 @@ Future<void> _sanitizeTagBox() async {
 Future<void> _sanitizeRecipeEmbeddedTags() async {
   final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
   for (final key in recipeBox.keys.toList()) {
+    RecipeModel? r;
     try {
-      final r = recipeBox.get(key);
+      r = recipeBox.get(key);
       if (r == null) continue;
 
       bool dirty = false;
@@ -151,8 +176,6 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
         }
       }
 
-      
-
       // Normalize any custom fields if your model supports it
       try {
         // ignore: invalid_use_of_visible_for_testing_member
@@ -163,14 +186,13 @@ Future<void> _sanitizeRecipeEmbeddedTags() async {
       if (dirty) await r.save();
     } catch (_) {
       // If unrecoverable, try strip tags; else delete row
-      try {
-        final r = recipeBox.get(key);
-        if (r != null) {
+      if (r != null) {
+        try {
           _setEmbeddedTags(r, const <Tag>[]);
           await r.save();
           continue;
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
       await recipeBox.delete(key);
     }
   }
@@ -192,7 +214,7 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
     final Tag? t = tagBox.get(oldKey);
     if (t == null) continue;
 
-    final nameKey = t.name.trim();                // preferred key
+    final nameKey = t.name.trim(); // preferred key
     final lower = nameKey.toLowerCase();
     final normalizedIcon = kTagIconMap.containsKey(t.iconKey)
         ? t.iconKey
@@ -246,7 +268,7 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
         }
       }
 
-      _setRefs(r, canonList);       // safe no-op if model lacks tagRefs
+      _setRefs(r, canonList);         // safe no-op if model lacks tagRefs
       _setEmbeddedTags(r, canonList); // also try to write embedded list if supported
       await r.save();
     } catch (_) {
@@ -306,7 +328,7 @@ Future<void> _migrateRecipeEmbeddedToRefs() async {
       _setEmbeddedTags(r, canonList); // harmless no-op if fields are final/missing
       await r.save();
     } catch (_) {
-      // ignore and let previous sanitizers handle
+      // ignore; earlier sanitizers will have handled most issues
     }
   }
 }
@@ -363,7 +385,6 @@ Future<void> _lightRecheckRecipes() async {
   }
 }
 
-
 /* ----------------------------------------------------------------------------
  * Small cross-version helpers (never assume fields exist / are mutable)
  * ---------------------------------------------------------------------------*/
@@ -383,12 +404,20 @@ List<Tag> _getEmbeddedTags(RecipeModel r) {
 
 void _setEmbeddedTags(RecipeModel r, List<Tag> tags) {
   // Try to write both; ignore if field is final or absent.
-  try { (r as dynamic).tagsLegacy = tags; } catch (_) {}
-  try { (r as dynamic).tags = tags; } catch (_) {}
+  try {
+    (r as dynamic).tagsLegacy = tags;
+  } catch (_) {}
+  try {
+    (r as dynamic).tags = tags;
+  } catch (_) {}
 }
 
 HiveList<Tag>? _getRefs(RecipeModel r) {
-  try { return (r as dynamic).tagRefs as HiveList<Tag>?; } catch (_) { return null; }
+  try {
+    return (r as dynamic).tagRefs as HiveList<Tag>?;
+  } catch (_) {
+    return null;
+  }
 }
 
 void _setRefs(RecipeModel r, List<Tag> canon) {
@@ -416,6 +445,10 @@ List<Tag> _getBatchEmbeddedTags(BatchModel b) {
 
 void _setBatchEmbeddedTags(BatchModel b, List<Tag> tags) {
   // Try to write both; ignore if field is absent or final on this version.
-  try { (b as dynamic).tagsLegacy = tags; } catch (_) {}
-  try { (b as dynamic).tags = tags; } catch (_) {}
+  try {
+    (b as dynamic).tagsLegacy = tags;
+  } catch (_) {}
+  try {
+    (b as dynamic).tags = tags;
+  } catch (_) {}
 }

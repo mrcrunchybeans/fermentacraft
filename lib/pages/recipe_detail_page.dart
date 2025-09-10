@@ -728,7 +728,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
         final fg = context.watch<FeatureGate>();
         final freeLimit = fg.recipeLimitFree;
         final recipeCount = Hive.box<RecipeModel>(Boxes.recipes).length;
-        final atRecipeLimit = !fg.isPremium && recipeCount >= freeLimit;
+        final atRecipeLimit = !fg.canAddRecipe(recipeCount);
 
         return Scaffold(
           appBar: AppBar(

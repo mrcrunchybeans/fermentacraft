@@ -6,7 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
-
+import 'local_mode_service.dart';
 import 'feature_gate.dart';
 // ⛔️ remove any tester-allowlist logic on RC platforms to avoid extra reads
 // import 'tester_premium_service.dart';
@@ -45,19 +45,23 @@ class RevenueCatService {
     final firstUser = await authStream.first;
 
     _authSub = authStream.skip(1).listen((user) async {
+      final local = LocalModeService.instance.isLocalOnly;
+      final u = local ? null : user; // force anonymous in local mode
       if (_rcSupported) {
-        await _syncRCWithFirebaseUser(user);
+        await _syncRCWithFirebaseUser(u);
       } else {
-        await _syncFirestorePremium(user);
-      }
+        await _syncFirestorePremium(u);
+    }
     });
 
     // Seed once
-    if (_rcSupported) {
-      await _syncRCWithFirebaseUser(firstUser);
-    } else {
-      await _syncFirestorePremium(firstUser);
-    }
+  final firstLocal = LocalModeService.instance.isLocalOnly;
+  final seedUser = firstLocal ? null : firstUser;
+  if (_rcSupported) {
+    await _syncRCWithFirebaseUser(seedUser);
+  } else {
+    await _syncFirestorePremium(seedUser);
+  }
 
     _configured = true;
   }

@@ -10,7 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logger/logger.dart';
-
+import 'package:fermentacraft/services/local_mode_service.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/utils/sanitize.dart';
 import '../utils/boxes.dart';
@@ -68,8 +68,8 @@ class FirestoreSyncService {
     if (uid != null) _resumeForUid(uid);
   }
 
-  bool get _allowSyncByPlan => FeatureGate.instance.allowSync; // Premium only
-  bool get _signedIn => _uid != null;
+bool get _allowSyncByPlan =>
+    FeatureGate.instance.allowSync && !LocalModeService.instance.isLocalOnly;  bool get _signedIn => _uid != null;
   bool get _canSync => _enabled && _signedIn && _allowSyncByPlan;
 
   void _debugWhyCantSync([String where = '']) {
