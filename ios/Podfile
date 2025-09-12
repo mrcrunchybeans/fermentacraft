@@ -3,6 +3,11 @@ platform :ios, '15.0'
 use_frameworks!
 use_modular_headers!
 
+# Dummy function must be defined BEFORE it's used
+def flutter_installation_placeholder
+  # This is a no-op placeholder. Flutter plugins will be linked automatically.
+end
+
 target 'Runner' do
   flutter_installation_placeholder
 
@@ -13,9 +18,4 @@ target 'Runner' do
       end
     end
   end
-end
-
-# Dummy placeholder to avoid undefined method error
-def flutter_installation_placeholder
-  # Flutter handles plugin registration automatically
 end
