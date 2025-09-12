@@ -4,7 +4,7 @@ use_frameworks!
 use_modular_headers!
 
 target 'Runner' do
-  flutter_install_all_ios_pods(File.dirname(File.realpath(__FILE__)))
+  flutter_install_plugins
 
   post_install do |installer|
     installer.pods_project.targets.each do |target|
@@ -15,8 +15,7 @@ target 'Runner' do
   end
 end
 
-def flutter_install_all_ios_pods(flutter_application_path)
-  Dir.glob(File.join(flutter_application_path, '.dart_tool', 'flutter_build', 'ios', '*.xcframework')) do |xcframework|
-    puts "Using local xcframework: #{xcframework}"
-  end
+# Define fallback plugin installer
+def flutter_install_plugins
+  # Do nothing – plugins are auto-managed by Flutter tools
 end
