@@ -1,22 +1,24 @@
 workflows:
-  ios-build:
-    name: iOS Cloud Firestore Fix
+  ios-simulator-build:
+    name: iOS Simulator Build with Firestore
     environment:
       flutter: stable
       xcode: latest
     scripts:
-      - name: Clean build folders
+      - name: Clean all build artifacts
         script: |
           flutter clean
           rm -rf ios/Pods ios/Podfile.lock pubspec.lock .dart_tool
-      - name: Get packages
+      - name: Install pub packages
         script: flutter pub get
-      - name: Force iOS 15 in Xcode project file (Linux-compatible)
+      - name: Force iOS 15 in Xcode project (Linux-safe)
         script: |
           sed -i 's/13.0/15.0/g' ios/Runner.xcodeproj/project.pbxproj || true
-      - name: Install CocoaPods
+      - name: Remove derived data (just in case)
+        script: rm -rf ~/Library/Developer/Xcode/DerivedData
+      - name: Run pod install fresh for simulator
         script: |
           cd ios
-          pod install
-      - name: Build iOS app
+          arch -x86_64 pod install
+      - name: Build iOS simulator binary
         script: flutter build ios --simulator
