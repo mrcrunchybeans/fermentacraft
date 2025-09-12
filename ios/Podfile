@@ -1,15 +1,10 @@
 platform :ios, '15.0'
 
-ENV['COCOAPODS_DISABLE_STATS'] = 'true'
-
-flutter_root = File.expand_path('..', __dir__)
-require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+use_frameworks!
+use_modular_headers!
 
 target 'Runner' do
-  use_frameworks!
-  use_modular_headers!
-
-  install_all_flutter_pods
+  flutter_install_all_ios_pods(File.dirname(File.realpath(__FILE__)))
 
   post_install do |installer|
     installer.pods_project.targets.each do |target|
@@ -17,5 +12,11 @@ target 'Runner' do
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
     end
+  end
+end
+
+def flutter_install_all_ios_pods(flutter_application_path)
+  Dir.glob(File.join(flutter_application_path, '.dart_tool', 'flutter_build', 'ios', '*.xcframework')) do |xcframework|
+    puts "Using local xcframework: #{xcframework}"
   end
 end
