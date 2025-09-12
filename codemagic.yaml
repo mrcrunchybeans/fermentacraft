@@ -8,18 +8,15 @@ workflows:
       - name: Clean build folders
         script: |
           flutter clean
-          rm -rf ios/Pods ios/Podfile.lock pubspec.lock
-      - name: Install dependencies
+          rm -rf ios/Pods ios/Podfile.lock pubspec.lock .dart_tool
+      - name: Get packages
+        script: flutter pub get
+      - name: Force iOS 15 in Xcode project file (Linux-compatible)
         script: |
-          flutter pub get
-      - name: Set iOS deployment target to 15.0
-        script: |
-          sed -i '' 's/13.0/15.0/g' ios/Runner.xcodeproj/project.pbxproj || true
-      - name: Run pod install
+          sed -i 's/13.0/15.0/g' ios/Runner.xcodeproj/project.pbxproj || true
+      - name: Install CocoaPods
         script: |
           cd ios
           pod install
       - name: Build iOS app
-        script: |
-          cd ..
-          flutter build ios --release
+        script: flutter build ios --release
