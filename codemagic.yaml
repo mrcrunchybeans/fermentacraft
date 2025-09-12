@@ -19,4 +19,4 @@ workflows:
           cd ios
           pod install
       - name: Build iOS app
-        script: flutter build ios --release
+        script: flutter build ios --simulator
