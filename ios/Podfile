@@ -4,7 +4,7 @@ use_frameworks!
 use_modular_headers!
 
 target 'Runner' do
-  flutter_install_plugins
+  flutter_installation_placeholder
 
   post_install do |installer|
     installer.pods_project.targets.each do |target|
@@ -15,7 +15,7 @@ target 'Runner' do
   end
 end
 
-# Define fallback plugin installer
-def flutter_install_plugins
-  # Do nothing – plugins are auto-managed by Flutter tools
+# Dummy placeholder to avoid undefined method error
+def flutter_installation_placeholder
+  # Flutter handles plugin registration automatically
 end
