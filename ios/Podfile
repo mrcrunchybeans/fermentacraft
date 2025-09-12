@@ -1,24 +1,15 @@
-# Podfile
-
 platform :ios, '15.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-project 'Runner', {
-  'Debug' => :debug,
-  'Profile' => :release,
-  'Release' => :release,
-}
-
-def flutter_install_all_ios_pods(flutter_application_path)
-  eval(File.read(File.join(flutter_application_path, '.flutter-plugins-dependencies')), binding)
-end
+flutter_root = File.expand_path('..', __dir__)
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  flutter_install_all_ios_pods(File.dirname(File.realpath(__FILE__)))
+  install_all_flutter_pods
 
   post_install do |installer|
     installer.pods_project.targets.each do |target|
