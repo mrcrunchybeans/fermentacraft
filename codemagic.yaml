@@ -1,57 +1,75 @@
 workflows:
-  app-preview-ios-sim:
-    name: App Preview (iOS Simulator)
+  ios-simulator:
+    name: iOS Simulator Build
     max_build_duration: 60
     environment:
-      flutter: stable      # or pin, e.g. 3.27.3
-      xcode: latest        # Codemagic will pick a recent Xcode with iOS 26 runtime
-    triggering:
-      events:
-        - push
-        - pull_request
-      branch_patterns:
-        - pattern: "*"
-          include: true
-          source: true
-    cache:
-      cache_paths:
-        - ~/.pub-cache
-        - ~/.gradle/caches
-        - ios/Pods
+      flutter: stable          # You can pin a version like "3.24.3" for reproducibility
+      xcode: latest
+      cocoapods: default
     scripts:
-      - name: Flutter clean & get
+      - name: Env info
         script: |
+          set -euo pipefail
+          flutter --version
+          dart --version
+          xcodebuild -version
+          pod --version
+      - name: Flutter clean & pub get
+        script: |
+          set -euo pipefail
           flutter clean
           flutter pub get
-      # (Optional) If your Podfile already enforces 15.0, you can delete this step
-      - name: Ensure iOS 15+ deployment target in Xcode project (safety)
+      - name: Pod install for iOS (with repo update)
         script: |
-          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 1[234]\.[0-9]*/IPHONEOS_DEPLOYMENT_TARGET = 15.0/g' ios/Runner.xcodeproj/project.pbxproj || true
-      # Let Flutter drive CocoaPods for simulator
-      - name: Build iOS .app for simulator (Debug)
+          set -euo pipefail
+          cd ios
+          pod install --repo-update
+      - name: Build iOS for Simulator (Debug)
         script: |
+          set -euo pipefail
+          cd ..
           flutter build ios --simulator --debug
     artifacts:
-      # <-- This is the key for App Preview: point to the simulator .app
-      - build/ios/iphonesimulator/Runner.app
+      - build/ios/iphonesimulator/*.app
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - ios/Pods
 
-  # Optional: a PR-only lightweight variant (no push builds)
-  app-preview-ios-sim-pr:
-    name: App Preview (iOS Simulator) — PRs
+  ios-release-nocodesign:
+    name: iOS Release (no codesign)
+    max_build_duration: 60
     environment:
       flutter: stable
       xcode: latest
-    triggering:
-      events:
-        - pull_request
-      cancel_previous_builds: true
+      cocoapods: default
     scripts:
-      - name: Flutter clean & get
+      - name: Env info
         script: |
+          set -euo pipefail
+          flutter --version
+          xcodebuild -version
+          pod --version
+      - name: Flutter clean & pub get
+        script: |
+          set -euo pipefail
           flutter clean
           flutter pub get
-      - name: Build iOS .app for simulator (Debug)
+      - name: Pod install for iOS (with repo update)
         script: |
-          flutter build ios --simulator --debug
+          set -euo pipefail
+          cd ios
+          pod install --repo-update
+      - name: Build iOS (no codesign)
+        script: |
+          set -euo pipefail
+          cd ..
+          flutter build ios --release --no-codesign
     artifacts:
-      - build/ios/iphonesimulator/Runner.app
+      - build/ios/iphoneos/*.app
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - ios/Pods
