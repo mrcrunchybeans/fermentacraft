@@ -1,24 +1,57 @@
 workflows:
-  ios-simulator-build:
-    name: iOS Simulator Build with Firestore
+  app-preview-ios-sim:
+    name: App Preview (iOS Simulator)
+    max_build_duration: 60
+    environment:
+      flutter: stable      # or pin, e.g. 3.27.3
+      xcode: latest        # Codemagic will pick a recent Xcode with iOS 26 runtime
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: "*"
+          include: true
+          source: true
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/.gradle/caches
+        - ios/Pods
+    scripts:
+      - name: Flutter clean & get
+        script: |
+          flutter clean
+          flutter pub get
+      # (Optional) If your Podfile already enforces 15.0, you can delete this step
+      - name: Ensure iOS 15+ deployment target in Xcode project (safety)
+        script: |
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 1[234]\.[0-9]*/IPHONEOS_DEPLOYMENT_TARGET = 15.0/g' ios/Runner.xcodeproj/project.pbxproj || true
+      # Let Flutter drive CocoaPods for simulator
+      - name: Build iOS .app for simulator (Debug)
+        script: |
+          flutter build ios --simulator --debug
+    artifacts:
+      # <-- This is the key for App Preview: point to the simulator .app
+      - build/ios/iphonesimulator/Runner.app
+
+  # Optional: a PR-only lightweight variant (no push builds)
+  app-preview-ios-sim-pr:
+    name: App Preview (iOS Simulator) — PRs
     environment:
       flutter: stable
       xcode: latest
+    triggering:
+      events:
+        - pull_request
+      cancel_previous_builds: true
     scripts:
-      - name: Clean all build artifacts
+      - name: Flutter clean & get
         script: |
           flutter clean
-          rm -rf ios/Pods ios/Podfile.lock pubspec.lock .dart_tool
-      - name: Install pub packages
-        script: flutter pub get
-      - name: Force iOS 15 in Xcode project (Linux-safe)
+          flutter pub get
+      - name: Build iOS .app for simulator (Debug)
         script: |
-          sed -i 's/13.0/15.0/g' ios/Runner.xcodeproj/project.pbxproj || true
-      - name: Remove derived data (just in case)
-        script: rm -rf ~/Library/Developer/Xcode/DerivedData
-      - name: Run pod install fresh for simulator
-        script: |
-          cd ios
-          arch -x86_64 pod install
-      - name: Build iOS simulator binary
-        script: flutter build ios --simulator
+          flutter build ios --simulator --debug
+    artifacts:
+      - build/ios/iphonesimulator/Runner.app
