@@ -49,3 +49,22 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# IDE / OS
+.vs/
+.vscode/
+*.code-workspace
+.DS_Store
+
+# Flutter build + tooling
+build/
+.dart_tool/
+.flutter-plugins*
+.packages
+
+# iOS/Android build junk
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.podspec
+
+# Archives / local zips
+*.zip
