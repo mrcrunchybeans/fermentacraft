@@ -3,13 +3,15 @@ workflows:
     name: iOS Simulator Build
     max_build_duration: 60
     environment:
-      flutter: stable          # You can pin a version like "3.24.3" for reproducibility
+      flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
       - name: Env info
         script: |
           set -euo pipefail
+          pwd
+          ls -la
           flutter --version
           dart --version
           xcodebuild -version
@@ -22,12 +24,11 @@ workflows:
       - name: Pod install for iOS (with repo update)
         script: |
           set -euo pipefail
-          cd ios
-          pod install --repo-update
+          (cd ios && pod install --repo-update)
       - name: Build iOS for Simulator (Debug)
         script: |
           set -euo pipefail
-          cd ..
+          # We are already at the repo root (where pubspec.yaml is)
           flutter build ios --simulator --debug
     artifacts:
       - build/ios/iphonesimulator/*.app
@@ -47,6 +48,8 @@ workflows:
       - name: Env info
         script: |
           set -euo pipefail
+          pwd
+          ls -la
           flutter --version
           xcodebuild -version
           pod --version
@@ -58,16 +61,14 @@ workflows:
       - name: Pod install for iOS (with repo update)
         script: |
           set -euo pipefail
-          cd ios
-          pod install --repo-update
+          (cd ios && pod install --repo-update)
       - name: Build iOS (no codesign)
         script: |
           set -euo pipefail
-          cd ..
+          # Still at repo root
           flutter build ios --release --no-codesign
     artifacts:
       - build/ios/iphoneos/*.app
-      - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
     cache:
       cache_paths:
