@@ -1,21 +1,42 @@
+# ios/Podfile
 platform :ios, '15.0'
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-use_frameworks!
-use_modular_headers!
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
 
-# Dummy function must be defined BEFORE it's used
-def flutter_installation_placeholder
-  # This is a no-op placeholder. Flutter plugins will be linked automatically.
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('Flutter', 'Generated.xcconfig'))
+  raise "#{generated_xcode_build_settings_path} must exist. Run `flutter pub get` first." unless File.exist?(generated_xcode_build_settings_path)
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in: #{generated_xcode_build_settings_path}"
 end
 
-target 'Runner' do
-  flutter_installation_placeholder
+require File.expand_path('packages/flutter_tools/bin/podhelper', flutter_root)
+flutter_ios_podfile_setup
 
-  post_install do |installer|
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |config|
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-      end
+# Use static frameworks (compatible with Firebase/gRPC)
+use_frameworks! :linkage => :static
+# DO NOT use `use_modular_headers!` with gRPC/Firebase.
+
+target 'Runner' do
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |bc|
+      bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      bc.build_settings['HEADER_SEARCH_PATHS']   = '$(inherited)'
+      bc.build_settings['FRAMEWORK_SEARCH_PATHS'] = '$(inherited)'
+      bc.build_settings['LIBRARY_SEARCH_PATHS']    = '$(inherited)'
     end
+    flutter_additional_ios_build_settings(t)
   end
 end
