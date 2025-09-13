@@ -1,6 +1,6 @@
 workflows:
   ios-simulator:
-    name: iOS Simulator Build
+    name: iOS Simulator Build + Run + Record
     max_build_duration: 60
     environment:
       flutter: stable
@@ -10,8 +10,7 @@ workflows:
       - name: Env info
         script: |
           set -euo pipefail
-          pwd
-          ls -la
+          pwd && ls -la
           flutter --version
           dart --version
           xcodebuild -version
@@ -28,10 +27,76 @@ workflows:
       - name: Build iOS for Simulator (Debug)
         script: |
           set -euo pipefail
-          # We are already at the repo root (where pubspec.yaml is)
           flutter build ios --simulator --debug
+
+      # ====== Run on Simulator + record video + collect logs ======
+      - name: Boot simulator, install, launch, record 10s
+        script: |
+          set -euo pipefail
+
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found at $APP_PATH"
+            exit 1
+          fi
+
+          # Read bundle id from the built app
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
+          echo "Bundle ID: $BUNDLE_ID"
+
+          # Pick a device type & runtime
+          DEVICE_NAME="iPhone 15"
+          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
+          echo "Using runtime: $RUNTIME"
+
+          # Create a fresh simulator (unique name to avoid conflicts)
+          UUID=$(xcrun simctl create "CM_iPhone15_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+          echo "Created simulator: $UUID"
+
+          # Boot it
+          xcrun simctl boot "$UUID"
+          # Give SpringBoard time to come up
+          xcrun simctl bootstatus "$UUID" -b
+
+          # Install the app
+          xcrun simctl install "$UUID" "$APP_PATH"
+
+          # Start log capture for your app (background)
+          mkdir -p sim_logs
+          LOGFILE="sim_logs/${BUNDLE_ID}_$(date +%s).log"
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          LOGPID=$!
+
+          # Start a short recording (10s) of the simulator screen
+          mkdir -p preview
+          VIDEO_PATH="preview/sim_preview.mp4"
+          (xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &) 
+          VIDPID=$!
+          # Give recorder a moment to start
+          sleep 2
+
+          # Launch the app
+          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
+
+          # Let it run for ~10 seconds to capture splash & first screen
+          sleep 10
+
+          # Stop recording & logs
+          kill $VIDPID || true
+          kill $LOGPID || true
+
+          # Shutdown and delete the temp simulator
+          xcrun simctl shutdown "$UUID" || true
+          xcrun simctl delete "$UUID" || true
+
+          # Summarize artifacts
+          ls -la "$VIDEO_PATH" || true
+          ls -la "$LOGFILE" || true
+
     artifacts:
       - build/ios/iphonesimulator/*.app
+      - preview/*.mp4
+      - sim_logs/*.log
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -48,8 +113,7 @@ workflows:
       - name: Env info
         script: |
           set -euo pipefail
-          pwd
-          ls -la
+          pwd && ls -la
           flutter --version
           xcodebuild -version
           pod --version
@@ -65,7 +129,6 @@ workflows:
       - name: Build iOS (no codesign)
         script: |
           set -euo pipefail
-          # Still at repo root
           flutter build ios --release --no-codesign
     artifacts:
       - build/ios/iphoneos/*.app
