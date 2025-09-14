@@ -1,6 +1,6 @@
 workflows:
   ios-simulator:
-    name: iOS Simulator Build
+    name: iOS Simulator Build + Run + Record (Diag + Safe)
     max_build_duration: 60
     environment:
       flutter: stable
@@ -10,66 +10,150 @@ workflows:
       - name: Env info
         script: |
           set -euo pipefail
-          pwd
-          ls -la
+          pwd && ls -la
           flutter --version
           dart --version
           xcodebuild -version
           pod --version
+
       - name: Flutter clean & pub get
         script: |
           set -euo pipefail
           flutter clean
           flutter pub get
-      - name: Pod install for iOS (with repo update)
+
+      - name: Reset Pods and install (fresh)
         script: |
           set -euo pipefail
+          rm -rf ios/Pods ios/Podfile.lock
           (cd ios && pod install --repo-update)
-      - name: Build iOS for Simulator (Debug)
+
+
+      - name: Reset Pods and install (fresh)
         script: |
           set -euo pipefail
-          # We are already at the repo root (where pubspec.yaml is)
-          flutter build ios --simulator --debug
+          rm -rf ios/Pods ios/Podfile.lock
+          (cd ios && pod install --repo-update)
+
+      # ===== Pass 1: DIAG app (no services) =====
+      - name: Build DIAG app (no services)
+        script: |
+          set -euo pipefail
+          flutter build ios --simulator --debug -t lib/main_ios_diag.dart
+
+      - name: Run DIAG app on Simulator and record
+        script: |
+          set -euo pipefail
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found at $APP_PATH"
+            exit 1
+          fi
+
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
+          DEVICE_NAME="iPhone 15"
+          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
+          UUID=$(xcrun simctl create "CM_DIAG_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+          xcrun simctl boot "$UUID"
+          xcrun simctl bootstatus "$UUID" -b
+
+          mkdir -p preview sim_logs
+          LOGFILE="sim_logs/diag_$(date +%s).log"
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          LOGPID=$!
+
+          VIDEO_PATH="preview/diag.mp4"
+          (xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &) 
+          VIDPID=$!
+          sleep 2
+
+          xcrun simctl install "$UUID" "$APP_PATH"
+          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
+          sleep 8
+
+          kill $VIDPID || true
+          kill $LOGPID || true
+          xcrun simctl shutdown "$UUID" || true
+          xcrun simctl delete "$UUID" || true
+
+      # ===== Pass 2: SAFE main (IOS_SAFE_MODE=true) =====
+      - name: Build SAFE main (IOS_SAFE_MODE=true)
+        script: |
+          set -euo pipefail
+          flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=true
+
+      - name: Run SAFE main (safe=true) and record
+        script: |
+          set -euo pipefail
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
+
+          DEVICE_NAME="iPhone 15"
+          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
+          UUID=$(xcrun simctl create "CM_SAFE_T_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+          xcrun simctl boot "$UUID"
+          xcrun simctl bootstatus "$UUID" -b
+
+          mkdir -p preview sim_logs
+          LOGFILE="sim_logs/safe_true_$(date +%s).log"
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          LOGPID=$!
+
+          VIDEO_PATH="preview/safe_true.mp4"
+          (xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &) 
+          VIDPID=$!
+          sleep 2
+
+          xcrun simctl install "$UUID" "$APP_PATH"
+          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
+          sleep 8
+
+          kill $VIDPID || true
+          kill $LOGPID || true
+          xcrun simctl shutdown "$UUID" || true
+          xcrun simctl delete "$UUID" || true
+
+      # ===== Pass 3: SAFE main (IOS_SAFE_MODE=false) – likely reproduces crash =====
+      - name: Build SAFE main (IOS_SAFE_MODE=false)
+        script: |
+          set -euo pipefail
+          flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=false
+
+      - name: Run SAFE main (safe=false) and record
+        script: |
+          set -euo pipefail
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
+
+          DEVICE_NAME="iPhone 15"
+          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
+          UUID=$(xcrun simctl create "CM_SAFE_F_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+          xcrun simctl boot "$UUID"
+          xcrun simctl bootstatus "$UUID" -b
+
+          mkdir -p preview sim_logs
+          LOGFILE="sim_logs/safe_false_$(date +%s).log"
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          LOGPID=$!
+
+          VIDEO_PATH="preview/safe_false.mp4"
+          (xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &) 
+          VIDPID=$!
+          sleep 2
+
+          xcrun simctl install "$UUID" "$APP_PATH"
+          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
+          sleep 10
+
+          kill $VIDPID || true
+          kill $LOGPID || true
+          xcrun simctl shutdown "$UUID" || true
+          xcrun simctl delete "$UUID" || true
+
     artifacts:
       - build/ios/iphonesimulator/*.app
-    cache:
-      cache_paths:
-        - $HOME/.pub-cache
-        - ios/Pods
-
-  ios-release-nocodesign:
-    name: iOS Release (no codesign)
-    max_build_duration: 60
-    environment:
-      flutter: stable
-      xcode: latest
-      cocoapods: default
-    scripts:
-      - name: Env info
-        script: |
-          set -euo pipefail
-          pwd
-          ls -la
-          flutter --version
-          xcodebuild -version
-          pod --version
-      - name: Flutter clean & pub get
-        script: |
-          set -euo pipefail
-          flutter clean
-          flutter pub get
-      - name: Pod install for iOS (with repo update)
-        script: |
-          set -euo pipefail
-          (cd ios && pod install --repo-update)
-      - name: Build iOS (no codesign)
-        script: |
-          set -euo pipefail
-          # Still at repo root
-          flutter build ios --release --no-codesign
-    artifacts:
-      - build/ios/iphoneos/*.app
-      - build/ios/archive/*.xcarchive
+      - preview/*.mp4
+      - sim_logs/*.log
     cache:
       cache_paths:
         - $HOME/.pub-cache
