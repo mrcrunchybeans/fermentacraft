@@ -27,14 +27,28 @@ workflows:
           set -e -o pipefail
           PLIST="ios/Runner/GoogleService-Info.plist"
           [ -f "$PLIST" ] || { echo "GoogleService-Info.plist missing at $PLIST"; exit 1; }
+
           P_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:BUNDLE_ID' "$PLIST")
-          X_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' ios/Runner/Info.plist)
+
+          # Ask Xcode for the resolved PRODUCT_BUNDLE_IDENTIFIER for Debug/Runner
+          X_BUNDLE=$(
+            xcodebuild -showBuildSettings \
+              -project ios/Runner.xcodeproj \
+              -scheme Runner \
+              -configuration Debug 2>/dev/null \
+            | awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER/{print $2}' | tail -1
+          )
+
           echo "Firebase plist bundle: $P_BUNDLE"
-          echo "Xcode/Runner bundle:   $X_BUNDLE"
+          echo "Resolved Xcode bundle: $X_BUNDLE"
+
           if [ "$P_BUNDLE" != "$X_BUNDLE" ]; then
-            echo "ERROR: Bundle IDs do not match."
+            echo "ERROR: Bundle IDs do not match (Firebase vs Xcode)."
+            echo "       Either change the Firebase iOS app's bundle to '$X_BUNDLE'"
+            echo "       or update Xcode's bundle id to '$P_BUNDLE'."
             exit 2
           fi
+
 
 
       - name: Reset Pods and install (fresh)
