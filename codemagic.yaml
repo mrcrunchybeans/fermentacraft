@@ -38,32 +38,13 @@ workflows:
         script: |
           set -euo pipefail
           APP_PATH="build/ios/iphonesimulator/Runner.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Runner.app not found at $APP_PATH"
-            exit 1
-          fi
+          [ -d "$APP_PATH" ] || { echo "Runner.app not found at $APP_PATH"; exit 1; }
 
-          # Read identifiers robustly
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
           DEVICE_NAME="iPhone 15"
 
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
-import json,sys,os
-name=os.environ.get("DEVICE_NAME","iPhone 15")
-data=json.load(sys.stdin)["devicetypes"]
-c=[d for d in data if d["name"]==name]
-print(c[0]["identifier"] if c else data[-1]["identifier"])
-PY
-)
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
-import json,sys
-r=[x for x in json.load(sys.stdin)["runtimes"]
-   if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
-# Sort by version string if present; fall back to identifier order
-r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"]))
-print(r[-1]["identifier"])
-PY
-)
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME","iPhone 15"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
 
           echo "Using DEVICE_ID=$DEVICE_ID"
           echo "Using RUNTIME_ID=$RUNTIME_ID"
@@ -74,7 +55,7 @@ PY
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/diag_$(date +%s).log"
-          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &) 
           LOGPID=$!
 
           VIDEO_PATH="preview/diag.mp4"
@@ -103,22 +84,8 @@ PY
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
           DEVICE_NAME="iPhone 15"
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
-import json,sys,os
-name=os.environ.get("DEVICE_NAME","iPhone 15")
-data=json.load(sys.stdin)["devicetypes"]
-c=[d for d in data if d["name"]==name]
-print(c[0]["identifier"] if c else data[-1]["identifier"])
-PY
-)
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
-import json,sys
-r=[x for x in json.load(sys.stdin)["runtimes"]
-   if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
-r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"]))
-print(r[-1]["identifier"])
-PY
-)
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME","iPhone 15"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
 
           UUID=$(xcrun simctl create "CM_SAFE_T_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
@@ -126,7 +93,7 @@ PY
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/safe_true_$(date +%s).log"
-          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &) 
           LOGPID=$!
 
           VIDEO_PATH="preview/safe_true.mp4"
@@ -155,22 +122,8 @@ PY
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
           DEVICE_NAME="iPhone 15"
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
-import json,sys,os
-name=os.environ.get("DEVICE_NAME","iPhone 15")
-data=json.load(sys.stdin)["devicetypes"]
-c=[d for d in data if d["name"]==name]
-print(c[0]["identifier"] if c else data[-1]["identifier"])
-PY
-)
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
-import json,sys
-r=[x for x in json.load(sys.stdin)["runtimes"]
-   if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
-r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"]))
-print(r[-1]["identifier"])
-PY
-)
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME","iPhone 15"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
 
           UUID=$(xcrun simctl create "CM_SAFE_F_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
@@ -178,7 +131,7 @@ PY
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/safe_false_$(date +%s).log"
-          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &) 
+          (xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &) 
           LOGPID=$!
 
           VIDEO_PATH="preview/safe_false.mp4"
