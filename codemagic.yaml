@@ -22,6 +22,21 @@ workflows:
           flutter clean
           flutter pub get
 
+      - name: Verify Firebase plist & bundle id
+        script: |
+          set -e -o pipefail
+          PLIST="ios/Runner/GoogleService-Info.plist"
+          [ -f "$PLIST" ] || { echo "GoogleService-Info.plist missing at $PLIST"; exit 1; }
+          P_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:BUNDLE_ID' "$PLIST")
+          X_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' ios/Runner/Info.plist)
+          echo "Firebase plist bundle: $P_BUNDLE"
+          echo "Xcode/Runner bundle:   $X_BUNDLE"
+          if [ "$P_BUNDLE" != "$X_BUNDLE" ]; then
+            echo "ERROR: Bundle IDs do not match."
+            exit 2
+          fi
+
+
       - name: Reset Pods and install (fresh)
         script: |
           set -e -o pipefail

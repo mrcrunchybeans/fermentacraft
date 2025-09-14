@@ -52,22 +52,30 @@
   <key>CADisableMinimumFrameDurationOnPhone</key>
   <true/>
 
-  <!-- (TEMP while verifying) Allow non-HTTPS during very early boot.
-       Once you confirm everything is HTTPS, remove this block. -->
+  <!-- TEMP: allow HTTP while verifying. Remove or narrow once all endpoints are HTTPS. -->
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsArbitraryLoads</key>
     <true/>
   </dict>
 
-  <!-- Whitelist URL schemes opened via url_launcher -->
+  <!-- url_launcher: only the schemes you actually query -->
   <key>LSApplicationQueriesSchemes</key>
   <array>
     <string>mailto</string>
     <string>sms</string>
     <string>tel</string>
-    <string>http</string>
-    <string>https</string>
+  </array>
+
+  <!-- Google Sign-In (ONLY if you use it). Replace with REVERSED_CLIENT_ID from GoogleService-Info.plist -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>com.googleusercontent.apps.747130944683-add6ufd63i82lh8ispnosi2ii3vu6hbn</string>
+      </array>
+    </dict>
   </array>
 
   <!-- Permissions you already use / may need -->

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>747130944683-add6ufd63i82lh8ispnosi2ii3vu6hbn.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.747130944683-add6ufd63i82lh8ispnosi2ii3vu6hbn</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>747130944683-70375t4voqs45f5t3tcb5n0ovtc7l25h.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAZe4o6R1DinoRCq5vaLIv7nGKy7PfvcgY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>747130944683</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.fermentacraft</string>
+	<key>PROJECT_ID</key>
+	<string>fermentacraft</string>
+	<key>STORAGE_BUCKET</key>
+	<string>fermentacraft.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:747130944683:ios:9e36933548b34a263b0bee</string>
+</dict>
+</plist>
