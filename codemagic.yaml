@@ -11,7 +11,6 @@ workflows:
         script: |
           set -euo pipefail
           pwd && ls -la
-          pwd && ls -la
           flutter --version
           dart --version
           xcodebuild -version
@@ -22,13 +21,6 @@ workflows:
           set -euo pipefail
           flutter clean
           flutter pub get
-
-      - name: Reset Pods and install (fresh)
-        script: |
-          set -euo pipefail
-          rm -rf ios/Pods ios/Podfile.lock
-          (cd ios && pod install --repo-update)
-
 
       - name: Reset Pods and install (fresh)
         script: |
@@ -51,10 +43,32 @@ workflows:
             exit 1
           fi
 
+          # Read identifiers robustly
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
           DEVICE_NAME="iPhone 15"
-          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
-          UUID=$(xcrun simctl create "CM_DIAG_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
+import json,sys,os
+name=os.environ.get("DEVICE_NAME","iPhone 15")
+data=json.load(sys.stdin)["devicetypes"]
+c=[d for d in data if d["name"]==name]
+print(c[0]["identifier"] if c else data[-1]["identifier"])
+PY
+)
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
+import json,sys
+r=[x for x in json.load(sys.stdin)["runtimes"]
+   if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
+# Sort by version string if present; fall back to identifier order
+r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"]))
+print(r[-1]["identifier"])
+PY
+)
+
+          echo "Using DEVICE_ID=$DEVICE_ID"
+          echo "Using RUNTIME_ID=$RUNTIME_ID"
+
+          UUID=$(xcrun simctl create "CM_DIAG_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
           xcrun simctl bootstatus "$UUID" -b
 
@@ -88,10 +102,25 @@ workflows:
           set -euo pipefail
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
-
           DEVICE_NAME="iPhone 15"
-          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
-          UUID=$(xcrun simctl create "CM_SAFE_T_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
+import json,sys,os
+name=os.environ.get("DEVICE_NAME","iPhone 15")
+data=json.load(sys.stdin)["devicetypes"]
+c=[d for d in data if d["name"]==name]
+print(c[0]["identifier"] if c else data[-1]["identifier"])
+PY
+)
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
+import json,sys
+r=[x for x in json.load(sys.stdin)["runtimes"]
+   if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
+r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"]))
+print(r[-1]["identifier"])
+PY
+)
+
+          UUID=$(xcrun simctl create "CM_SAFE_T_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
           xcrun simctl bootstatus "$UUID" -b
 
@@ -114,7 +143,7 @@ workflows:
           xcrun simctl shutdown "$UUID" || true
           xcrun simctl delete "$UUID" || true
 
-      # ===== Pass 3: SAFE main (IOS_SAFE_MODE=false) – likely reproduces crash =====
+      # ===== Pass 3: SAFE main (IOS_SAFE_MODE=false) =====
       - name: Build SAFE main (IOS_SAFE_MODE=false)
         script: |
           set -euo pipefail
@@ -125,10 +154,25 @@ workflows:
           set -euo pipefail
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
-
           DEVICE_NAME="iPhone 15"
-          RUNTIME=$(xcrun simctl list runtimes | awk -F"[()]" '/iOS/ {print $2}' | tail -1)
-          UUID=$(xcrun simctl create "CM_SAFE_F_$$" "com.apple.CoreSimulator.SimDeviceType.$(echo $DEVICE_NAME | tr " " "-")" "com.apple.CoreSimulator.SimRuntime.$(echo $RUNTIME | tr " " "-")")
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
+import json,sys,os
+name=os.environ.get("DEVICE_NAME","iPhone 15")
+data=json.load(sys.stdin)["devicetypes"]
+c=[d for d in data if d["name"]==name]
+print(c[0]["identifier"] if c else data[-1]["identifier"])
+PY
+)
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
+import json,sys
+r=[x for x in json.load(sys.stdin)["runtimes"]
+   if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
+r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"]))
+print(r[-1]["identifier"])
+PY
+)
+
+          UUID=$(xcrun simctl create "CM_SAFE_F_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
           xcrun simctl bootstatus "$UUID" -b
 
