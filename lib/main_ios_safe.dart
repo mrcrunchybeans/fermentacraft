@@ -1,7 +1,9 @@
 // lib/main_ios_safe.dart
 //
-// Build with:
+// Build with SAFE MODE ON  (no services):
 //   flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=true
+//
+// Build with SAFE MODE OFF (normal):
 //   flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=false
 
 import 'dart:async';
@@ -9,13 +11,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 
 import 'bootstrap/firebase_boot.dart';
-
-// Import your existing app entry so we can reuse its root widget.
-import 'main.dart' as app;
-
-/// CHANGE THIS to return your real root widget from `main.dart`.
-/// Example if your root is `FermentaCraftApp`: `const app.FermentaCraftApp()`
-Widget buildRealApp() => const app.FermentaCraftApp();
+import 'main.dart' as app; // <-- use your existing entrypoint, no need to know the root widget name
 
 const bool kIosSafeMode =
     bool.fromEnvironment('IOS_SAFE_MODE', defaultValue: true);
@@ -36,14 +32,14 @@ Future<void> main() async {
 }
 
 class _SafeBootstrap extends StatefulWidget {
-  const _SafeBootstrap(); // removed {super.key} to silence the unused param lint
+  const _SafeBootstrap(); // no key param to silence "unused_element_parameter"
   @override
   State<_SafeBootstrap> createState() => _SafeBootstrapState();
 }
 
 class _SafeBootstrapState extends State<_SafeBootstrap> {
   String status = 'Booting…';
-  bool _ready = false;
+  bool _launchedRealApp = false;
 
   @override
   void initState() {
@@ -54,22 +50,20 @@ class _SafeBootstrapState extends State<_SafeBootstrap> {
   Future<void> _boot() async {
     try {
       if (Platform.isIOS && kIosSafeMode) {
-        // Deliberately bypass services on iOS in SAFE MODE
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        setState(() {
-          status = 'iOS SAFE MODE: services bypassed';
-          _ready = true;
-        });
+        // Bypass risky services entirely
+        setState(() => status = 'iOS SAFE MODE: services bypassed');
         return;
       }
 
-      // Ensure Firebase is configured (uses plist on iOS)
-      await FirebaseBoot.instance.ensure();
+      // Ensure Firebase is configured BEFORE any Firebase-using plugin code.
+      setState(() => status = 'Initializing Firebase…');
+      await FirebaseBoot.ensure();
 
-      setState(() {
-        status = 'Init complete';
-        _ready = true;
-      });
+      // Hand off to your real entrypoint (this will call runApp(...) again).
+      setState(() => status = 'Launching app…');
+      app.main(); // <-- uses your existing main.dart; no imports of a specific widget needed
+      _launchedRealApp = true;
+      if (mounted) setState(() {});
     } catch (e, st) {
       debugPrint('Init error: $e\n$st');
       setState(() => status = 'Init failed: $e');
@@ -78,14 +72,13 @@ class _SafeBootstrapState extends State<_SafeBootstrap> {
 
   @override
   Widget build(BuildContext context) {
-    final safe = Platform.isIOS && kIosSafeMode;
-
-    // When not in safe mode and ready, jump straight into the real app.
-    if (!safe && _ready) {
-      return buildRealApp();
+    // Once we hand off to app.main(), our widget tree will be replaced by your real app.
+    if (_launchedRealApp && !(Platform.isIOS && kIosSafeMode)) {
+      return const SizedBox.shrink();
     }
 
-    // Minimal shell UI for safe mode / early boot
+    // Minimal shell UI for SAFE MODE / early boot
+    final safe = Platform.isIOS && kIosSafeMode;
     return MaterialApp(
       title: 'FermentaCraft',
       debugShowCheckedModeBanner: false,
@@ -95,7 +88,7 @@ class _SafeBootstrapState extends State<_SafeBootstrap> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(safe ? Icons.shield : Icons.check_circle,
+              Icon(safe ? Icons.shield : Icons.hourglass_bottom,
                   size: 96, color: Colors.white),
               const SizedBox(height: 24),
               Text(
