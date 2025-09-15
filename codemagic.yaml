@@ -1,22 +1,15 @@
 workflows:
-  ios-simulator:
-    name: iOS Simulator Build + Run + Record (Diag + Safe)
+  ios-sim-simple:
+    name: iOS Simulator — Boot App
     max_build_duration: 60
     environment:
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        # Flip to "false" to bypass the Firebase sanity check
-        REQUIRE_FIREBASE_PLIST: "true"
-        # You can add these later as encrypted vars in Codemagic UI or groups
-        # RC_API_KEY_IOS: rc_ios_XXXXXXXXXXXXXXXX
-        # RC_API_KEY_ANDROID: goog_XXXXXXXXXXXXXXXX
     scripts:
       - name: Env info
         script: |
-          set -e -o pipefail
-          pwd && ls -la
+          set -euo pipefail
           flutter --version
           dart --version
           xcodebuild -version
@@ -24,173 +17,60 @@ workflows:
 
       - name: Flutter clean & pub get
         script: |
-          set -e -o pipefail
+          set -euo pipefail
           flutter clean
           flutter pub get
 
-      - name: Verify Firebase plist & bundle id (optional)
+      - name: Verify Firebase plist & bundle id
         script: |
-          set -e -o pipefail
-          if [[ "${REQUIRE_FIREBASE_PLIST:-true}" != "true" ]]; then
-            echo "Skipping Firebase plist check (REQUIRE_FIREBASE_PLIST!=true)"
-            exit 0
-          fi
-
+          set -euo pipefail
           PLIST="ios/Runner/GoogleService-Info.plist"
-          if [ ! -f "$PLIST" ]; then
-            echo "GoogleService-Info.plist missing at $PLIST"
-            exit 1
-          fi
-
+          [ -f "$PLIST" ] || { echo "GoogleService-Info.plist missing at $PLIST"; exit 1; }
           P_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:BUNDLE_ID' "$PLIST")
-
           X_BUNDLE=$(
-            xcodebuild -showBuildSettings \
-              -project ios/Runner.xcodeproj \
-              -scheme Runner \
-              -configuration Debug 2>/dev/null \
+            xcodebuild -showBuildSettings -project ios/Runner.xcodeproj -scheme Runner -configuration Debug 2>/dev/null \
             | awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER/{print $2}' | tail -1
           )
-
           echo "Firebase plist bundle: $P_BUNDLE"
           echo "Resolved Xcode bundle: $X_BUNDLE"
-
-          if [ "$P_BUNDLE" != "$X_BUNDLE" ]; then
-            echo "ERROR: Bundle IDs do not match (Firebase vs Xcode)."
-            echo "       Either change the Firebase iOS app's bundle to '$X_BUNDLE'"
-            echo "       or update Xcode's bundle id to '$P_BUNDLE'."
-            exit 2
-          fi
+          [ "$P_BUNDLE" = "$X_BUNDLE" ] || { echo "ERROR: Bundle IDs do not match."; exit 2; }
 
       - name: Reset Pods and install (fresh)
         script: |
-          set -e -o pipefail
+          set -euo pipefail
           rm -rf ios/Pods ios/Podfile.lock
           (cd ios && pod install --repo-update)
 
-      # ===== Pass 1: DIAG app (no services) =====
-      - name: Build DIAG app (no services)
+      - name: Build app (same experience as Android)
         script: |
-          set -e -o pipefail
-          flutter build ios --simulator --debug -t lib/main_ios_diag.dart
-          # If you ever need to run without Firebase present:
-          # flutter build ios --simulator --debug -t lib/main_ios_diag.dart --dart-define=FAKE_RUN=1
+          set -euo pipefail
+          # RC keys are optional; if RC_API_KEY_IOS is unset/empty, iOS falls back to Firestore automatically.
+          flutter build ios --simulator --debug -t lib/main.dart \
+            --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
+            --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
 
-      - name: Run DIAG app on Simulator and record
+      - name: Run on Simulator and record
         script: |
-          set -e -o pipefail
+          set -euo pipefail
           APP_PATH="build/ios/iphonesimulator/Runner.app"
-          [ -d "$APP_PATH" ] || { echo "Runner.app not found at $APP_PATH"; exit 1; }
-
+          [ -d "$APP_PATH" ] || { echo "Runner.app not found"; exit 1; }
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
-          DEVICE_NAME="iPhone 15"
 
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME","iPhone 15"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
+          DEVICE_NAME="${DEVICE_NAME:-iPhone 15}"
+          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
           RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
 
-          echo "Using DEVICE_ID=$DEVICE_ID"
-          echo "Using RUNTIME_ID=$RUNTIME_ID"
-
-          UUID=$(xcrun simctl create "CM_DIAG_$$" "$DEVICE_ID" "$RUNTIME_ID")
+          UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
           xcrun simctl bootstatus "$UUID" -b || true
           sleep 3
 
           mkdir -p preview sim_logs
-          LOGFILE="sim_logs/diag_$(date +%s).log"
+          LOGFILE="sim_logs/run_$(date +%s).log"
           xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
-          VIDEO_PATH="preview/diag.mp4"
-          xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &
-          VIDPID=$!
-          sleep 2
-
-          xcrun simctl install "$UUID" "$APP_PATH"
-          sleep 2
-          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
-          sleep 8
-
-          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
-          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
-          xcrun simctl shutdown "$UUID" || true
-          xcrun simctl delete "$UUID" || true
-
-      # ===== Pass 2: SAFE main (IOS_SAFE_MODE=true) =====
-      - name: Build SAFE main (IOS_SAFE_MODE=true)
-        script: |
-          set -e -o pipefail
-          flutter build ios --simulator --debug \
-            -t lib/main_ios_safe.dart \
-            --dart-define=IOS_SAFE_MODE=true
-            # When you’re ready for RC later, uncomment:
-            # --dart-define=RC_API_KEY_IOS=$RC_API_KEY_IOS \
-            # --dart-define=RC_API_KEY_ANDROID=$RC_API_KEY_ANDROID
-
-      - name: Run SAFE main (safe=true) and record
-        script: |
-          set -e -o pipefail
-          APP_PATH="build/ios/iphonesimulator/Runner.app"
-          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
-          DEVICE_NAME="iPhone 15"
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME","iPhone 15"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
-
-          UUID=$(xcrun simctl create "CM_SAFE_T_$$" "$DEVICE_ID" "$RUNTIME_ID")
-          xcrun simctl boot "$UUID"
-          xcrun simctl bootstatus "$UUID" -b || true
-          sleep 3
-
-          mkdir -p preview sim_logs
-          LOGFILE="sim_logs/safe_true_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
-          LOGPID=$!
-
-          VIDEO_PATH="preview/safe_true.mp4"
-          xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &
-          VIDPID=$!
-          sleep 2
-
-          xcrun simctl install "$UUID" "$APP_PATH"
-          sleep 2
-          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
-          sleep 8
-
-          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
-          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
-          xcrun simctl shutdown "$UUID" || true
-          xcrun simctl delete "$UUID" || true
-
-      # ===== Pass 3: SAFE main (IOS_SAFE_MODE=false) =====
-      - name: Build SAFE main (IOS_SAFE_MODE=false)
-        script: |
-          set -e -o pipefail
-          flutter build ios --simulator --debug \
-            -t lib/main_ios_safe.dart \
-            --dart-define=IOS_SAFE_MODE=false
-            # --dart-define=RC_API_KEY_IOS=$RC_API_KEY_IOS \
-            # --dart-define=RC_API_KEY_ANDROID=$RC_API_KEY_ANDROID
-
-      - name: Run SAFE main (safe=false) and record
-        script: |
-          set -e -o pipefail
-          APP_PATH="build/ios/iphonesimulator/Runner.app"
-          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
-          DEVICE_NAME="iPhone 15"
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME","iPhone 15"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
-
-          UUID=$(xcrun simctl create "CM_SAFE_F_$$" "$DEVICE_ID" "$RUNTIME_ID")
-          xcrun simctl boot "$UUID"
-          xcrun simctl bootstatus "$UUID" -b || true
-          sleep 3
-
-          mkdir -p preview sim_logs
-          LOGFILE="sim_logs/safe_false_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
-          LOGPID=$!
-
-          VIDEO_PATH="preview/safe_false.mp4"
+          VIDEO_PATH="preview/run.mp4"
           xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &
           VIDPID=$!
           sleep 2
@@ -200,8 +80,8 @@ workflows:
           xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
           sleep 10
 
-          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
-          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
+          if [[ -n "${VIDPID:-}" ]]; then kill "$VIDPID" || true; fi
+          if [[ -n "${LOGPID:-}" ]]; then kill "$LOGPID" || true; fi
           xcrun simctl shutdown "$UUID" || true
           xcrun simctl delete "$UUID" || true
 
