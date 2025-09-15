@@ -6,10 +6,12 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-      # Flip to "false" to bypass the Firebase sanity check (useful for early DIAG runs)
-      REQUIRE_FIREBASE_PLIST: "true"
-      # RC_API_KEY_IOS: Encrypted variable can be added later
-      # RC_API_KEY_ANDROID: Encrypted variable can be added later
+      vars:
+        # Flip to "false" to bypass the Firebase sanity check
+        REQUIRE_FIREBASE_PLIST: "true"
+        # You can add these later as encrypted vars in Codemagic UI or groups
+        # RC_API_KEY_IOS: rc_ios_XXXXXXXXXXXXXXXX
+        # RC_API_KEY_ANDROID: goog_XXXXXXXXXXXXXXXX
     scripts:
       - name: Env info
         script: |
