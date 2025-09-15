@@ -45,7 +45,6 @@ workflows:
       - name: Build app (same experience as Android)
         script: |
           set -euo pipefail
-          # RC iOS key can be empty; your service safely falls back to Firestore on iOS.
           flutter build ios --simulator --debug -t lib/main.dart \
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
@@ -57,21 +56,23 @@ workflows:
           [ -d "$APP_PATH" ] || { echo "Runner.app not found"; exit 1; }
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
 
-          # Pick newest available iOS runtime (single-line Python to avoid YAML issues)
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; rs=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; rs.sort(key=lambda x:(x.get("version") or "", x["identifier"])); print(rs[-1]["identifier"])')
+          # Newest available iOS runtime (single-line Python)
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable",True) and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; rs.sort(key=lambda x:(x.get("version") or "", x["identifier"])); print(rs[-1]["identifier"])')
           echo "Runtime: $RUNTIME_ID"
 
-          # Reuse a Shutdown iPhone on that runtime if possible
-          UUID=$(xcrun simctl list devices -j | RUNTIME_ID="$RUNTIME_ID" python3 -c 'import json,sys,os; rt=os.environ["RUNTIME_ID"]; d=json.load(sys.stdin)["devices"].get(rt,[]); print(next((x["udid"] for x in d if x.get("isAvailable",True) and x.get("state")=="Shutdown" and x.get("name","").startswith("iPhone")), ""))') || true
+          # Reuse a Shutdown iPhone under that runtime if present
+          UUID=$(xcrun simctl list devices -j | RUNTIME_ID="$RUNTIME_ID" python3 -c 'import json,sys,os; rt=os.environ["RUNTIME_ID"]; ds=json.load(sys.stdin)["devices"].get(rt,[]); print(next((d["udid"] for d in ds if d.get("isAvailable",True) and d.get("state")=="Shutdown" and d.get("name","").startswith("iPhone")), ""))') || true
 
+          CREATED=0
           if [[ -z "${UUID:-}" ]]; then
-            # Choose newest iPhone device type by name
-            DEVICE_NAME=$(xcrun simctl list devicetypes -j | python3 -c 'import json,re,sys; dt=json.load(sys.stdin)["devicetypes"]; iph=[d["name"] for d in dt if d["name"].startswith("iPhone ")]; num=lambda n:int(re.search(r"(\\d+)",n).group(1)) if re.search(r"(\\d+)",n) else 0; iph.sort(key=num, reverse=True); print(iph[0] if iph else dt[-1]["name"])')
+            # Pick newest iPhone device type by name (single-line Python)
+            DEVICE_NAME=$(xcrun simctl list devicetypes -j | python3 -c 'import json,re,sys; dt=json.load(sys.stdin)["devicetypes"]; iph=[d["name"] for d in dt if d["name"].startswith("iPhone ")]; num=lambda n:(int(re.search(r"(\\d+)",n).group(1)) if re.search(r"(\\d+)",n) else 0); iph.sort(key=num, reverse=True); print(iph[0] if iph else dt[-1]["name"])')
             echo "Creating device: $DEVICE_NAME"
             set +e
             UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME" "$RUNTIME_ID" 2>/dev/null)
             [[ -n "$UUID" ]] || UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME")
             set -e
+            CREATED=1
           fi
 
           [[ -n "$UUID" ]] || { echo "Failed to obtain/create a simulator device"; exit 1; }
@@ -83,7 +84,7 @@ workflows:
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/run_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &
+          xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
           if [[ "${RECORD:-0}" == "1" ]]; then
@@ -109,13 +110,8 @@ workflows:
           [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
           [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
           xcrun simctl shutdown "$UUID" || true
-
-          # Delete only if we created a temp device
-          NAME=$(xcrun simctl list devices -j | UUID="$UUID" python3 -c 'import json,sys,os; udid=os.environ["UUID"]; 
-d=json.load(sys.stdin)["devices"]; 
-import itertools
-print(next((dev.get("name","") for dev in itertools.chain.from_iterable(d.values()) if dev.get("udid")==udid), ""))')
-          if [[ "$NAME" == CM_RUN_* ]]; then xcrun simctl delete "$UUID" || true; fi
+          # Only delete if we created a temp device (avoids Python here)
+          if [[ "$CREATED" == "1" ]]; then xcrun simctl delete "$UUID" || true; fi
 
           exit $EXIT
 
