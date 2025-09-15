@@ -51,53 +51,33 @@ workflows:
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
 
-      - name: Run on Simulator (record only on failure unless RECORD=1)
+            - name: Run on Simulator and record
         script: |
           set -euo pipefail
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           [ -d "$APP_PATH" ] || { echo "Runner.app not found"; exit 1; }
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
 
-          # Pick newest available iOS runtime (robust to Xcode updates)
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
-import json,sys
-rs=[x for x in json.load(sys.stdin)["runtimes"]
-    if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
-def key(x):
-    v=(x.get("version") or "")
-    parts=[]
-    for p in v.replace("-", ".").split("."):
-        parts.append(int(''.join(ch for ch in p if ch.isdigit()) or "0"))
-    return (parts, x["identifier"])
-rs.sort(key=key)
-print(rs[-1]["identifier"])
-PY
-)
+          # Newest available iOS runtime
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; rs=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; rs.sort(key=lambda x:(x.get("version") or "", x["identifier"])); print(rs[-1]["identifier"])')
           echo "Runtime: $RUNTIME_ID"
 
-          # Reuse a shutdown iPhone if present; else create newest iPhone type
-          UUID=$(xcrun simctl list devices -j | RUNTIME_ID="$RUNTIME_ID" python3 - <<'PY'
-import json,sys,os
-rt=os.environ["RUNTIME_ID"]
-for d in json.load(sys.stdin)["devices"].get(rt, []):
-    if d.get("isAvailable",True) and d.get("state")=="Shutdown" and d.get("name","").startswith("iPhone"):
-        print(d["udid"]); break
-PY
-) || true
+          # Reuse a shutdown iPhone under that runtime if present
+          UUID=$(xcrun simctl list devices -j | RUNTIME_ID="$RUNTIME_ID" python3 -c 'import json,sys,os; rt=os.environ["RUNTIME_ID"]; dev=None; d=json.load(sys.stdin)["devices"].get(rt,[]); 
+for x in d:
+  if x.get("isAvailable",True) and x.get("state")=="Shutdown" and x.get("name","").startswith("iPhone"):
+    dev=x["udid"]; break
+print(dev or "")') || true
 
           if [[ -z "${UUID:-}" ]]; then
-            DEVICE_NAME=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
-import json,sys,re
-dt=json.load(sys.stdin)["devicetypes"]
-iph=[d["name"] for d in dt if d["name"].startswith("iPhone ")]
-def score(n):
-    m=re.search(r'(\d+)', n)
-    return int(m.group(1)) if m else 0
-iph.sort(key=score, reverse=True)
-print(iph[0] if iph else dt[-1]["name"])
-PY
-)
-            echo "Creating device type: $DEVICE_NAME"
+            # Choose the newest iPhone device type by name
+            DEVICE_NAME=$(xcrun simctl list devicetypes -j | python3 -c 'import json,re,sys; dt=json.load(sys.stdin)["devicetypes"]; iph=[d["name"] for d in dt if d["name"].startswith("iPhone ")]; 
+def num(n): 
+  m=re.search(r"(\d+)", n); 
+  return int(m.group(1)) if m else 0
+iph.sort(key=num, reverse=True); 
+print(iph[0] if iph else dt[-1]["name"])')
+            echo "Creating device: $DEVICE_NAME"
             set +e
             UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME" "$RUNTIME_ID" 2>/dev/null)
             [[ -n "$UUID" ]] || UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME")
@@ -113,9 +93,10 @@ PY
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/run_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
+          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
+          # Only record when RECORD=1 (saves money). Flip to 1 when you need video.
           if [[ "${RECORD:-0}" == "1" ]]; then
             xcrun simctl io "$UUID" recordVideo "preview/run.mp4" &
             VIDPID=$!
@@ -129,7 +110,7 @@ PY
           EXIT=$?
           set -e
 
-          # If launch failed and we didn't record, make a short failure video
+          # If launch failed and not recording, grab a short failure clip
           if [[ $EXIT -ne 0 && "${RECORD:-0}" != "1" ]]; then
             echo "Launch failed; capturing 6s video for diagnostics…"
             xcrun simctl io "$UUID" recordVideo "preview/run_failed.mp4" &
@@ -141,26 +122,12 @@ PY
           [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
           xcrun simctl shutdown "$UUID" || true
 
-          # Delete only ephemeral devices we created
-          NAME=$(xcrun simctl list devices -j | UUID="$UUID" python3 - <<'PY'
-import json,sys,os
-udid=os.environ["UUID"]
+          # Delete only if we created a temp device
+          NAME=$(xcrun simctl list devices -j | UUID="$UUID" python3 -c 'import json,sys,os; udid=os.environ["UUID"]; 
 for _,devs in json.load(sys.stdin)["devices"].items():
-    for d in devs:
-        if d.get("udid")==udid:
-            print(d.get("name","")); raise SystemExit
-PY
-) || true
+  for d in devs:
+    if d.get("udid")==udid: 
+      print(d.get("name","")); raise SystemExit')
           if [[ "$NAME" == CM_RUN_* ]]; then xcrun simctl delete "$UUID" || true; fi
 
           exit $EXIT
-
-    artifacts:
-      - build/ios/iphonesimulator/*.app
-      - preview/*.mp4
-      - sim_logs/*.log
-    cache:
-      cache_paths:
-        - $HOME/.pub-cache
-        - ios/Pods
-        - $HOME/Library/Developer/Xcode/DerivedData
