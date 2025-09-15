@@ -6,6 +6,10 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      # Flip to "false" to bypass the Firebase sanity check (useful for early DIAG runs)
+      REQUIRE_FIREBASE_PLIST: "true"
+      # RC_API_KEY_IOS: Encrypted variable can be added later
+      # RC_API_KEY_ANDROID: Encrypted variable can be added later
     scripts:
       - name: Env info
         script: |
@@ -22,15 +26,22 @@ workflows:
           flutter clean
           flutter pub get
 
-      - name: Verify Firebase plist & bundle id
+      - name: Verify Firebase plist & bundle id (optional)
         script: |
           set -e -o pipefail
+          if [[ "${REQUIRE_FIREBASE_PLIST:-true}" != "true" ]]; then
+            echo "Skipping Firebase plist check (REQUIRE_FIREBASE_PLIST!=true)"
+            exit 0
+          fi
+
           PLIST="ios/Runner/GoogleService-Info.plist"
-          [ -f "$PLIST" ] || { echo "GoogleService-Info.plist missing at $PLIST"; exit 1; }
+          if [ ! -f "$PLIST" ]; then
+            echo "GoogleService-Info.plist missing at $PLIST"
+            exit 1
+          fi
 
           P_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:BUNDLE_ID' "$PLIST")
 
-          # Ask Xcode for the resolved PRODUCT_BUNDLE_IDENTIFIER for Debug/Runner
           X_BUNDLE=$(
             xcodebuild -showBuildSettings \
               -project ios/Runner.xcodeproj \
@@ -49,8 +60,6 @@ workflows:
             exit 2
           fi
 
-
-
       - name: Reset Pods and install (fresh)
         script: |
           set -e -o pipefail
@@ -62,6 +71,8 @@ workflows:
         script: |
           set -e -o pipefail
           flutter build ios --simulator --debug -t lib/main_ios_diag.dart
+          # If you ever need to run without Firebase present:
+          # flutter build ios --simulator --debug -t lib/main_ios_diag.dart --dart-define=FAKE_RUN=1
 
       - name: Run DIAG app on Simulator and record
         script: |
@@ -81,12 +92,11 @@ workflows:
           UUID=$(xcrun simctl create "CM_DIAG_$$" "$DEVICE_ID" "$RUNTIME_ID")
           xcrun simctl boot "$UUID"
           xcrun simctl bootstatus "$UUID" -b || true
-          # extra settle time (avoids 'Waiting on Data Migration' race)
           sleep 3
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/diag_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
+          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
           VIDEO_PATH="preview/diag.mp4"
@@ -95,13 +105,12 @@ workflows:
           sleep 2
 
           xcrun simctl install "$UUID" "$APP_PATH"
-          # let SpringBoard register the app
           sleep 2
           xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
           sleep 8
 
-          if [[ -n "${VIDPID:-}" ]]; then kill "$VIDPID" || true; fi
-          if [[ -n "${LOGPID:-}" ]]; then kill "$LOGPID" || true; fi
+          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
+          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
           xcrun simctl shutdown "$UUID" || true
           xcrun simctl delete "$UUID" || true
 
@@ -109,7 +118,12 @@ workflows:
       - name: Build SAFE main (IOS_SAFE_MODE=true)
         script: |
           set -e -o pipefail
-          flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=true
+          flutter build ios --simulator --debug \
+            -t lib/main_ios_safe.dart \
+            --dart-define=IOS_SAFE_MODE=true
+            # When you’re ready for RC later, uncomment:
+            # --dart-define=RC_API_KEY_IOS=$RC_API_KEY_IOS \
+            # --dart-define=RC_API_KEY_ANDROID=$RC_API_KEY_ANDROID
 
       - name: Run SAFE main (safe=true) and record
         script: |
@@ -127,7 +141,7 @@ workflows:
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/safe_true_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
+          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
           VIDEO_PATH="preview/safe_true.mp4"
@@ -140,8 +154,8 @@ workflows:
           xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
           sleep 8
 
-          if [[ -n "${VIDPID:-}" ]]; then kill "$VIDPID" || true; fi
-          if [[ -n "${LOGPID:-}" ]]; then kill "$LOGPID" || true; fi
+          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
+          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
           xcrun simctl shutdown "$UUID" || true
           xcrun simctl delete "$UUID" || true
 
@@ -149,7 +163,11 @@ workflows:
       - name: Build SAFE main (IOS_SAFE_MODE=false)
         script: |
           set -e -o pipefail
-          flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=false
+          flutter build ios --simulator --debug \
+            -t lib/main_ios_safe.dart \
+            --dart-define=IOS_SAFE_MODE=false
+            # --dart-define=RC_API_KEY_IOS=$RC_API_KEY_IOS \
+            # --dart-define=RC_API_KEY_ANDROID=$RC_API_KEY_ANDROID
 
       - name: Run SAFE main (safe=false) and record
         script: |
@@ -167,7 +185,7 @@ workflows:
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/safe_false_$(date +%s).log"
-          xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
+          xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
           VIDEO_PATH="preview/safe_false.mp4"
@@ -180,8 +198,8 @@ workflows:
           xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
           sleep 10
 
-          if [[ -n "${VIDPID:-}" ]]; then kill "$VIDPID" || true; fi
-          if [[ -n "${LOGPID:-}" ]]; then kill "$LOGPID" || true; fi
+          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
+          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
           xcrun simctl shutdown "$UUID" || true
           xcrun simctl delete "$UUID" || true
 
