@@ -1,17 +1,17 @@
 // lib/main_ios_safe.dart
 //
-// Build with (safe true):  flutter run -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=true
-// Build with (safe false): flutter run -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=false
+// SAFE MODE ON:
+//   flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=true
 //
-// In Codemagic we already run both variants to prove stability.
+// SAFE MODE OFF (normal):
+//   flutter build ios --simulator --debug -t lib/main_ios_safe.dart --dart-define=IOS_SAFE_MODE=false
 
 import 'dart:async';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'bootstrap/bootstrap.dart';
-import 'app/app.dart'; // <-- your real app root (MyApp)
+import 'main.dart' as app; // use your real entrypoint
 
 const bool kIosSafeMode =
     bool.fromEnvironment('IOS_SAFE_MODE', defaultValue: true);
@@ -23,91 +23,80 @@ Future<void> main() async {
     FlutterError.presentError(details);
   };
 
-  runZonedGuarded(() async {
-    runApp(const _SafeBootstrap());
+  await bootstrap(prewarmOnly: kIosSafeMode);
+
+  if (Platform.isIOS && kIosSafeMode) {
+    runZonedGuarded(() {
+      runApp(const _SafeShell());
+    }, (error, stack) {
+      debugPrint('Uncaught zone error (SAFE): $error\n$stack');
+    });
+    return;
+  }
+
+  runZonedGuarded(() {
+    app.main();
   }, (error, stack) {
-    debugPrint('Uncaught zone error: $error\n$stack');
+    debugPrint('Uncaught zone error (APP): $error\n$stack');
   });
 }
 
-class _SafeBootstrap extends StatefulWidget {
-  const _SafeBootstrap({super.key});
+class _SafeShell extends StatelessWidget {
+  const _SafeShell();
+
   @override
-  State<_SafeBootstrap> createState() => _SafeBootstrapState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'FermentaCraft (iOS SAFE MODE)',
+      debugShowCheckedModeBanner: false,
+      home: const _SafeHome(),
+    );
+  }
 }
 
-class _SafeBootstrapState extends State<_SafeBootstrap> {
+class _SafeHome extends StatefulWidget {
+  const _SafeHome();
+  @override
+  State<_SafeHome> createState() => _SafeHomeState();
+}
+
+class _SafeHomeState extends State<_SafeHome> {
   String _status = 'Booting…';
-  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    _boot();
+    _tick();
   }
 
-  Future<void> _boot() async {
-    try {
-      if (Platform.isIOS && kIosSafeMode) {
-        setState(() {
-          _status = 'iOS SAFE MODE: services bypassed';
-          _ready = true;
-        });
-        return;
-      }
-
-      setState(() => _status = 'Initializing services…');
-      await AppBootstrap.instance.run(safeMode: false);
-
-      setState(() {
-        _status = 'Services ready';
-        _ready = true;
-      });
-    } catch (e, st) {
-      setState(() => _status = 'Init failed: $e');
-      debugPrint('Init error: $e\n$st');
-    }
+  Future<void> _tick() async {
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    if (mounted) setState(() => _status = 'iOS SAFE MODE: services bypassed');
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) {
-      final safe = Platform.isIOS && kIosSafeMode;
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: Colors.black,
-          body: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  safe ? Icons.shield : Icons.sync,
-                  size: 80,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  safe ? 'iOS SAFE MODE' : 'Starting…',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _status,
-                  style: const TextStyle(color: Colors.white70),
-                ),
-              ],
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.shield, size: 96, color: Colors.white),
+            const SizedBox(height: 18),
+            const Text(
+              'iOS SAFE MODE',
+              style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700),
             ),
-          ),
+            const SizedBox(height: 8),
+            Text(
+              _status,
+              style: const TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
-      );
-    }
-
-    // Only build your real app once services are ready.
-    return const MyApp();
+      ),
+    );
   }
 }

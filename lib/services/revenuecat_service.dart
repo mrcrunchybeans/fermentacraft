@@ -6,7 +6,6 @@
 // - Falls back to Firestore mirror when RC is unavailable or unconfigured
 
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,25 +20,23 @@ class RevenueCatService {
   RevenueCatService._();
   static final instance = RevenueCatService._();
 
-  // ── Keys ───────────────────────────────────────────────────────────────────
-  // Prefer passing these at build time:
-  //   --dart-define=RC_API_KEY_IOS=rc_ios_... --dart-define=RC_API_KEY_ANDROID=goog_...
+  // Keys: prefer passing at build time via --dart-define
   static const String _kIosKeyFromEnv =
       String.fromEnvironment('RC_API_KEY_IOS', defaultValue: '');
   static const String _kAndroidKeyFromEnv =
       String.fromEnvironment('RC_API_KEY_ANDROID', defaultValue: '');
 
-  // Optional hardcoded fallbacks (leave empty for safety)
-  static const String _kIosKeyFallback = ''; // e.g., 'rc_ios_xxx'
+  // Optional hardcoded fallbacks (keep empty for safety)
+  static const String _kIosKeyFallback = '';
   static const String _kAndroidKeyFallback = 'goog_NLVqxCUYZETbdnxlAqMHfjiXAzx';
 
-  static String get _iosKey => _kIosKeyFromEnv.isNotEmpty ? _kIosKeyFromEnv : _kIosKeyFallback;
+  static String get _iosKey =>
+      _kIosKeyFromEnv.isNotEmpty ? _kIosKeyFromEnv : _kIosKeyFallback;
   static String get _androidKey =>
       _kAndroidKeyFromEnv.isNotEmpty ? _kAndroidKeyFromEnv : _kAndroidKeyFallback;
 
   static const entitlementId = 'premium';
 
-  // ── Capability checks ──────────────────────────────────────────────────────
   bool get _platformSupportsRC =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -57,7 +54,7 @@ class RevenueCatService {
   /// Exposed so UI can decide between RC vs Stripe/Firestore flows.
   bool get isSupported => _rcAvailable;
 
-  // ── Internal state ─────────────────────────────────────────────────────────
+  // Internal state
   bool _configured = false;      // service initialized
   bool _rcConfigured = false;    // Purchases.configure completed successfully
   Future<void>? _rcConfigFuture;
@@ -65,7 +62,10 @@ class RevenueCatService {
   StreamSubscription<User?>? _authSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _premiumDocSub;
 
-  // ── Public lifecycle ───────────────────────────────────────────────────────
+  /// Back-compat: some code may still call `configure()`. Route to init().
+  Future<void> configure() => init();
+
+  // Public lifecycle
   Future<void> init() async {
     if (_configured) return;
 
@@ -105,7 +105,7 @@ class RevenueCatService {
     _rcConfigFuture = null;
   }
 
-  // ── RC configuration ───────────────────────────────────────────────────────
+  // RC configuration
   Future<void> _ensureRCConfigured() {
     if (!_rcAvailable) {
       _rcConfigured = false;
@@ -117,17 +117,13 @@ class RevenueCatService {
     _rcConfigFuture = () async {
       final apiKey = _platformKey!;
       if (apiKey.isEmpty) {
-        // Not available; ensure we mark as unconfigured and bail
         _rcConfigured = false;
         return;
       }
 
-      // Configure exactly once
-      final config = PurchasesConfiguration(apiKey)
-        ..observerMode = false
-        ..appUserID = null;
-
-      await Purchases.configure(config);
+      // Minimal configure for purchases_flutter 9.2.1
+      // (no observerMode/appUserID setters here)
+      await Purchases.configure(PurchasesConfiguration(apiKey));
 
       // Mirror entitlements into FeatureGate whenever RC updates
       Purchases.addCustomerInfoUpdateListener((customerInfo) {
@@ -138,9 +134,7 @@ class RevenueCatService {
       try {
         final info = await Purchases.getCustomerInfo();
         FeatureGate.instance.refreshFromCustomerInfo(info);
-      } catch (_) {
-        // no-op
-      }
+      } catch (_) { /* no-op */ }
 
       _rcConfigured = true;
     }();
@@ -148,7 +142,7 @@ class RevenueCatService {
     return _rcConfigFuture!;
   }
 
-  // ── RC path (Android/iOS) ──────────────────────────────────────────────────
+  // RC path (Android/iOS)
   Future<void> _syncRCWithFirebaseUser(User? user) async {
     // If RC not available (no key) → NEVER call Purchases.* (fallback to Firestore)
     if (!_rcAvailable) {
@@ -159,7 +153,6 @@ class RevenueCatService {
     try {
       await _ensureRCConfigured();
       if (!_rcConfigured) {
-        // Still not configured (e.g., bad/missing key) → fallback
         await _syncFirestorePremium(user);
         return;
       }
@@ -295,7 +288,7 @@ class RevenueCatService {
     return info;
   }
 
-  // ── Desktop/Web path (Firestore mirror) ────────────────────────────────────
+  // Desktop/Web path (Firestore mirror)
   Future<void> _syncFirestorePremium(User? user) async {
     await _premiumDocSub?.cancel();
     _premiumDocSub = null;
