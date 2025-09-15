@@ -1,11 +1,13 @@
 workflows:
-  ios-sim-simple:
-    name: iOS Simulator — Boot App
+  ios-sim-fast:
+    name: iOS Simulator — Fast Boot
     max_build_duration: 60
     environment:
       flutter: stable
       xcode: latest
       cocoapods: default
+      vars:
+        RECORD: "0"          # set to "1" to always record a video
     scripts:
       - name: Env info
         script: |
@@ -15,11 +17,11 @@ workflows:
           xcodebuild -version
           pod --version
 
-      - name: Flutter clean & pub get
+      - name: Static checks (fast fail)
         script: |
           set -euo pipefail
-          flutter clean
           flutter pub get
+          flutter analyze
 
       - name: Verify Firebase plist & bundle id
         script: |
@@ -35,55 +37,123 @@ workflows:
           echo "Resolved Xcode bundle: $X_BUNDLE"
           [ "$P_BUNDLE" = "$X_BUNDLE" ] || { echo "ERROR: Bundle IDs do not match."; exit 2; }
 
-      - name: Reset Pods and install (fresh)
+      - name: Pod install (incremental)
         script: |
           set -euo pipefail
-          rm -rf ios/Pods ios/Podfile.lock
-          (cd ios && pod install --repo-update)
+          # No rm -rf Pods; keep them for incremental builds.
+          (cd ios && pod install)
 
       - name: Build app (same experience as Android)
         script: |
           set -euo pipefail
-          # RC keys are optional; if RC_API_KEY_IOS is unset/empty, iOS falls back to Firestore automatically.
+          # If RC_API_KEY_IOS is empty, your service safely falls back to Firestore.
           flutter build ios --simulator --debug -t lib/main.dart \
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
 
-      - name: Run on Simulator and record
+      - name: Run on Simulator (record only on failure unless RECORD=1)
         script: |
           set -euo pipefail
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           [ -d "$APP_PATH" ] || { echo "Runner.app not found"; exit 1; }
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
 
-          DEVICE_NAME="${DEVICE_NAME:-iPhone 15}"
-          DEVICE_ID=$(xcrun simctl list devicetypes -j | python3 -c 'import sys,json,os; name=os.environ.get("DEVICE_NAME"); dt=json.load(sys.stdin)["devicetypes"]; print(next((d["identifier"] for d in dt if d["name"]==name), dt[-1]["identifier"]))')
-          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import sys,json; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; r=sorted(r, key=lambda x: (x.get("version") or "0", x["identifier"])); print(r[-1]["identifier"])')
+          # Pick newest available iOS runtime (robust to Xcode updates)
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 - <<'PY'
+import json,sys
+rs=[x for x in json.load(sys.stdin)["runtimes"]
+    if x.get("isAvailable",True) and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]
+def key(x):
+    v=(x.get("version") or "")
+    parts=[]
+    for p in v.replace("-", ".").split("."):
+        parts.append(int(''.join(ch for ch in p if ch.isdigit()) or "0"))
+    return (parts, x["identifier"])
+rs.sort(key=key)
+print(rs[-1]["identifier"])
+PY
+)
+          echo "Runtime: $RUNTIME_ID"
 
-          UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_ID" "$RUNTIME_ID")
-          xcrun simctl boot "$UUID"
+          # Reuse a shutdown iPhone if present; else create newest iPhone type
+          UUID=$(xcrun simctl list devices -j | RUNTIME_ID="$RUNTIME_ID" python3 - <<'PY'
+import json,sys,os
+rt=os.environ["RUNTIME_ID"]
+for d in json.load(sys.stdin)["devices"].get(rt, []):
+    if d.get("isAvailable",True) and d.get("state")=="Shutdown" and d.get("name","").startswith("iPhone"):
+        print(d["udid"]); break
+PY
+) || true
+
+          if [[ -z "${UUID:-}" ]]; then
+            DEVICE_NAME=$(xcrun simctl list devicetypes -j | python3 - <<'PY'
+import json,sys,re
+dt=json.load(sys.stdin)["devicetypes"]
+iph=[d["name"] for d in dt if d["name"].startswith("iPhone ")]
+def score(n):
+    m=re.search(r'(\d+)', n)
+    return int(m.group(1)) if m else 0
+iph.sort(key=score, reverse=True)
+print(iph[0] if iph else dt[-1]["name"])
+PY
+)
+            echo "Creating device type: $DEVICE_NAME"
+            set +e
+            UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME" "$RUNTIME_ID" 2>/dev/null)
+            [[ -n "$UUID" ]] || UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME")
+            set -e
+          fi
+
+          [[ -n "$UUID" ]] || { echo "Failed to obtain/create a simulator device"; exit 1; }
+          echo "Using simulator: $UUID"
+
+          xcrun simctl boot "$UUID" || true
           xcrun simctl bootstatus "$UUID" -b || true
-          sleep 3
+          sleep 2
 
           mkdir -p preview sim_logs
           LOGFILE="sim_logs/run_$(date +%s).log"
           xcrun simctl spawn "$UUID" log stream --level=debug --style=compact --predicate "process == 'Runner'" > "$LOGFILE" 2>&1 &
           LOGPID=$!
 
-          VIDEO_PATH="preview/run.mp4"
-          xcrun simctl io "$UUID" recordVideo "$VIDEO_PATH" &
-          VIDPID=$!
-          sleep 2
+          if [[ "${RECORD:-0}" == "1" ]]; then
+            xcrun simctl io "$UUID" recordVideo "preview/run.mp4" &
+            VIDPID=$!
+            sleep 1
+          fi
 
+          set +e
           xcrun simctl install "$UUID" "$APP_PATH"
-          sleep 2
-          xcrun simctl launch "$UUID" "$BUNDLE_ID" || true
-          sleep 10
+          sleep 1
+          xcrun simctl launch "$UUID" "$BUNDLE_ID"
+          EXIT=$?
+          set -e
 
-          if [[ -n "${VIDPID:-}" ]]; then kill "$VIDPID" || true; fi
-          if [[ -n "${LOGPID:-}" ]]; then kill "$LOGPID" || true; fi
+          # If launch failed and we didn't record, make a short failure video
+          if [[ $EXIT -ne 0 && "${RECORD:-0}" != "1" ]]; then
+            echo "Launch failed; capturing 6s video for diagnostics…"
+            xcrun simctl io "$UUID" recordVideo "preview/run_failed.mp4" &
+            VIDPID=$!
+            sleep 6
+          fi
+
+          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
+          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
           xcrun simctl shutdown "$UUID" || true
-          xcrun simctl delete "$UUID" || true
+
+          # Delete only ephemeral devices we created
+          NAME=$(xcrun simctl list devices -j | UUID="$UUID" python3 - <<'PY'
+import json,sys,os
+udid=os.environ["UUID"]
+for _,devs in json.load(sys.stdin)["devices"].items():
+    for d in devs:
+        if d.get("udid")==udid:
+            print(d.get("name","")); raise SystemExit
+PY
+) || true
+          if [[ "$NAME" == CM_RUN_* ]]; then xcrun simctl delete "$UUID" || true; fi
+
+          exit $EXIT
 
     artifacts:
       - build/ios/iphonesimulator/*.app
@@ -93,3 +163,4 @@ workflows:
       cache_paths:
         - $HOME/.pub-cache
         - ios/Pods
+        - $HOME/Library/Developer/Xcode/DerivedData
