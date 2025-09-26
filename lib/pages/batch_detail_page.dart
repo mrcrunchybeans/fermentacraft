@@ -150,7 +150,7 @@ class _PremiumHint extends StatelessWidget {
 }
 
 
-enum _OverflowAction { archiveToggle, attachDevice, exportCsv }
+enum _OverflowAction { archiveToggle, attachDevice, exportCsv, rename }
 
 class BatchDetailPage extends StatefulWidget {
   const BatchDetailPage({
@@ -534,13 +534,43 @@ void _persistFinalYield() {
 
     if (og == null || og <= 1.0) return null;
 
-    final double fg = (batch.fg ??
-            (batch.safeMeasurements.isNotEmpty
-                ? (batch.safeMeasurements.last.gravity ?? 1.000)
-                : 1.000))
-        .toDouble();
+    // For FG, use actual measurements if available, otherwise estimate
+    final double fg = _getFinalGravityForAbv(batch);
 
     return GravityService.abv(og: og, fg: fg);
+  }
+
+  /// Get the best FG value for ABV calculation
+  double _getFinalGravityForAbv(BatchModel batch) {
+    // 1. If we have actual measurements, use the latest one
+    if (batch.safeMeasurements.isNotEmpty) {
+      final latestGravity = batch.safeMeasurements.last.gravity;
+      if (latestGravity != null && latestGravity > 0.9) {
+        return latestGravity.toDouble();
+      }
+    }
+
+    // 2. If we have a recorded FG, use it
+    if (batch.fg != null && batch.fg! > 0.9) {
+      return batch.fg!.toDouble();
+    }
+
+    // 3. For planning purposes, estimate FG based on fermentation type
+    // Most cider/wine/mead ferments to near 1.000, but not exactly 1.000
+    final og = batch.og ?? batch.plannedOg ?? 1.050;
+    
+    // Estimate FG based on OG - typical dry fermentation
+    if (og <= 1.030) {
+      return 0.998; // Very light must
+    } else if (og <= 1.050) {
+      return 0.996; // Light must  
+    } else if (og <= 1.070) {
+      return 0.995; // Medium must
+    } else if (og <= 1.100) {
+      return 0.998; // Strong must (may not ferment as dry)
+    } else {
+      return 1.005; // Very strong must (likely sweet finish)
+    }
   }
 
   Future<double?> _abvForBatch(BatchModel batch) async {
@@ -779,6 +809,96 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
 
     if (newStatus != null && newStatus != batch.status) {
       _updateBatchStatus(batch, newStatus);
+    }
+  }
+
+  Future<void> _showRenameBatchDialog(BatchModel batch) async {
+    if (batch.isArchived) {
+      snacks.show(
+        const SnackBar(content: Text('Cannot rename archived batches')),
+      );
+      return;
+    }
+
+    final TextEditingController nameController = TextEditingController(text: batch.name);
+    
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Rename Batch'),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'Batch Name',
+              hintText: 'Enter new batch name',
+            ),
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            ElevatedButton(
+              child: const Text('Rename'),
+              onPressed: () {
+                final trimmedName = nameController.text.trim();
+                if (trimmedName.isNotEmpty) {
+                  Navigator.of(context).pop(trimmedName);
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newName != null && newName != batch.name) {
+      await _renameBatch(batch, newName);
+    }
+
+    nameController.dispose();
+  }
+
+  Future<void> _renameBatch(BatchModel batch, String newName) async {
+    final oldName = batch.name;
+    
+    try {
+      batch.name = newName;
+      await batch.save();
+      
+      if (!mounted) return;
+      setState(() {
+        _batch = batch;
+      });
+      
+      snacks.show(
+        SnackBar(
+          content: Text('Renamed batch to "$newName"'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              batch.name = oldName;
+              await batch.save();
+              if (mounted) {
+                setState(() {
+                  _batch = batch;
+                });
+                snacks.show(
+                  SnackBar(content: Text('Renamed batch back to "$oldName"')),
+                );
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      snacks.show(
+        SnackBar(content: Text('Failed to rename batch: $e')),
+      );
     }
   }
 
@@ -3586,6 +3706,13 @@ appBar: AppBar(
 
     // Show extra icons only if we truly have room
     if (!needsScroll && !isTight) ...[
+      // Rename
+      IconButton(
+        tooltip: 'Rename batch',
+        icon: const Icon(Icons.edit),
+        onPressed: () async => _showRenameBatchDialog(batch),
+      ),
+
       // Archive / Unarchive
       IconButton(
         tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
@@ -3695,9 +3822,21 @@ appBar: AppBar(
                 SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
               );
               break;
+
+            case _OverflowAction.rename:
+              await _showRenameBatchDialog(batch);
+              break;
           }
         },
         itemBuilder: (context) => [
+          PopupMenuItem(
+            value: _OverflowAction.rename,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.edit),
+              title: Text('Rename'),
+            ),
+          ),
           PopupMenuItem(
             value: _OverflowAction.archiveToggle,
             child: ListTile(

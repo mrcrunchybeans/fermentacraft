@@ -102,6 +102,92 @@ class _BatchLogPageState extends State<BatchLogPage> {
     }
   }
 
+  Future<void> _showRenameBatchDialog(BatchModel batch) async {
+    if (batch.isArchived) {
+      snacks.show(
+        const SnackBar(content: Text('Cannot rename archived batches')),
+      );
+      return;
+    }
+
+    final TextEditingController nameController = TextEditingController(text: batch.name);
+    
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Rename Batch'),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'Batch Name',
+              hintText: 'Enter new batch name',
+            ),
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            ElevatedButton(
+              child: const Text('Rename'),
+              onPressed: () {
+                final trimmedName = nameController.text.trim();
+                if (trimmedName.isNotEmpty) {
+                  Navigator.of(context).pop(trimmedName);
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newName != null && newName != batch.name) {
+      await _renameBatch(batch, newName);
+    }
+
+    nameController.dispose();
+  }
+
+  Future<void> _renameBatch(BatchModel batch, String newName) async {
+    final oldName = batch.name;
+    
+    try {
+      batch.name = newName;
+      await batch.save();
+      
+      if (!mounted) return;
+      setState(() {});
+      
+      snacks.show(
+        SnackBar(
+          content: Text('Renamed batch to "$newName"'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              batch.name = oldName;
+              await batch.save();
+              if (mounted) {
+                setState(() {});
+                snacks.show(
+                  SnackBar(content: Text('Renamed batch back to "$oldName"')),
+                );
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      snacks.show(
+        SnackBar(content: Text('Failed to rename batch: $e')),
+      );
+    }
+  }
+
   // Robust local delete for both key styles (stable string id or auto-int)
   Future<bool> _deleteBatchLocally(BatchModel batch) async {
     final box = Hive.box<BatchModel>(Boxes.batches);
@@ -188,6 +274,9 @@ class _BatchLogPageState extends State<BatchLogPage> {
     return PopupMenuButton<_BatchAction>(
       onSelected: (action) {
         switch (action) {
+          case _BatchAction.rename:
+            _showRenameBatchDialog(batch);
+            break;
           case _BatchAction.archiveToggle:
             _toggleArchiveStatus(batch);
             break;
@@ -197,6 +286,16 @@ class _BatchLogPageState extends State<BatchLogPage> {
         }
       },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _BatchAction.rename,
+          child: Row(
+            children: [
+              Icon(Icons.edit),
+              SizedBox(width: 8),
+              Text('Rename'),
+            ],
+          ),
+        ),
         PopupMenuItem(
           value: _BatchAction.archiveToggle,
           child: Text(batch.isArchived ? 'Unarchive' : 'Archive'),
@@ -366,4 +465,4 @@ class _BatchLogPageState extends State<BatchLogPage> {
   }
 }
 
-enum _BatchAction { archiveToggle, delete }
+enum _BatchAction { rename, archiveToggle, delete }

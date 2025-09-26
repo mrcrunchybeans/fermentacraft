@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
 // If you generated firebase_options.dart (flutterfire configure), import it.
 // If you don't have this file yet, comment the next line and the related usage.
@@ -14,6 +16,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'services/revenuecat_service.dart';
 import 'services/feature_gate.dart';
 import 'services/local_mode_service.dart';
+
+// Main app components
+import 'theme/app_theme.dart';
+import 'auth_gate.dart';
+import 'utils/boxes.dart';
+import 'services/snackbar_service.dart';
+
+// Models / Providers
+import 'models/settings_model.dart';
+import 'models/tag_manager.dart';
 
 // Toggle with --dart-define=IOS_SAFE_MODE=true/false (default true)
 const bool kIosSafeMode =
@@ -79,108 +91,125 @@ class _SafeBootScreenState extends State<_SafeBootScreen> {
       _log('FeatureGate: seeded (false)');
       _log('LocalMode: ${LocalModeService.instance.isLocalOnly}');
 
-      // 3) RevenueCat: SKIP on iOS if there is no key or SAFE MODE is on
-      final bool skipRC = Platform.isIOS && (kIosSafeMode || !_hasIosRCKey());
-      if (skipRC) {
-        _log('RevenueCat: skipped on iOS (safe: $kIosSafeMode, key: ${_hasIosRCKey()})');
-      } else {
-        _log('RevenueCat: init');
+      // 3) RevenueCat (safe to skip)
+      try {
+        _log('RevenueCat: init start');
         await RevenueCatService.instance.init();
-        _log('RevenueCat: ready (supported=${RevenueCatService.instance.isSupported})');
+        _log('RevenueCat: ok');
+      } catch (e, st) {
+        _log('RevenueCat: err $e');
+        debugPrint('RevenueCat error: $e\n$st');
       }
 
-      // 4) Done; show a simple “app shell” so you can navigate further
-      _log('BOOT COMPLETE');
+      await Future.delayed(const Duration(seconds: 1));
+      _log('Boot: complete!');
       setState(() => _done = true);
     } catch (e, st) {
-      _log('BOOT FAILED: $e');
-      debugPrint('BOOT FAILED: $e\n$st');
-      // keep screen visible with error text
+      _log('Boot: FAIL $e');
+      debugPrint('Boot error: $e\n$st');
     }
   }
 
-  bool _hasIosRCKey() {
-    // This mirrors your wrapper’s env behavior
-    const k = String.fromEnvironment('RC_API_KEY_IOS', defaultValue: '');
-    return k.isNotEmpty;
-  }
-
   Future<void> _initFirebase() async {
-    try {
-      // If you have firebase_options.dart, use it; else fall back.
-      await Firebase.initializeApp(
-        options: Platform.isIOS || Platform.isMacOS
-            ? fb_opts.DefaultFirebaseOptions.currentPlatform
-            : fb_opts.DefaultFirebaseOptions.currentPlatform,
-      );
-    } catch (_) {
-      // Fallback if you don't have firebase_options.dart yet
-      await Firebase.initializeApp();
+    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+      await Firebase.initializeApp(options: fb_opts.DefaultFirebaseOptions.currentPlatform);
+    } else {
+      debugPrint('Firebase: skip (unsupported platform)');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final safe = Platform.isIOS && (kIosSafeMode || !_hasIosRCKey());
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(safe ? Icons.shield : Icons.check_circle,
-                      size: 72, color: Colors.white),
-                  const SizedBox(height: 16),
-                  Text(
-                    safe ? 'iOS SAFE MODE' : 'Normal Startup',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'iOS Safe Mode',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(.06),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.centerLeft,
-                    height: 180,
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        _lines.join('\n'),
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          height: 1.25,
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                        ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Debugging boot sequence...',
+                  style: TextStyle(color: Colors.white60, fontSize: 16),
+                ),
+                const SizedBox(height: 32),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade900,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 200),
+                    child: SelectableText(
+                      _lines.join('\n'),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        height: 1.25,
+                        fontFamily: 'monospace',
+                        fontSize: 13,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  if (_done)
-                    TextButton(
-                      onPressed: () {
-                        // TODO: when you’re ready, navigate to your real app root here.
-                        // For now we just show the safe boot screen so it never goes black.
-                      },
-                      child: const Text('Continue', style: TextStyle(color: Colors.white)),
-                    ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 16),
+                if (_done)
+                  TextButton(
+                    onPressed: () {
+                      // Navigate to the real app root
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (context) => MultiProvider(
+                            providers: [
+                              ChangeNotifierProvider<SettingsModel>(
+                                create: (_) => SettingsModel(Hive.box(Boxes.settings)),
+                              ),
+                              ChangeNotifierProvider<TagManager>(create: (_) => TagManager()),
+                              ChangeNotifierProvider<FeatureGate>.value(
+                                value: FeatureGate.instance),
+                            ],
+                            child: const FermentaCraftApp(),
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Continue', style: TextStyle(color: Colors.white)),
+                  ),
+              ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+// Main app widget - similar to main.dart
+class FermentaCraftApp extends StatelessWidget {
+  const FermentaCraftApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsModel>();
+    return MaterialApp(
+      title: 'FermentaCraft',
+      scaffoldMessengerKey: SnackbarService.messengerKey,
+      debugShowCheckedModeBanner: false,
+      themeMode: settings.themeMode,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      home: const AuthGate(),
     );
   }
 }
