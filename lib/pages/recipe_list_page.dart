@@ -32,6 +32,13 @@ class _RecipeListPageState extends State<RecipeListPage> {
   final _date = DateFormat.yMMMd();
   SortMode _sortMode = SortMode.dateCreated;
   bool _showArchived = false;
+  
+  // Cache to prevent rebuilds and expensive operations
+  List<RecipeModel>? _lastRecipeList;
+  Map<String, List<RecipeModel>>? _lastGroupedRecipes;
+  List<String>? _lastSortedKeys;
+  SortMode? _lastSortMode;
+  bool? _lastShowArchivedState;
 
   IconData _iconForCategory(String tag) {
     switch (tag.toLowerCase()) {
@@ -98,6 +105,15 @@ class _RecipeListPageState extends State<RecipeListPage> {
     if (fg != null) parts.add('FG $fg');
     if (abv != null) parts.add('ABV $abv%');
     return parts.isEmpty ? '' : parts.join(' · ');
+  }
+  
+  // Helper to check if recipe lists are different
+  bool _recipesEqual(List<RecipeModel> a, List<RecipeModel> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].isArchived != b[i].isArchived) return false;
+    }
+    return true;
   }
 
   // ----------------- Key resolution (handles legacy/null keys) ----------------
@@ -167,7 +183,7 @@ class _RecipeListPageState extends State<RecipeListPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-      setState(() {}); // regroup/rebuild
+      // Remove setState - ValueListenableBuilder handles rebuilds automatically
     }
   }
 
@@ -398,32 +414,48 @@ Future.delayed(const Duration(milliseconds: 1800), () {
             );
           }
 
-          final epoch = DateTime.fromMillisecondsSinceEpoch(0);
-          switch (_sortMode) {
-            case SortMode.dateCreated:
-              filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-              break;
-            case SortMode.aToZ:
-              filtered.sort((a, b) =>
-                  a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-              break;
-            case SortMode.zToA:
-              filtered.sort((a, b) =>
-                  b.name.toLowerCase().compareTo(a.name.toLowerCase()));
-              break;
-            case SortMode.recentlyOpened:
-              filtered.sort((a, b) =>
-                  (b.lastOpened ?? epoch).compareTo(a.lastOpened ?? epoch));
-              break;
-          }
+          // Memoize expensive sorting and grouping operations
+          if (_lastRecipeList == null ||
+              _lastSortMode != _sortMode ||
+              _lastShowArchivedState != _showArchived ||
+              !_recipesEqual(_lastRecipeList!, filtered)) {
+            
+            _lastRecipeList = List.from(filtered);
+            _lastSortMode = _sortMode;
+            _lastShowArchivedState = _showArchived;
+            
+            // Perform expensive sorting only when needed
+            final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+            switch (_sortMode) {
+              case SortMode.dateCreated:
+                filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                break;
+              case SortMode.aToZ:
+                filtered.sort((a, b) =>
+                    a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+                break;
+              case SortMode.zToA:
+                filtered.sort((a, b) =>
+                    b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+                break;
+              case SortMode.recentlyOpened:
+                filtered.sort((a, b) =>
+                    (b.lastOpened ?? epoch).compareTo(a.lastOpened ?? epoch));
+                break;
+            }
 
-          // Group by single category label (builder writes `category`)
-          final Map<String, List<RecipeModel>> grouped = {};
-          for (final recipe in filtered) {
-            final key = recipe.categoryLabel;
-            grouped.putIfAbsent(key, () => []).add(recipe);
+            // Group by category - expensive operation
+            final Map<String, List<RecipeModel>> grouped = {};
+            for (final recipe in filtered) {
+              final key = recipe.categoryLabel;
+              grouped.putIfAbsent(key, () => []).add(recipe);
+            }
+            _lastGroupedRecipes = grouped;
+            _lastSortedKeys = grouped.keys.toList()..sort();
           }
-          final sortedKeys = grouped.keys.toList()..sort();
+          
+          final grouped = _lastGroupedRecipes!;
+          final sortedKeys = _lastSortedKeys!;
 
           return ListView.builder(
             itemCount: sortedKeys.length,

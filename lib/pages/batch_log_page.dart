@@ -27,8 +27,13 @@ class BatchLogPage extends StatefulWidget {
 }
 
 class _BatchLogPageState extends State<BatchLogPage> {
-  final DateFormat _dateFormat = DateFormat('MMM d, yyyy');
+  static final DateFormat _dateFormat = DateFormat('MMM d, yyyy');
   bool _showArchived = false;
+  
+  // Cache to prevent rebuilds
+  List<BatchModel>? _lastBatchList;
+  List<BatchModel>? _lastFilteredBatches;
+  bool? _lastShowArchivedState;
 
   String _safeName(BatchModel b) {
     final t = b.name.trim();
@@ -54,6 +59,15 @@ class _BatchLogPageState extends State<BatchLogPage> {
   }
 
   bool _isCompleted(BatchModel b) => b.status.toLowerCase() == 'completed';
+  
+  // Helper to check if batch lists are different
+  bool _listEquals(List<BatchModel> a, List<BatchModel> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].key != b[i].key) return false;
+    }
+    return true;
+  }
 
   Future<void> _toggleArchiveStatus(BatchModel batch) async {
     final isArchiving = !batch.isArchived;
@@ -99,7 +113,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
           ),
         ),
       );
-      setState(() {});
+      // Remove setState - ValueListenableBuilder will rebuild automatically
     }
   }
 
@@ -172,7 +186,7 @@ class _BatchLogPageState extends State<BatchLogPage> {
       }
       
       if (!mounted) return;
-      setState(() {});
+      // Remove setState - ValueListenableBuilder will rebuild automatically
       
       snacks.show(
         SnackBar(
@@ -186,7 +200,6 @@ class _BatchLogPageState extends State<BatchLogPage> {
               batch.name = oldName;
               await batch.save();
               if (mounted) {
-                setState(() {});
                 snacks.show(
                   SnackBar(content: Text('Renamed batch back to "$oldName"')),
                 );
@@ -363,7 +376,17 @@ class _BatchLogPageState extends State<BatchLogPage> {
         valueListenable: Hive.box<BatchModel>(Boxes.batches).listenable(),
         builder: (context, box, _) {
           final list = box.values.toList();
-          final batches = list.where((b) => b.isArchived == _showArchived).toList();
+          
+          // Memoize expensive filtering to avoid unnecessary rebuilds
+          if (_lastBatchList == null || 
+              _lastShowArchivedState != _showArchived ||
+              !_listEquals(_lastBatchList!, list)) {
+            _lastBatchList = list;
+            _lastShowArchivedState = _showArchived;
+            _lastFilteredBatches = list.where((b) => b.isArchived == _showArchived).toList();
+          }
+          
+          final batches = _lastFilteredBatches!;
 
           if (batches.isEmpty) {
             return Center(

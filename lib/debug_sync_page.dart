@@ -3,7 +3,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/firestore_paths.dart';
@@ -42,7 +41,6 @@ class _SyncDebugPageState extends State<SyncDebugPage> {
       _log('=== SYNC DEBUG TEST ===');
       _log('User: ${user?.email ?? "NOT SIGNED IN"}');
       _log('UID: ${user?.uid ?? "null"}');
-      _log('Premium Active: ${gate.premiumActive}');
       _log('Allow Sync: ${gate.allowSync}');
       _log('Sync Enabled: ${sync.isEnabled}');
 

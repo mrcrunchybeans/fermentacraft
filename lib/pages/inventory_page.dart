@@ -46,6 +46,16 @@ class _InventoryPageState extends State<InventoryPage> {
 
   bool _showArchived = false;
   bool _showExpiredOnly = false;
+  
+  // Cache to prevent expensive filtering and sorting on every build
+  List<InventoryItem>? _lastItemList;
+  List<InventoryItem>? _lastFilteredItems;
+  Map<String, List<InventoryItem>>? _lastGroupedItems;
+  List<String>? _lastSortedCategories;
+  String? _lastSearchTerm;
+  SortOption? _lastSortOption;
+  bool? _lastShowArchivedState;
+  bool? _lastShowExpiredState;
 
 
   @override
@@ -128,7 +138,7 @@ showPaywall(context);
       snacks.show(
         SnackBar(content: Text(isArchiving ? 'Archived "${item.name}"' : 'Unarchived "${item.name}"')),
       );
-      setState(() {});
+      // Remove setState - ValueListenableBuilder handles rebuilds automatically
     }
   }
 
@@ -316,7 +326,16 @@ showPaywall(context);
                           prefixIcon: Icon(Icons.search),
                           border: OutlineInputBorder(),
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (value) {
+                          // Debounce setState to reduce rebuilds during typing
+                          if (_searchController.text != value) {
+                            Future.delayed(const Duration(milliseconds: 300), () {
+                              if (mounted && _searchController.text == value) {
+                                setState(() {});
+                              }
+                            });
+                          }
+                        },
                       ),
                     ),
                     // Filter pills row
@@ -398,52 +417,78 @@ floatingActionButton: ValueListenableBuilder<Box<InventoryItem>>(
     }
 
     final searchTerm = _searchController.text.toLowerCase();
+    final itemsList = box.values.toList();
+    
+    // Memoize expensive filtering and sorting operations
+    if (_lastItemList == null ||
+        _lastSearchTerm != searchTerm ||
+        _lastSortOption != _sortOption ||
+        _lastShowArchivedState != _showArchived ||
+        _lastShowExpiredState != _showExpiredOnly ||
+        !_itemsEqual(_lastItemList!, itemsList)) {
+      
+      _lastItemList = List.from(itemsList);
+      _lastSearchTerm = searchTerm;
+      _lastSortOption = _sortOption;
+      _lastShowArchivedState = _showArchived;
+      _lastShowExpiredState = _showExpiredOnly;
+      
+      // Perform expensive filtering
+      final now = DateTime.now();
+      _lastFilteredItems = itemsList
+          .where((item) {
+            if (item.isArchived != _showArchived) return false;
+            if (!item.name.toLowerCase().contains(searchTerm)) return false;
 
-final now = DateTime.now();
-final List<InventoryItem> filteredItems = box.values
-    .where((item) {
-      if (item.isArchived != _showArchived) return false;
-      if (!item.name.toLowerCase().contains(searchTerm)) return false;
-
-      if (_showExpiredOnly) {
-        final exp = item.expirationDate;
-        if (exp == null) return false;
-        return exp.isBefore(now);
+            if (_showExpiredOnly) {
+              final exp = item.expirationDate;
+              if (exp == null) return false;
+              return exp.isBefore(now);
+            }
+            return true;
+          })
+          .toList();
+      
+      if (_lastFilteredItems!.isNotEmpty) {
+        // Expensive sorting
+        _lastFilteredItems!.sort((a, b) {
+          switch (_sortOption) {
+            case SortOption.name:
+              return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+            case SortOption.stock:
+              return b.amountInStock.compareTo(a.amountInStock);
+            case SortOption.expiration:
+              final aDate = a.expirationDate;
+              final bDate = b.expirationDate;
+              if (aDate == null && bDate == null) return 0;
+              if (aDate == null) return 1; // Items without dates go last
+              if (bDate == null) return -1;
+              return aDate.compareTo(bDate);
+          }
+        });
+        
+        // Expensive grouping
+        final Map<String, List<InventoryItem>> grouped = {};
+        for (var item in _lastFilteredItems!) {
+          grouped.putIfAbsent(item.category, () => []).add(item);
+        }
+        _lastGroupedItems = grouped;
+        _lastSortedCategories = grouped.keys.toList()..sort();
+      } else {
+        _lastGroupedItems = {};
+        _lastSortedCategories = [];
       }
-      return true;
-    })
-    .toList();
-
+    }
+    
+    final filteredItems = _lastFilteredItems!;
+    final grouped = _lastGroupedItems!;
+    final sortedCats = _lastSortedCategories!;
 
     if (filteredItems.isEmpty) {
       return Center(
         child: Text(_showArchived ? "No archived items." : "No items match your filter."),
       );
     }
-
-    // Sorting (includes expiration)
-    filteredItems.sort((a, b) {
-      switch (_sortOption) {
-        case SortOption.name:
-          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        case SortOption.stock:
-          return b.amountInStock.compareTo(a.amountInStock);
-        case SortOption.expiration:
-          final aDate = a.expirationDate;
-          final bDate = b.expirationDate;
-          if (aDate == null && bDate == null) return 0;
-          if (aDate == null) return 1; // Items without dates go last
-          if (bDate == null) return -1;
-          return aDate.compareTo(bDate);
-      }
-    });
-
-    // Group by category
-    final Map<String, List<InventoryItem>> grouped = {};
-    for (var item in filteredItems) {
-      grouped.putIfAbsent(item.category, () => []).add(item);
-    }
-    final sortedCats = grouped.keys.toList()..sort();
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -554,5 +599,14 @@ final List<InventoryItem> filteredItems = box.values
         );
       }).toList(),
     );
+  }
+  
+  // Helper to check if item lists are different
+  bool _itemsEqual(List<InventoryItem> a, List<InventoryItem> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].key != b[i].key || a[i].isArchived != b[i].isArchived) return false;
+    }
+    return true;
   }
 }

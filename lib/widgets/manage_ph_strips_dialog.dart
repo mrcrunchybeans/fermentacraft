@@ -160,6 +160,15 @@ class _PHStripEditorState extends State<_PHStripEditor> {
   }
 
   @override
+  void dispose() {
+    // Properly dispose TextEditingControllers to prevent memory leaks
+    _name.dispose();
+    _brand.dispose();
+    _phValues.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.existing == null ? 'New custom strip' : 'Edit custom strip'),

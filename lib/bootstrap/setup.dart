@@ -1,5 +1,5 @@
 // lib/bootstrap/setup.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -36,7 +36,10 @@ Future<void> setupAppServices() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   if (!kIsWeb) {
     try {
-      FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+      // DISABLED to save memory - Firebase persistence can use 100MB+
+      // FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+      FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+      if (kDebugMode) print('[SETUP] Firebase persistence DISABLED to save memory');
     } catch (_) {
       // Already applied or not supported on this platform/runtime.
     }

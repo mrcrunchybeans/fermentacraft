@@ -13,6 +13,8 @@ import 'package:fermentacraft/services/local_mode_service.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:fermentacraft/widgets/devices_selection.dart';
+import 'package:fermentacraft/widgets/sync_health_dashboard.dart';
+import 'package:fermentacraft/widgets/performance_dashboard.dart';
 
 import 'package:fermentacraft/models/settings_model.dart';
 import 'package:fermentacraft/utils/boxes.dart';
@@ -465,6 +467,43 @@ Widget _devicesSection(FeatureGate fg) {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        // Debug tools section
+        Text(
+          'Debug Tools',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const SyncHealthDashboard(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.sync),
+              label: const Text('Sync Health'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PerformanceDashboard(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.speed),
+              label: const Text('Performance'),
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         Text(
           'Note: Debug actions affect only this device. For real Premium, purchase via Paywall.',
@@ -651,6 +690,15 @@ Widget _devicesSection(FeatureGate fg) {
               title: "Developer / Debug",
               children: [
                 _debugSection(fg),
+                ListTile(
+                  leading: const Icon(Icons.monitor_heart),
+                  title: const Text('Sync Health Dashboard'),
+                  subtitle: const Text('Monitor sync operations and test error handling'),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SyncHealthDashboard()),
+                  ),
+                ),
               ],
             ),
 

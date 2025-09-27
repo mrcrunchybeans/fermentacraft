@@ -1,7 +1,7 @@
 # Quick script to check what version would be used
 $localPropertiesPath = ".\android\local.properties"
 if (Test-Path $localPropertiesPath) {
-    $properties = Get-Content $localPropertiesPath | ForEach-Object {
+    Get-Content $localPropertiesPath | ForEach-Object {
         if ($_ -match "flutter\.version") {
             Write-Host $_
         }

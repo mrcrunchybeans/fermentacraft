@@ -29,6 +29,15 @@ class _AddBatchDialogState extends State<AddBatchDialog> {
     'Completed'
   ];
 
+  @override
+  void dispose() {
+    // Properly dispose TextEditingControllers to prevent memory leaks
+    _nameController.dispose();
+    _notesController.dispose();
+    _volumeController.dispose();
+    super.dispose();
+  }
+
   void _pickDate() async {
     final picked = await showDatePicker(
       context: context,

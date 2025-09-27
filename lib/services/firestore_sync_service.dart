@@ -8,8 +8,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:logger/logger.dart';
 import 'package:fermentacraft/services/local_mode_service.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/firestore_user.dart';
@@ -21,6 +21,9 @@ import '../models/recipe_model.dart';
 import '../models/shopping_list_item.dart';
 import '../models/tag.dart';
 import '../utils/data_management.dart';
+import '../utils/app_logger.dart';
+import '../utils/sync_retry.dart';
+import '../utils/sync_error_handler.dart';
 import 'firestore_paths.dart';
 import 'sync_meta.dart';
 
@@ -29,8 +32,6 @@ typedef JsonMap = Map<String, dynamic>;
 class FirestoreSyncService {
   FirestoreSyncService._();
   static final FirestoreSyncService instance = FirestoreSyncService._();
-
-  final _log = Logger();
 
   // Keep these in sync with setup() / Boxes.*
   final _userBoxNames = const [
@@ -71,7 +72,12 @@ class FirestoreSyncService {
 
 bool get _allowSyncByPlan =>
     FeatureGate.instance.allowSync && !LocalModeService.instance.isLocalOnly;  bool get _signedIn => _uid != null;
-  bool get _canSync => _enabled && _signedIn && _allowSyncByPlan;
+  bool get _canSync => 
+    _enabled && 
+    _signedIn && 
+    _allowSyncByPlan && 
+    _startupSyncComplete && 
+    !_emergencyBrakeActive;
 
   void _debugWhyCantSync([String where = '']) {
     assert(() {
@@ -79,6 +85,40 @@ bool get _allowSyncByPlan =>
           'enabled=$_enabled signedIn=$_signedIn allowSyncByPlan=$_allowSyncByPlan');
       return true;
     }());
+  }
+
+  /// Check if sync operations are healthy for a given operation
+  bool isSyncHealthy(String operationType) {
+    return syncRetry.isOperationHealthy(operationType);
+  }
+
+  /// Get sync health status for debugging
+  Map<String, dynamic> getSyncHealthStatus() {
+    return {
+      'can_sync': _canSync,
+      'enabled': _enabled,
+      'signed_in': _signedIn,
+      'allow_sync_by_plan': _allowSyncByPlan,
+      'is_local_mode': LocalModeService.instance.isLocalOnly,
+      'plan_allows_sync': FeatureGate.instance.allowSync,
+      'current_plan': FeatureGate.instance.plan.name,
+      'effective_sync_status': _canSync ? 'Active' : _getSyncBlockedReason(),
+      'circuit_breakers': syncRetry.getCircuitBreakerStatus(),
+    };
+  }
+
+  /// Get detailed reason why sync is blocked
+  String _getSyncBlockedReason() {
+    if (!_enabled) return 'Sync disabled by user';
+    if (!_signedIn) return 'Not signed in';
+    if (LocalModeService.instance.isLocalOnly) return 'Local mode active';
+    if (!FeatureGate.instance.allowSync) return 'Plan does not include sync (${FeatureGate.instance.plan.name})';
+    return 'Unknown reason';
+  }
+
+  /// Update the current context for error handling dialogs
+  void updateErrorHandlingContext(BuildContext? context) {
+    SyncErrorHandler.instance.updateContext(context);
   }
 
   void enable() => isEnabled = true;
@@ -91,16 +131,67 @@ bool get _allowSyncByPlan =>
 
   // Prevent echo loops (remote -> local -> remote)
   final Set<String> _suppressLocalEcho = {}; // key: box::id
+  final Map<String, Timer> _echoSuppressionTimers = {}; // Timed suppression
 
   // Debounce/coalesce local writes per doc
   final Map<String, Timer> _debouncers = {};
   final Map<String, JsonMap> _pendingPayloads = {};
   final Duration _debounce = const Duration(seconds: 3);
 
+  // Prevent excessive writes - track recent write attempts
+  final Map<String, int> _recentWrites = {};
+  final Duration _writeThrottle = const Duration(seconds: 1);
+  
+  // Emergency brake for runaway sync - ULTRA AGGRESSIVE
+  int _rapidWriteCount = 0;
+  DateTime? _rapidWriteWindowStart;
+  static const int _maxRapidWrites = 10; // Much lower threshold
+  static const Duration _rapidWriteWindow = Duration(seconds: 30);
+  bool _emergencyBrakeActive = false;
+  bool _startupSyncComplete = false; // Block sync during startup
+
   // Skip re-sending identical JSON
   final Map<String, String> _lastSentJson = {};
 
+  // Retry manager for reliable sync operations
+  final SyncRetryManager syncRetry = SyncRetryManager.instance;
+
   String _keyOf(String boxName, String id) => '$boxName::$id';
+
+  // Prevent echo loops - add with timer-based cleanup
+  void _addEchoSuppressionWithTimeout(String key) {
+    _suppressLocalEcho.add(key);
+    
+    // Also add a timer to automatically remove it after a few seconds
+    // in case the immediate remove() in the Hive watcher fails
+    _echoSuppressionTimers[key]?.cancel();
+    _echoSuppressionTimers[key] = Timer(const Duration(seconds: 5), () {
+      _suppressLocalEcho.remove(key);
+      _echoSuppressionTimers.remove(key);
+    });
+  }
+
+  // Clean old entries from recent writes map to prevent memory bloat
+  void _cleanupRecentWrites() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _recentWrites.removeWhere((key, timestamp) => 
+      (now - timestamp) > Duration(minutes: 5).inMilliseconds);
+      
+    // More aggressive cleanup - limit the size of all sync maps
+    if (_lastSentJson.length > 100) {
+      final entries = _lastSentJson.entries.toList();
+      _lastSentJson.clear();
+      // Keep only the 50 most recent entries
+      for (final entry in entries.take(50)) {
+        _lastSentJson[entry.key] = entry.value;
+      }
+    }
+    
+    // Clear old pending payloads
+    if (_pendingPayloads.length > 50) {
+      _pendingPayloads.clear();
+    }
+  }
 
   // Helpers for tag id policy
   bool _isNumericId(String s) => RegExp(r'^\d+$').hasMatch(s);
@@ -280,10 +371,14 @@ bool get _allowSyncByPlan =>
   Future<void> _start(String uid) async {
     _uid = uid;
     if (_started) return;
-    if (!_canSync) {
+    if (!_enabled || !_signedIn || !_allowSyncByPlan) {
       _debugWhyCantSync('_start');
       return;
     }
+    
+    // Block sync during startup to prevent infinite loops
+    print('[SYNC] Starting sync service - disabling sync during initialization');
+    _startupSyncComplete = false;
     _started = true;
 
     // Ensure user document exists before attempting any sync operations
@@ -366,6 +461,14 @@ bool get _allowSyncByPlan =>
     }
     _debouncers.clear();
     _pendingPayloads.clear();
+    _recentWrites.clear();
+    
+    // Clean up echo suppression timers
+    for (final t in _echoSuppressionTimers.values) {
+      t.cancel();
+    }
+    _echoSuppressionTimers.clear();
+    _suppressLocalEcho.clear();
 
     _uid = null;
   }
@@ -382,16 +485,32 @@ bool get _allowSyncByPlan =>
   // ------------------------------- Bootstrapping ------------------------------
 
   Future<void> _bootstrapMerge(String uid) async {
-    if (!_canSync) {
+    if (!_enabled || !_signedIn || !_allowSyncByPlan) {
       _debugWhyCantSync('_bootstrapMerge');
       return;
     }
+    
+    // Cleanup old entries to prevent memory buildup
+    _cleanupRecentWrites();
+    
+    print('[SYNC] Bootstrap pull starting');
     await _bootstrapPullRemote(uid);
+    
+    print('[SYNC] Bootstrap push starting');
     await _bootstrapPushLocal(uid);
+    
+    // Enable normal sync after bootstrap completes with delay
+    print('[SYNC] Bootstrap completed - enabling normal sync after delay');
+    
+    // Add a delay to prevent immediate echo loops
+    Timer(Duration(seconds: 5), () {
+      _startupSyncComplete = true;
+      print('[SYNC] Startup sync now enabled after bootstrap delay');
+    });
   }
 
   Future<void> _bootstrapPullRemote(String uid) async {
-    if (!_canSync) {
+    if (!_enabled || !_signedIn || !_allowSyncByPlan) {
       _debugWhyCantSync('_bootstrapPullRemote');
       return;
     }
@@ -433,14 +552,28 @@ bool get _allowSyncByPlan =>
             if (kDebugMode) {
               print('[ERROR] bootstrapPull apply fail [$boxName/${doc.id}]: $e\n$st');
             }
-            _log.w('bootstrapPull apply fail [$boxName]', error: e, stackTrace: st);
+            appLogger.warning(
+              'Bootstrap pull apply failed',
+              category: LogCategory.sync,
+              operation: 'bootstrap_pull_apply',
+              error: e,
+              details: {'box_name': boxName},
+              userId: _uid,
+            );
           }
         }
       } catch (e, st) {
         if (kDebugMode) {
           print('[ERROR] bootstrapPull fail [$boxName]: $e\n$st');
         }
-        _log.w('bootstrapPull fail [$boxName]', error: e, stackTrace: st);
+        appLogger.warning(
+          'Bootstrap pull failed',
+          category: LogCategory.sync,
+          operation: 'bootstrap_pull',
+          error: e,
+          details: {'box_name': boxName},
+          userId: _uid,
+        );
       }
     }
 
@@ -462,7 +595,13 @@ bool get _allowSyncByPlan =>
       }
     } catch (e, st) {
       if (kDebugMode) print('[ERROR] bootstrapPull settings fail: $e\n$st');
-      _log.w('bootstrapPull settings fail', error: e, stackTrace: st);
+      appLogger.warning(
+        'Bootstrap pull settings failed',
+        category: LogCategory.sync,
+        operation: 'bootstrap_pull_settings',
+        error: e,
+        userId: _uid,
+      );
     }
 
     if (kDebugMode) {
@@ -471,7 +610,7 @@ bool get _allowSyncByPlan =>
   }
 
   Future<void> _bootstrapPushLocal(String uid) async {
-    if (!_canSync) {
+    if (!_enabled || !_signedIn || !_allowSyncByPlan) {
       _debugWhyCantSync('_bootstrapPushLocal');
       return;
     }
@@ -500,12 +639,26 @@ bool get _allowSyncByPlan =>
             if (kDebugMode) {
               print('bootstrapPush item fail [$boxName,$key]: $e\n$st');
             }
-            _log.w('bootstrapPush item fail [$boxName,$key]', error: e, stackTrace: st);
+            appLogger.warning(
+              'Bootstrap push item failed',
+              category: LogCategory.sync,
+              operation: 'bootstrap_push_item',
+              error: e,
+              details: {'box_name': boxName, 'key': key.toString()},
+              userId: _uid,
+            );
           }
         }
       } catch (e, st) {
         if (kDebugMode) print('bootstrapPush box fail [$boxName]: $e\n$st');
-        _log.w('bootstrapPush box fail [$boxName]', error: e, stackTrace: st);
+        appLogger.warning(
+          'Bootstrap push box failed',
+          category: LogCategory.sync,
+          operation: 'bootstrap_push',
+          error: e,
+          details: {'box_name': boxName},
+          userId: _uid,
+        );
       }
     }
 
@@ -525,7 +678,13 @@ bool get _allowSyncByPlan =>
       }
     } catch (e, st) {
       if (kDebugMode) print('bootstrapPush settings fail: $e\n$st');
-      _log.w('bootstrapPush settings fail', error: e, stackTrace: st);
+      appLogger.warning(
+        'Bootstrap push settings failed',
+        category: LogCategory.sync,
+        operation: 'bootstrap_push_settings',
+        error: e,
+        userId: _uid,
+      );
     }
   }
 
@@ -567,12 +726,26 @@ bool get _allowSyncByPlan =>
             if (kDebugMode) {
               print('Hive debounce flush fail [$boxName,$id]: $e\n$st');
             }
-            _log.w('Hive debounce flush fail [$boxName,$id]', error: e, stackTrace: st);
+            appLogger.warning(
+              'Hive debounce flush failed',
+              category: LogCategory.sync,
+              operation: 'hive_debounce_flush',
+              error: e,
+              details: {'box_name': boxName, 'id': id},
+              userId: _uid,
+            );
           }
         });
       } catch (e, st) {
         if (kDebugMode) print('Hive watcher error [$boxName]: $e\n$st');
-        _log.w('Hive watcher error [$boxName]', error: e, stackTrace: st);
+        appLogger.warning(
+          'Hive watcher error',
+          category: LogCategory.sync,
+          operation: 'hive_watcher',
+          error: e,
+          details: {'box_name': boxName},
+          userId: _uid,
+        );
       }
     });
   }
@@ -589,12 +762,26 @@ bool get _allowSyncByPlan =>
           await _applyRemoteDoc(boxName, change.doc.id, data);
         } catch (e, st) {
           if (kDebugMode) print('applyRemoteDoc fail [$boxName]: $e\n$st');
-          _log.w('applyRemoteDoc fail [$boxName]', error: e, stackTrace: st);
+          appLogger.warning(
+            'Apply remote document failed',
+            category: LogCategory.sync,
+            operation: 'apply_remote_doc',
+            error: e,
+            details: {'box_name': boxName},
+            userId: _uid,
+          );
         }
       }
     }, onError: (e, st) {
       if (kDebugMode) print('Firestore watcher error [$boxName]: $e\n$st');
-      _log.w('Firestore watcher error [$boxName]', error: e, stackTrace: st);
+      appLogger.warning(
+        'Firestore watcher error',
+        category: LogCategory.sync,
+        operation: 'firestore_watcher',
+        error: e,
+        details: {'box_name': boxName},
+        userId: _uid,
+      );
     });
   }
 
@@ -622,11 +809,23 @@ bool get _allowSyncByPlan =>
             _lastSentJson[key] = s; // only after success
           } catch (e, st) {
             if (kDebugMode) print('settings push fail: $e\n$st');
-            _log.w('settings push fail', error: e, stackTrace: st);
+            appLogger.warning(
+              'Settings push failed',
+              category: LogCategory.sync,
+              operation: 'settings_push',
+              error: e,
+              userId: _uid,
+            );
           }
         } catch (e, st) {
           if (kDebugMode) print('settings push fail: $e\n$st');
-          _log.w('settings push fail', error: e, stackTrace: st);
+          appLogger.warning(
+            'Settings push failed',
+            category: LogCategory.sync,
+            operation: 'settings_push',
+            error: e,
+            userId: _uid,
+          );
         }
       });
     });
@@ -642,7 +841,13 @@ bool get _allowSyncByPlan =>
         await _applyRemoteSettings(data);
       } catch (e, st) {
         if (kDebugMode) print('settings pull fail: $e\n$st');
-        _log.w('settings pull fail', error: e, stackTrace: st);
+        appLogger.warning(
+          'Settings pull failed',
+          category: LogCategory.sync,
+          operation: 'settings_pull',
+          error: e,
+          userId: _uid,
+        );
       }
     });
   }
@@ -688,6 +893,41 @@ bool get _allowSyncByPlan =>
       if (kDebugMode) print('Skip push: empty key id for $boxName: $json');
       return;
     }
+
+    // ---------- WRITE THROTTLING (prevent infinite loops) ----------
+    final writeKey = '$boxName::$cleanId';
+    final writeTime = DateTime.now().millisecondsSinceEpoch;
+    final lastWrite = _recentWrites[writeKey];
+    if (lastWrite != null && (writeTime - lastWrite) < _writeThrottle.inMilliseconds) {
+      if (kDebugMode) {
+        print('[SYNC] Throttling write for $writeKey (too soon)');
+      }
+      return;
+    }
+    _recentWrites[writeKey] = writeTime;
+    
+    // Emergency brake for rapid writes
+    final currentTime = DateTime.now();
+    if (_rapidWriteWindowStart == null || currentTime.difference(_rapidWriteWindowStart!) > _rapidWriteWindow) {
+      _rapidWriteWindowStart = currentTime;
+      _rapidWriteCount = 0;
+    }
+    
+    _rapidWriteCount++;
+    if (_rapidWriteCount > _maxRapidWrites) {
+      if (kDebugMode) {
+        print('[SYNC] EMERGENCY BRAKE: Too many rapid writes ($_rapidWriteCount), disabling sync temporarily');
+      }
+      _emergencyBrakeActive = true;
+      // Re-enable after 10 minutes
+      Timer(const Duration(minutes: 10), () {
+        if (kDebugMode) print('[SYNC] Re-enabling sync after emergency brake');
+        _emergencyBrakeActive = false;
+        _rapidWriteCount = 0;
+      });
+      return;
+    }
+    // ----------------------------------------------------------------------
 
     // ---------- TAGS WRITE POLICY (prevents accidental stripping) ----------
     if (boxName == Boxes.recipes || boxName == Boxes.batches) {
@@ -770,7 +1010,13 @@ bool get _allowSyncByPlan =>
       // never push numeric tag IDs
       if (_isNumericId(cleanId)) {
         if (kDebugMode) print('Skip push of numeric tag id "$cleanId"');
-        _log.i('Skip push of numeric tag id "$cleanId"');
+        appLogger.info(
+          'Skipping push of numeric tag id',
+          category: LogCategory.sync,
+          operation: 'tag_push_skip',
+          details: {'id': cleanId},
+          userId: _uid,
+        );
         return;
       }
       // rules expect docId == id == name
@@ -783,7 +1029,12 @@ bool get _allowSyncByPlan =>
     // Skip identical payloads
     final key = _keyOf(boxName, cleanId);
     final s = jsonEncode(json);
-    if (_lastSentJson[key] == s) return;
+    if (_lastSentJson[key] == s) {
+      if (kDebugMode) {
+        print('[SYNC] Skipping identical payload for $boxName/$cleanId');
+      }
+      return;
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     
@@ -800,24 +1051,67 @@ bool get _allowSyncByPlan =>
     }
     
     try {
-      await FirestorePaths.doc(uid, boxName, cleanId).set({
-        ...json,
-        'id': cleanId, // ensure remote carries the id too
-        '_meta': {
-          'updatedAt': FieldValue.serverTimestamp(),
-          'deviceUpdatedAt': now,
-          'deleted': false,
+      final firestoreResult = await syncRetry.retryFirestoreOperation(
+        operation: () => FirestorePaths.doc(uid, boxName, cleanId).set({
+          ...json,
+          'id': cleanId, // ensure remote carries the id too
+          '_meta': {
+            'updatedAt': FieldValue.serverTimestamp(),
+            'deviceUpdatedAt': now,
+            'deleted': false,
+          }
+        }, SetOptions(merge: true)),
+        operationKey: 'set_${boxName}_$cleanId',
+        userId: _uid,
+        context: {
+          'box_name': boxName,
+          'clean_id': cleanId,
+          'device_updated_at': now,
+        },
+      );
+      
+      if (firestoreResult.isSuccess) {
+        _lastSentJson[key] = s; // only mark after success
+        await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
+      } else {
+        // On failure, don't poison the equality cache
+        _lastSentJson.remove(key);
+        if (kDebugMode) {
+          print('Firestore set failed [$boxName/$cleanId]: ${firestoreResult.error}');
         }
-      }, SetOptions(merge: true));
-      _lastSentJson[key] = s; // only mark after success
-      await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
+        SyncLogger.syncError(
+          operation: 'firestore_set',
+          error: firestoreResult.error!,
+          userId: _uid,
+          context: {'box_name': boxName, 'clean_id': cleanId},
+        );
+        
+        // Handle user-visible error feedback
+        SyncErrorHandler.instance.handleRetryError(
+          operationKey: 'set_${boxName}_$cleanId',
+          error: firestoreResult.error!,
+          userId: _uid ?? 'unknown',
+          context: {
+            'box_name': boxName,
+            'clean_id': cleanId,
+            'device_updated_at': now,
+          },
+        );
+        
+        throw firestoreResult.error!;
+      }
     } catch (e, st) {
       // On failure, don't poison the equality cache
       _lastSentJson.remove(key);
       if (kDebugMode) {
         print('Firestore set failed [$boxName/$cleanId]: $e\n$st');
       }
-      _log.e('Firestore set failed [$boxName/$cleanId]', error: e, stackTrace: st);
+      SyncLogger.syncError(
+        operation: 'firestore_set',
+        error: e,
+        userId: _uid,
+        context: {'box_name': boxName, 'clean_id': cleanId},
+      );
       rethrow;
     }
   }
@@ -832,18 +1126,37 @@ bool get _allowSyncByPlan =>
     if (cleanId.isEmpty) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    await FirestorePaths.doc(uid, boxName, cleanId).set({
-      'id': cleanId,
-      '_meta': {
-        'updatedAt': FieldValue.serverTimestamp(),
-        'deviceUpdatedAt': now,
-        'deleted': true,
-      }
-    }, SetOptions(merge: true));
-    await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
-
-    // Also forget lastSent so a re-create won't be blocked by equality cache
-    _lastSentJson.remove(_keyOf(boxName, cleanId));
+    final deleteResult = await syncRetry.retryFirestoreOperation(
+      operation: () => FirestorePaths.doc(uid, boxName, cleanId).set({
+        'id': cleanId,
+        '_meta': {
+          'updatedAt': FieldValue.serverTimestamp(),
+          'deviceUpdatedAt': now,
+          'deleted': true,
+        }
+      }, SetOptions(merge: true)),
+      operationKey: 'delete_${boxName}_$cleanId',
+      userId: _uid,
+      context: {
+        'box_name': boxName,
+        'clean_id': cleanId,
+        'operation': 'mark_deleted',
+      },
+    );
+    
+    if (deleteResult.isSuccess) {
+      await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
+      // Also forget lastSent so a re-create won't be blocked by equality cache
+      _lastSentJson.remove(_keyOf(boxName, cleanId));
+    } else {
+      SyncLogger.syncError(
+        operation: 'firestore_mark_deleted',
+        error: deleteResult.error!,
+        userId: _uid,
+        context: {'box_name': boxName, 'clean_id': cleanId},
+      );
+      throw deleteResult.error!;
+    }
   }
 
   Future<void> _applyRemoteDoc(
@@ -873,9 +1186,24 @@ bool get _allowSyncByPlan =>
 
       // If remote is marked deleted, mirror locally
       if (deleted) {
-        await box.delete(id);
-        await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
-        _lastSentJson.remove(_keyOf(boxName, id));
+        final deleteResult = await syncRetry.retryHiveOperation(
+          operation: () => box.delete(id),
+          operationKey: 'delete_${boxName}_$id',
+          userId: _uid,
+          context: {'box_name': boxName, 'id': id, 'reason': 'remote_deleted'},
+        );
+        
+        if (deleteResult.isSuccess) {
+          await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
+          _lastSentJson.remove(_keyOf(boxName, id));
+        } else {
+          SyncLogger.syncError(
+            operation: 'hive_delete_mirror',
+            error: deleteResult.error!,
+            userId: _uid,
+            context: {'box_name': boxName, 'id': id},
+          );
+        }
         return;
       }
 
@@ -1007,7 +1335,7 @@ bool get _allowSyncByPlan =>
 
       // Prevent echo
       final k = _keyOf(boxName, id);
-      _suppressLocalEcho.add(k);
+      _addEchoSuppressionWithTimeout(k);
 
       // For recipes/batches: write fast, then bind canonical tag refs asynchronously
       if (boxName == Boxes.recipes && obj is RecipeModel) {
@@ -1042,13 +1370,58 @@ bool get _allowSyncByPlan =>
         return;
       }
 
-      // Default path
-      await box.put(id, obj);
-      await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
-      _lastSentJson[k] = jsonEncode(clean);
+      // Default path - put object in Hive with retry
+      final putResult = await syncRetry.retryHiveOperation(
+        operation: () => box.put(id, obj),
+        operationKey: 'put_${boxName}_$id',
+        userId: _uid,
+        context: {
+          'box_name': boxName,
+          'id': id,
+          'device_updated_at': deviceUpdatedAt,
+        },
+      );
+      
+      if (putResult.isSuccess) {
+        await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
+        _lastSentJson[k] = jsonEncode(clean);
+      } else {
+        SyncLogger.syncError(
+          operation: 'hive_put_remote_doc',
+          error: putResult.error!,
+          userId: _uid,
+          context: {
+            'box_name': boxName,
+            'id': id,
+            'device_updated_at': deviceUpdatedAt,
+          },
+        );
+        
+        // Handle user-visible error feedback
+        SyncErrorHandler.instance.handleRetryError(
+          operationKey: 'put_${boxName}_$id',
+          error: putResult.error!,
+          userId: _uid ?? 'unknown',
+          context: {
+            'box_name': boxName,
+            'id': id,
+            'device_updated_at': deviceUpdatedAt,
+          },
+        );
+        
+        // Don't update sync metadata if put failed
+        throw putResult.error!;
+      }
     } catch (e, st) {
       if (kDebugMode) print('applyRemoteDoc exception [$boxName]: $e\n$st');
-      _log.w('applyRemoteDoc exception [$boxName]', error: e, stackTrace: st);
+      appLogger.warning(
+        'Apply remote document exception',
+        category: LogCategory.sync,
+        operation: 'apply_remote_doc',
+        error: e,
+        details: {'box_name': boxName},
+        userId: _uid,
+      );
     }
   }
 
@@ -1065,7 +1438,13 @@ bool get _allowSyncByPlan =>
       }
     } catch (e, st) {
       if (kDebugMode) print('applyRemoteSettings fail: $e\n$st');
-      _log.w('applyRemoteSettings fail', error: e, stackTrace: st);
+      appLogger.warning(
+        'Apply remote settings failed',
+        category: LogCategory.sync,
+        operation: 'apply_remote_settings',
+        error: e,
+        userId: _uid,
+      );
     }
   }
 
@@ -1100,7 +1479,12 @@ bool get _allowSyncByPlan =>
       }
 
       _suppressLocalEcho.clear();
+      for (final t in _echoSuppressionTimers.values) {
+        t.cancel();
+      }
+      _echoSuppressionTimers.clear();
       _lastSentJson.clear();
+      _recentWrites.clear();
       for (final t in _debouncers.values) {
         t.cancel();
       }
@@ -1108,7 +1492,13 @@ bool get _allowSyncByPlan =>
       _pendingPayloads.clear();
     } catch (e) {
       if (kDebugMode) print('Clear local data error: $e');
-      _log.w('Clear local data error', error: e);
+      appLogger.warning(
+        'Clear local data error',
+        category: LogCategory.sync,
+        operation: 'clear_local_data',
+        error: e,
+        userId: _uid,
+      );
     }
   }
 
@@ -1137,7 +1527,14 @@ bool get _allowSyncByPlan =>
         if (kDebugMode) {
           print('flushPending fail [$boxName/$id]: $err\n$st');
         }
-        _log.w('flushPending fail [$boxName/$id]', error: err, stackTrace: st);
+        appLogger.warning(
+          'Flush pending failed',
+          category: LogCategory.sync,
+          operation: 'flush_pending',
+          error: err,
+          details: {'box_name': boxName, 'id': id},
+          userId: _uid,
+        );
       }
     }
   }
@@ -1216,7 +1613,11 @@ bool get _allowSyncByPlan =>
       if (kDebugMode) {
         print('[ERROR] forceSync failed during execution: $e\n$st');
       }
-      _log.e('forceSync failed', error: e, stackTrace: st);
+      SyncLogger.syncError(
+        operation: 'force_sync',
+        error: e,
+        userId: _uid,
+      );
     }
   }
 

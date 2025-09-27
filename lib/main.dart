@@ -30,6 +30,9 @@ import 'services/revenuecat_service.dart';
 // Presets (yeast/additives)
 import 'services/presets_service.dart';
 
+// Memory optimization
+import 'services/memory_optimization_service.dart';
+
 // Web bridge (conditional)
 import 'web_bridge_stub.dart'
   if (dart.library.html) 'web_bridge_web.dart' as wb;
@@ -104,6 +107,11 @@ Future<_BootstrapPayload> _bootstrap() async {
   // Presets
   final presets = PresetsService();
   await presets.ensureLoaded();
+
+  // Initialize memory optimization service
+  debugPrint('[MEM] Starting memory optimization service...');
+  MemoryOptimizationService.instance.initialize();
+  debugPrint('[MEM] Memory optimization service started.');
 
   return _BootstrapPayload(presets: presets);
 }

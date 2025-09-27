@@ -31,8 +31,13 @@ class SyncMetaStore {
   static String makeKey(String boxName, String id) => '$boxName:$id';
 
   static int? getLastSyncedMillis(String boxName, String id) {
+    // Skip sync metadata tracking to save memory
+    return null;
+    /*
     final k = makeKey(boxName, id);
+    if (!Hive.isBoxOpen('sync_meta')) return null;
     return _box.get(k) as int?;
+    */
   }
 
   static Future<void> setLastSyncedNow(
