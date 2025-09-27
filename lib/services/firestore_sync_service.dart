@@ -12,6 +12,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logger/logger.dart';
 import 'package:fermentacraft/services/local_mode_service.dart';
 import 'package:fermentacraft/services/feature_gate.dart';
+import 'package:fermentacraft/services/firestore_user.dart';
 import 'package:fermentacraft/utils/sanitize.dart';
 import '../utils/boxes.dart';
 import '../models/batch_model.dart';
@@ -209,21 +210,58 @@ bool get _allowSyncByPlan =>
     // Auth: sign-in/out & user switching
     _authSub ??= FirebaseAuth.instance.authStateChanges().listen((user) async {
       final newUid = user?.uid;
+      
+      if (kDebugMode) {
+        print('[SYNC] === AUTH STATE CHANGE ===');
+        print('[SYNC] New User: ${user?.uid}');
+        print('[SYNC] User Email: ${user?.email}');
+        print('[SYNC] Previous UID: $_uid');
+        print('[SYNC] User Verified: ${user?.emailVerified}');
+        print('[SYNC] User Anonymous: ${user?.isAnonymous}');
+        print('[SYNC] Has Refresh Token: ${user?.refreshToken != null}');
+        print('[SYNC] ================================');
+      }
+      
       if (newUid == null) {
+        if (kDebugMode) print('[SYNC] User signed out, stopping sync');
         await _stop();
         await _clearLocalUserData();
         return;
       }
+      
+      // Force token refresh if token appears invalid
+      if (user != null && user.refreshToken == null) {
+        if (kDebugMode) print('[SYNC] Forcing auth token refresh on auth state change...');
+        try {
+          await user.getIdToken(true);
+          if (kDebugMode) print('[SYNC] ✅ Auth token refreshed successfully on auth state change');
+        } catch (refreshError) {
+          if (kDebugMode) print('[SYNC] ❌ Auth token refresh failed on auth state change: $refreshError');
+        }
+      }
+      
       if (_uid != null && _uid != newUid) {
+        if (kDebugMode) print('[SYNC] User switched from $_uid to $newUid, restarting sync');
         await _stop();
         await _clearLocalUserData();
       }
+      if (kDebugMode) print('[SYNC] Starting sync for user: $newUid');
       await _start(newUid);
     });
 
     // Connectivity: best-effort flush when network returns
-    _connSub ??= _connectivity.onConnectivityChanged.listen((_) {
-      if (_canSync) _bootstrapPushLocal(_uid!);
+    _connSub ??= _connectivity.onConnectivityChanged.listen((_) async {
+      if (_canSync) {
+        // Ensure user document exists before attempting any sync operations
+        try {
+          await FirestoreUser.instance.ensureUserDoc();
+          await _bootstrapPushLocal(_uid!);
+        } catch (e) {
+          if (kDebugMode) {
+            print('[ERROR] Connectivity sync failed: Failed to ensure user document: $e');
+          }
+        }
+      }
     });
 
     // React to plan changes (Premium <-> Pro-Offline/Free)
@@ -247,6 +285,18 @@ bool get _allowSyncByPlan =>
       return;
     }
     _started = true;
+
+    // Ensure user document exists before attempting any sync operations
+    try {
+      await FirestoreUser.instance.ensureUserDoc();
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ERROR] FirestoreSync._start: Failed to ensure user document: $e');
+      }
+      // Don't start sync if we can't ensure the user document exists
+      _started = false;
+      return;
+    }
 
     await _bootstrapMerge(uid); // pull → push converge
     for (final box in _userBoxNames) {
@@ -346,40 +396,93 @@ bool get _allowSyncByPlan =>
       return;
     }
 
+    if (kDebugMode) {
+      print('[SYNC] _bootstrapPullRemote starting for uid: $uid');
+    }
+
+    // Defensive check: Ensure user document exists before attempting any operations
+    try {
+      await FirestoreUser.instance.ensureUserDoc();
+      if (kDebugMode) {
+        print('[SYNC] _bootstrapPullRemote: User document verified');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ERROR] _bootstrapPullRemote: Failed to ensure user document: $e');
+      }
+      return;
+    }
+
     for (final boxName in _userBoxNames) {
       try {
+        if (kDebugMode) {
+          print('[SYNC] Pulling data for box: $boxName');
+        }
         final snap = await FirestorePaths.coll(uid, boxName).get();
+        if (kDebugMode) {
+          print('[SYNC] Found ${snap.docs.length} documents in $boxName');
+        }
+        
         for (final doc in snap.docs) {
           try {
             await _applyRemoteDoc(boxName, doc.id, doc.data());
+            if (kDebugMode) {
+              print('[SYNC] Applied remote doc: $boxName/${doc.id}');
+            }
           } catch (e, st) {
             if (kDebugMode) {
-              print('bootstrapPull apply fail [$boxName]: $e\n$st');
+              print('[ERROR] bootstrapPull apply fail [$boxName/${doc.id}]: $e\n$st');
             }
             _log.w('bootstrapPull apply fail [$boxName]', error: e, stackTrace: st);
           }
         }
       } catch (e, st) {
-        if (kDebugMode) print('bootstrapPull fail [$boxName]: $e\n$st');
+        if (kDebugMode) {
+          print('[ERROR] bootstrapPull fail [$boxName]: $e\n$st');
+        }
         _log.w('bootstrapPull fail [$boxName]', error: e, stackTrace: st);
       }
     }
 
     // settings
     try {
+      if (kDebugMode) {
+        print('[SYNC] Pulling settings');
+      }
       final sDoc = await FirestorePaths.settingsDoc(uid).get();
       if (sDoc.exists) {
         await _applyRemoteSettings(sDoc.data()!);
+        if (kDebugMode) {
+          print('[SYNC] Applied remote settings');
+        }
+      } else {
+        if (kDebugMode) {
+          print('[SYNC] No remote settings found');
+        }
       }
     } catch (e, st) {
-      if (kDebugMode) print('bootstrapPull settings fail: $e\n$st');
+      if (kDebugMode) print('[ERROR] bootstrapPull settings fail: $e\n$st');
       _log.w('bootstrapPull settings fail', error: e, stackTrace: st);
+    }
+
+    if (kDebugMode) {
+      print('[SYNC] _bootstrapPullRemote completed');
     }
   }
 
   Future<void> _bootstrapPushLocal(String uid) async {
     if (!_canSync) {
       _debugWhyCantSync('_bootstrapPushLocal');
+      return;
+    }
+
+    // Defensive check: Ensure user document exists before attempting any operations
+    try {
+      await FirestoreUser.instance.ensureUserDoc();
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ERROR] _bootstrapPushLocal: Failed to ensure user document: $e');
+      }
       return;
     }
 
@@ -447,6 +550,7 @@ bool get _allowSyncByPlan =>
         }
         final dynamic val = box.get(event.key);
         if (val == null) return;
+        
         final json = (val as dynamic).toJson() as JsonMap;
 
         // Debounce / coalesce the latest payload per-doc
@@ -682,6 +786,19 @@ bool get _allowSyncByPlan =>
     if (_lastSentJson[key] == s) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
+    
+    if (kDebugMode) {
+      print('[SYNC] === FIRESTORE WRITE ATTEMPT ===');
+      print('[SYNC] UID: $uid');
+      print('[SYNC] Collection: $boxName');
+      print('[SYNC] Doc ID: $cleanId');
+      print('[SYNC] Firebase Auth User: ${FirebaseAuth.instance.currentUser?.uid}');
+      print('[SYNC] UIDs Match: ${FirebaseAuth.instance.currentUser?.uid == uid}');
+      print('[SYNC] Can Sync: $_canSync');
+      print('[SYNC] Path: users/$uid/$boxName/$cleanId');
+      print('[SYNC] ===================================');
+    }
+    
     try {
       await FirestorePaths.doc(uid, boxName, cleanId).set({
         ...json,
@@ -1027,19 +1144,119 @@ bool get _allowSyncByPlan =>
 
   Future<void> forceSync() async {
     final uid = _uid;
+    
+    // Debug authentication and permissions state
+    if (kDebugMode) {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final premiumStatus = FeatureGate.instance.allowSync;
+      final localMode = LocalModeService.instance.isLocalOnly;
+      
+      print('[SYNC] === FORCE SYNC DEBUG INFO ===');
+      print('[SYNC] Service UID: $uid');
+      print('[SYNC] Firebase Current User: ${currentUser?.uid}');
+      print('[SYNC] Firebase User Email: ${currentUser?.email}');
+      print('[SYNC] Firebase User Auth Token Valid: ${currentUser?.refreshToken != null}');
+      print('[SYNC] Sync Enabled: $_enabled');
+      print('[SYNC] Signed In: $_signedIn');
+      print('[SYNC] Premium Status (allowSync): $premiumStatus');
+      print('[SYNC] Local Mode Only: $localMode');
+      print('[SYNC] Allow Sync By Plan: $_allowSyncByPlan');
+      print('[SYNC] Can Sync: $_canSync');
+      print('[SYNC] UID Match: ${uid == currentUser?.uid}');
+      print('[SYNC] =====================================');
+    }
+    
     if (uid == null || !_canSync) {
       _debugWhyCantSync('forceSync');
+      if (kDebugMode) {
+        print('[SYNC] forceSync blocked - uid: $uid, canSync: $_canSync');
+      }
       return;
     }
 
-    // 1) Flush any debounced local changes
-    await _flushPendingNow(uid);
+    if (kDebugMode) {
+      print('[SYNC] Starting forceSync for uid: $uid');
+    }
 
-    // 2) Push local → remote first so remote can't clobber fresh local edits
-    await _bootstrapPushLocal(uid);
+    // Ensure user document exists before attempting any sync operations
+    try {
+      await FirestoreUser.instance.ensureUserDoc();
+      if (kDebugMode) {
+        print('[SYNC] User document ensured successfully');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ERROR] forceSync: Failed to ensure user document: $e');
+      }
+      return;
+    }
 
-    // 3) Then pull remote → local to converge any remaining deltas
-    await _bootstrapPullRemote(uid);
+    // Test basic Firestore write permissions
+    if (kDebugMode) {
+      await _testFirestoreWrite(uid);
+    }
+
+    try {
+      // 1) Flush any debounced local changes
+      if (kDebugMode) print('[SYNC] Step 1: Flushing pending changes');
+      await _flushPendingNow(uid);
+
+      // 2) Push local → remote first so remote can't clobber fresh local edits
+      if (kDebugMode) print('[SYNC] Step 2: Pushing local to remote');
+      await _bootstrapPushLocal(uid);
+
+      // 3) Then pull remote → local to converge any remaining deltas
+      if (kDebugMode) print('[SYNC] Step 3: Pulling remote to local');
+      await _bootstrapPullRemote(uid);
+
+      if (kDebugMode) {
+        print('[SYNC] ✅ forceSync completed successfully');
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('[ERROR] forceSync failed during execution: $e\n$st');
+      }
+      _log.e('forceSync failed', error: e, stackTrace: st);
+    }
+  }
+
+  // Test method to verify basic Firestore write permissions
+  Future<void> _testFirestoreWrite(String uid) async {
+    try {
+      if (kDebugMode) print('[SYNC] Testing Firestore write permissions...');
+      
+      // First, try to refresh the auth token if it's invalid
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null && currentUser.refreshToken == null) {
+        if (kDebugMode) print('[SYNC] Auth token invalid, attempting refresh...');
+        try {
+          await currentUser.getIdToken(true); // force refresh
+          if (kDebugMode) print('[SYNC] ✅ Auth token refreshed successfully');
+        } catch (refreshError) {
+          if (kDebugMode) print('[SYNC] ❌ Auth token refresh failed: $refreshError');
+        }
+      }
+      
+      final testDoc = FirestorePaths.doc(uid, 'test', 'connectivity_test');
+      await testDoc.set({
+        'test': true,
+        'timestamp': FieldValue.serverTimestamp(),
+        'uid': uid,
+        'testType': 'connectivity_check',
+      });
+      
+      if (kDebugMode) print('[SYNC] ✅ Firestore write test PASSED');
+      
+      // Clean up test document
+      await testDoc.delete();
+      if (kDebugMode) print('[SYNC] ✅ Test document cleaned up');
+      
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('[SYNC] ❌ Firestore write test FAILED: $e');
+        print('[SYNC] Stack trace: $st');
+      }
+    }
   }
 
   // ------------------------------------------------------------------

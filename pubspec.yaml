@@ -1,7 +1,7 @@
 name: fermentacraft
 description: A new Flutter project for tracking fermentation recipes.
 publish_to: 'none'
-version: 2.0.0+5
+version: 2.0.0+58
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -11,11 +11,13 @@ msix_config:
   publisher_display_name: Brian Petry 
   identity_name: BrianPetry.FermentaCraft
   publisher: CN=115FAB00-DFE0-4774-9445-C1D4196A50C4
-  msix_version: 1.0.14.0
-  logo_path: assets/images/logo.png
+  msix_version: 2.0.58.0
+  logo_path: assets/images/Square150x150Logo.png
+  start_menu_icon_path: assets/images/Square44x44Logo.png
+  tile_icon_path: assets/images/Square150x150Logo.png
+  vs_generated_images_folder_path: assets/images
+  icons_background_color: transparent
   store: true
-
-
 dependencies:
   flutter:
     sdk: flutter
@@ -82,7 +84,7 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#1B263B"
-  image: assets/images/fermentacraftlogo.png
+  image: assets/images/fermentacraftlogo_darkmode.png
 
   color_dark: "#1B263B"
   image_dark: assets/images/fermentacraftlogo_darkmode.png

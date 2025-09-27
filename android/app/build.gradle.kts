@@ -9,10 +9,16 @@ val keystoreProps = Properties().apply {
 }
 
 /** Read version from local.properties (pubspec.yaml's `version: x.y.z+NN`) */
-val flutterVersionCode: Int =
-    (project.findProperty("flutterVersionCode") as String?)?.toInt() ?: 50
-val flutterVersionName: String =
-    (project.findProperty("flutterVersionName") as String?) ?: "1.0"
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { stream ->
+        localProperties.load(stream)
+    }
+}
+
+val flutterVersionCode: Int = localProperties.getProperty("flutter.versionCode")?.toInt() ?: 58
+val flutterVersionName: String = localProperties.getProperty("flutter.versionName") ?: "2.0.0"
 
 plugins {
     id("com.android.application")

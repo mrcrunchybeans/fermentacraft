@@ -2,6 +2,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -149,15 +150,26 @@ class _BatchLogPageState extends State<BatchLogPage> {
       await _renameBatch(batch, newName);
     }
 
+    // Dispose controller after all async work is complete
     nameController.dispose();
   }
 
   Future<void> _renameBatch(BatchModel batch, String newName) async {
     final oldName = batch.name;
     
+    // DEBUG: Add logging to track rename operations
+    if (kDebugMode) {
+      print('[DEBUG] Renaming batch: id=${batch.id}, oldName="$oldName", newName="$newName"');
+      print('[DEBUG] Batch box info: key=${batch.key}, isInBox=${batch.isInBox}');
+    }
+    
     try {
       batch.name = newName;
       await batch.save();
+      
+      if (kDebugMode) {
+        print('[DEBUG] Batch rename save completed');
+      }
       
       if (!mounted) return;
       setState(() {});
@@ -168,6 +180,9 @@ class _BatchLogPageState extends State<BatchLogPage> {
           action: SnackBarAction(
             label: 'Undo',
             onPressed: () async {
+              if (kDebugMode) {
+                print('[DEBUG] Undoing batch rename: back to "$oldName"');
+              }
               batch.name = oldName;
               await batch.save();
               if (mounted) {

@@ -152,6 +152,19 @@ class _PremiumHint extends StatelessWidget {
 
 enum _OverflowAction { archiveToggle, attachDevice, exportCsv, rename }
 
+/// Contains both current ABV (based on actual measurements) and estimated final ABV
+class AbvInfo {
+  final double? currentAbv;
+  final double? estimatedFinalAbv;
+  final bool hasActualMeasurements;
+
+  const AbvInfo({
+    required this.currentAbv,
+    required this.estimatedFinalAbv,
+    required this.hasActualMeasurements,
+  });
+}
+
 class BatchDetailPage extends StatefulWidget {
   const BatchDetailPage({
     super.key,
@@ -523,7 +536,8 @@ void _persistFinalYield() {
 
   // ---------------- ABV math ----------------
 
-  double? _computeAbv({
+  /// Compute comprehensive ABV information showing both current and estimated values
+  AbvInfo _computeAbvInfo({
     required BatchModel batch,
     required bool useMeasured,
     required double? measuredOg,
@@ -532,31 +546,39 @@ void _persistFinalYield() {
         ? measuredOg
         : (batch.og ?? batch.plannedOg);
 
-    if (og == null || og <= 1.0) return null;
+    if (og == null || og <= 1.0) {
+      return const AbvInfo(
+        currentAbv: null,
+        estimatedFinalAbv: null,
+        hasActualMeasurements: false,
+      );
+    }
 
-    // For FG, use actual measurements if available, otherwise estimate
-    final double fg = _getFinalGravityForAbv(batch);
-
-    return GravityService.abv(og: og, fg: fg);
-  }
-
-  /// Get the best FG value for ABV calculation
-  double _getFinalGravityForAbv(BatchModel batch) {
-    // 1. If we have actual measurements, use the latest one
-    if (batch.safeMeasurements.isNotEmpty) {
+    // Check if we have actual measurements
+    final bool hasActualMeasurements = batch.safeMeasurements.isNotEmpty;
+    
+    // Current ABV: based on actual measurements if available
+    double? currentAbv;
+    if (hasActualMeasurements) {
       final latestGravity = batch.safeMeasurements.last.gravity;
       if (latestGravity != null && latestGravity > 0.9) {
-        return latestGravity.toDouble();
+        currentAbv = GravityService.abv(og: og, fg: latestGravity.toDouble());
       }
     }
 
-    // 2. If we have a recorded FG, use it
-    if (batch.fg != null && batch.fg! > 0.9) {
-      return batch.fg!.toDouble();
-    }
+    // Estimated final ABV: based on estimated final gravity
+    final estimatedFg = _getEstimatedFinalGravity(batch);
+    final estimatedFinalAbv = GravityService.abv(og: og, fg: estimatedFg);
 
-    // 3. For planning purposes, estimate FG based on fermentation type
-    // Most cider/wine/mead ferments to near 1.000, but not exactly 1.000
+    return AbvInfo(
+      currentAbv: currentAbv,
+      estimatedFinalAbv: estimatedFinalAbv,
+      hasActualMeasurements: hasActualMeasurements,
+    );
+  }
+
+  /// Get estimated final gravity for planning purposes (not based on measurements)
+  double _getEstimatedFinalGravity(BatchModel batch) {
     final og = batch.og ?? batch.plannedOg ?? 1.050;
     
     // Estimate FG based on OG - typical dry fermentation
@@ -573,9 +595,35 @@ void _persistFinalYield() {
     }
   }
 
+  /// Legacy method for backward compatibility - returns current ABV if available, otherwise estimated
+  double? _computeAbv({
+    required BatchModel batch,
+    required bool useMeasured,
+    required double? measuredOg,
+  }) {
+    final abvInfo = _computeAbvInfo(
+      batch: batch,
+      useMeasured: useMeasured,
+      measuredOg: measuredOg,
+    );
+    
+    // Return current ABV if available, otherwise estimated final ABV
+    return abvInfo.currentAbv ?? abvInfo.estimatedFinalAbv;
+  }
+
   Future<double?> _abvForBatch(BatchModel batch) async {
     final extras = await BatchExtrasRepo().getOrCreate(batch.id);
     return _computeAbv(
+      batch: batch,
+      useMeasured: extras.useMeasuredOg == true,
+      measuredOg: extras.measuredOg,
+    );
+  }
+
+  /// Get comprehensive ABV information for display
+  Future<AbvInfo> _abvInfoForBatch(BatchModel batch) async {
+    final extras = await BatchExtrasRepo().getOrCreate(batch.id);
+    return _computeAbvInfo(
       batch: batch,
       useMeasured: extras.useMeasuredOg == true,
       measuredOg: extras.measuredOg,
@@ -1516,14 +1564,33 @@ return InkWell(
                     const SizedBox(height: 4),
                     Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
                     const SizedBox(height: 4),
-                    FutureBuilder(
-                      future: BatchExtrasRepo().getOrCreate(batch.id),
+                    FutureBuilder<AbvInfo>(
+                      future: _abvInfoForBatch(batch),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) return const Text('Estimated ABV: —');
-                        final extras = snapshot.data!;
-                        final abv = _computeAbv(batch: batch, useMeasured: extras.useMeasuredOg == true, measuredOg: extras.measuredOg,);
-                        final s = (abv == null) ? '—' : abv.toStringAsFixed(1);
-                        return Text('Estimated ABV: $s%');
+                        final abvInfo = snapshot.data!;
+                        
+                        // Build ABV display based on what data is available
+                        if (abvInfo.hasActualMeasurements && abvInfo.currentAbv != null) {
+                          // Show both current and estimated when we have measurements
+                          final currentText = 'Current ABV: ${abvInfo.currentAbv!.toStringAsFixed(1)}%';
+                          final estimatedText = 'Est. Final ABV: ${abvInfo.estimatedFinalAbv?.toStringAsFixed(1) ?? '—'}%';
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(currentText, style: const TextStyle(fontWeight: FontWeight.w500)),
+                              const SizedBox(height: 2),
+                              Text(estimatedText, style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context).textTheme.bodySmall?.color,
+                              )),
+                            ],
+                          );
+                        } else {
+                          // Show only estimated when no measurements yet
+                          final s = (abvInfo.estimatedFinalAbv == null) ? '—' : abvInfo.estimatedFinalAbv!.toStringAsFixed(1);
+                          return Text('Estimated ABV: $s%');
+                        }
                       },
                     ),
                   ],
@@ -2915,8 +2982,7 @@ void _syncCompletedControllersFrom(BatchModel b) {
     _tastingRating = batch.tastingRating ?? 0;
     _finalYieldUnit = batch.finalYieldUnit ?? 'gal';
 
-final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
-  _syncCompletedControllersFrom(batch);
+    _syncCompletedControllersFrom(batch);
 
     Future<void> editFg() async {
       final c = TextEditingController(text: batch.fg?.toStringAsFixed(3) ?? '');
@@ -2985,27 +3051,30 @@ final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
 
 
 
-FutureBuilder(
-  future: extrasFuture,
-  builder: (context, snap) {
-    if (!snap.hasData) {
-      return _metricChip(icon: Icons.percent, label: 'ABV', value: '—');
-    }
-    final extras = snap.data!;
-    final abv = _computeAbv(
-      batch: batch,
-      useMeasured: extras.useMeasuredOg == true,
-      measuredOg: extras.measuredOg,
-    );
-    return _metricChip(
-      icon: Icons.percent,
-      label: 'ABV',
-      value: abv == null ? '—' : '${abv.toStringAsFixed(2)}%',
-    );
-  },
-),
-
-
+              FutureBuilder<AbvInfo>(
+                future: _abvInfoForBatch(batch),
+                builder: (context, snap) {
+                  if (!snap.hasData) {
+                    return _metricChip(icon: Icons.percent, label: 'ABV', value: '—');
+                  }
+                  final abvInfo = snap.data!;
+                  
+                  // Show current ABV if available, otherwise estimated final ABV
+                  final displayAbv = abvInfo.currentAbv ?? abvInfo.estimatedFinalAbv;
+                  final displayValue = displayAbv == null ? '—' : '${displayAbv.toStringAsFixed(1)}%';
+                  
+                  // Add a subtle indicator if this is current vs estimated
+                  final label = abvInfo.hasActualMeasurements && abvInfo.currentAbv != null 
+                      ? 'Current ABV' 
+                      : 'Est. ABV';
+                  
+                  return _metricChip(
+                    icon: Icons.percent,
+                    label: label,
+                    value: displayValue,
+                  );
+                },
+              ),
               _metricChip(
                 icon: Icons.inventory_2_outlined,
                 label: 'Yield',
