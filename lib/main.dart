@@ -5,7 +5,6 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -13,25 +12,15 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'bootstrap/setup.dart';
 import 'theme/app_theme.dart';
 import 'auth_gate.dart';
-import 'utils/boxes.dart';
 import 'services/snackbar_service.dart';
-
-// Models / Providers
-import 'models/settings_model.dart';
-import 'models/tag_manager.dart';
-
-// Migration + Sync
+import 'services/service_locator.dart';
 import 'services/firestore_sync_service.dart';
-
-// Premium state (single source of truth)
 import 'services/feature_gate.dart';
 import 'services/revenuecat_service.dart';
-
-// Presets (yeast/additives)
-import 'services/presets_service.dart';
-
-// Memory optimization
 import 'services/memory_optimization_service.dart';
+import 'models/settings_model.dart';
+import 'models/tag_manager.dart';
+import 'services/presets_service.dart';
 
 // Web bridge (conditional)
 import 'web_bridge_stub.dart'
@@ -57,7 +46,8 @@ Future<void> _wireCrashlytics() async {
 /// 5) SharedPrefs prewarm
 /// 6) Firestore Sync
 /// 7) Presets
-Future<_BootstrapPayload> _bootstrap() async {
+/// Initialize core services in a clean, dependency-aware order
+Future<void> _bootstrap() async {
   // Android edge-to-edge early for smoother first frame
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
@@ -99,43 +89,33 @@ Future<_BootstrapPayload> _bootstrap() async {
   // Pre-warm SharedPreferences (avoids first access hitches)
   unawaited(SharedPreferences.getInstance());
 
-  // Cloud sync (honor user setting)
-  final settingsBox = Hive.box(Boxes.settings);
-  final syncEnabled = settingsBox.get('syncEnabled') == true;
-  await (FirestoreSyncService.instance..isEnabled = syncEnabled).init();
-
-  // Presets
-  final presets = PresetsService();
-  await presets.ensureLoaded();
-
   // Initialize memory optimization service
   debugPrint('[MEM] Starting memory optimization service...');
   MemoryOptimizationService.instance.initialize();
   debugPrint('[MEM] Memory optimization service started.');
 
-  return _BootstrapPayload(presets: presets);
+  // Initialize modern service locator with dependency injection
+  debugPrint('[DI] Initializing service locator...');
+  await ServiceLocator.initialize();
+  debugPrint('[DI] Service locator initialized.');
+
+  // Legacy sync service (will be phased out in favor of SyncCoordinator)
+  // Keep for compatibility during transition
+  try {
+    await FirestoreSyncService.instance.init();
+    debugPrint('[SYNC] Legacy sync service initialized');
+  } catch (e) {
+    debugPrint('[SYNC] Legacy sync init failed: $e (using new coordinator)');
+  }
 }
 
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    final payload = await _bootstrap();
+    await _bootstrap();
 
-    runApp(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<PresetsService>.value(value: payload.presets),
-          ChangeNotifierProvider<SettingsModel>(
-            create: (_) => SettingsModel(Hive.box(Boxes.settings)),
-          ),
-          ChangeNotifierProvider<TagManager>(create: (_) => TagManager()),
-          ChangeNotifierProvider<FeatureGate>.value(
-              value: FeatureGate.instance),
-        ],
-        child: const FermentaCraftApp(),
-      ),
-    );
+    runApp(const FermentaCraftApp());
 
     WidgetsBinding.instance
         .addPostFrameCallback((_) => wb.postSplashComplete());
@@ -155,25 +135,60 @@ void main() {
   });
 }
 
+/// Root application widget with clean Provider architecture
 class FermentaCraftApp extends StatelessWidget {
   const FermentaCraftApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsModel>();
-    return MaterialApp(
-      title: 'FermentaCraft',
-      scaffoldMessengerKey: SnackbarService.messengerKey,
-      debugShowCheckedModeBanner: false,
-      themeMode: settings.themeMode,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      home: const AuthGate(),
+    return MultiProvider(
+      providers: _buildProviders(),
+      child: Consumer<SettingsModel>(
+        builder: (context, settings, child) {
+          return MaterialApp(
+            title: 'FermentaCraft',
+            scaffoldMessengerKey: SnackbarService.messengerKey,
+            debugShowCheckedModeBanner: false,
+            themeMode: settings.themeMode,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            home: const AuthGate(),
+          );
+        },
+      ),
     );
+  }
+
+  /// Build provider list with proper organization
+  List<ChangeNotifierProvider> _buildProviders() {
+    return [
+      // Core services
+      ChangeNotifierProvider<FeatureGate>.value(
+        value: ServiceLocator.get<FeatureGate>(),
+      ),
+      
+      // Data models
+      ChangeNotifierProvider<SettingsModel>.value(
+        value: ServiceLocator.get<SettingsModel>(),
+      ),
+      ChangeNotifierProvider<TagManager>.value(
+        value: ServiceLocator.get<TagManager>(),
+      ),
+      
+      // Business services
+      ChangeNotifierProvider<PresetsService>.value(
+        value: ServiceLocator.get<PresetsService>(),
+      ),
+    ];
   }
 }
 
-class _BootstrapPayload {
-  final PresetsService presets;
-  _BootstrapPayload({required this.presets});
+/// Cleanup services on app termination
+class AppLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      ServiceLocator.dispose();
+    }
+  }
 }

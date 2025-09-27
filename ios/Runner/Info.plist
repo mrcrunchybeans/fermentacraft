@@ -80,15 +80,32 @@
 
   <!-- Permissions you already use / may need -->
   <key>NSCameraUsageDescription</key>
-  <string>Camera is used only when you choose to scan or capture images.</string>
+  <string>Take photos of pH strips and fermentation equipment for batch documentation</string>
   <key>NSPhotoLibraryUsageDescription</key>
-  <string>We read from your photo library only when you pick an image.</string>
+  <string>Select photos for batch documentation and recipe images</string>
   <key>NSPhotoLibraryAddUsageDescription</key>
-  <string>We save images to your library only when you ask.</string>
+  <string>Save fermentation photos and batch documentation to your library</string>
+  
+  <!-- Sprint 2.5: Additional iOS permissions -->
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Save recipe exports and batch data backups</string>
+  <key>NSFileProviderDomainUsageDescription</key>
+  <string>Access cloud storage for recipe and batch data synchronization</string>
 
   <!-- Optional: disable Impeller while diagnosing GPU/splash issues -->
   <key>FLTEnableImpeller</key>
   <false/>
+  
+  <!-- Sprint 2.5: iOS App lifecycle and background modes -->
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>background-fetch</string>
+    <string>background-processing</string>
+  </array>
+  
+  <!-- iOS-specific app category for App Store -->
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.food-and-drink</string>
 
 </dict>
 </plist>

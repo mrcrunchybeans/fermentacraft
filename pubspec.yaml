@@ -48,6 +48,7 @@ dependencies:
   connectivity_plus: ^6.1.4
   purchases_flutter: ^9.2.0
   web: ^1.1.1
+  get_it: ^8.0.0
   cloud_functions: ^6.0.0
   http: ^1.5.0
   hive: ^2.2.3
