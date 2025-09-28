@@ -45,13 +45,31 @@ steps:
       flutter --version
       dart --version
       
-      # Get Flutter dependencies with version override if needed
-      flutter pub get || {
-        echo "⚠️  Dependency conflict detected, trying with version override..."
-        flutter pub deps
-        flutter pub get
-      }
+      # Clear pub cache to avoid stale dependencies
+      flutter clean
       
+      # Attempt dependency resolution with multiple strategies
+      echo "📦 Resolving dependencies..."
+      if ! flutter pub get; then
+        echo "⚠️  Initial pub get failed, trying dependency override resolution..."
+        
+        # Create temporary dependency overrides
+        echo "dependency_overrides:" >> pubspec.yaml
+        echo "  path: 1.9.0  # Match Flutter SDK pinned version" >> pubspec.yaml
+        
+        if ! flutter pub get; then
+          echo "❌ Dependency resolution failed with overrides"
+          echo "📋 Available packages:"
+          flutter pub deps --style=compact || true
+          exit 1
+        else
+          echo "✅ Dependencies resolved with overrides"
+        fi
+      else
+        echo "✅ Dependencies resolved successfully"
+      fi
+      
+      # Prepare iOS dependencies
       flutter precache --ios
       cd ios
       pod repo update
