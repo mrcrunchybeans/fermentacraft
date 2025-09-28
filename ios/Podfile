@@ -7,23 +7,24 @@ project 'Runner', {
   'Release' => :release,
 }
 
-# Resolve FLUTTER_ROOT from Generated.xcconfig (created by `flutter pub get`)
+# Resolve FLUTTER_ROOT from ios/Flutter/Generated.xcconfig (created by `flutter pub get`)
 def flutter_root
-  generated_xcode_build_settings_path = File.expand_path(File.join('Flutter', 'Generated.xcconfig'), __dir__)
-  unless File.exist?(generated_xcode_build_settings_path)
-    raise "Generated.xcconfig must exist. Run `flutter pub get` in the Flutter project root before running CocoaPods."
+  gxc = File.expand_path(File.join('Flutter', 'Generated.xcconfig'), __dir__)
+  unless File.exist?(gxc)
+    raise "Generated.xcconfig must exist. Run `flutter pub get` before CocoaPods."
   end
-  File.foreach(generated_xcode_build_settings_path) do |line|
-    matches = line.match(/FLUTTER_ROOT\=(.*)/)
-    return matches[1].strip if matches
+  File.foreach(gxc) do |line|
+    if (m = line.match(/FLUTTER_ROOT=(.*)/))
+      return m[1].strip
+    end
   end
-  raise "FLUTTER_ROOT not found in Generated.xcconfig. Ensure Flutter is set up correctly."
+  raise "FLUTTER_ROOT not found in Generated.xcconfig."
 end
 
 # Load Flutter's CocoaPods helper from the SDK
 require File.expand_path('packages/flutter_tools/bin/podhelper', flutter_root)
 
-# Required by Flutter (outside any target)
+# Flutter pre-target setup
 flutter_ios_podfile_setup
 
 target 'Runner' do
@@ -33,10 +34,11 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
-# Post-install customizations + Flutter fixes
 post_install do |installer|
-  flutter_post_install(installer)
+  # Call Flutter’s hook if it exists (guard avoids the undefined-method crash)
+  flutter_post_install(installer) if defined?(flutter_post_install)
 
+  # Your extra tweaks
   installer.pods_project.targets.each do |t|
     t.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
@@ -52,5 +54,7 @@ post_install do |installer|
         config.build_settings['OTHER_SWIFT_FLAGS'] = flags + ['-D', 'DEBUG']
       end
     end
+    # Keep Flutter’s per-target extras when available
+    flutter_additional_ios_build_settings(t) if defined?(flutter_additional_ios_build_settings)
   end
 end
