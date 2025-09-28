@@ -3900,7 +3900,7 @@ appBar: AppBar(
         itemBuilder: (context) => [
           PopupMenuItem(
             value: _OverflowAction.rename,
-            child: ListTile(
+            child: const ListTile(
               dense: true,
               leading: Icon(Icons.edit),
               title: Text('Rename'),

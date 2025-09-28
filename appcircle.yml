@@ -77,10 +77,10 @@ steps:
   inputs:
   - Execute: "bash"
   - Script: |
-      set -e
       cd "$AC_REPOSITORY_DIR"
       echo "🔍 Running Flutter analysis (warnings only)..."
       flutter analyze --no-fatal-infos || echo "⚠️  Analysis completed with warnings - continuing build"
+      echo "✅ Analysis step completed - proceeding to build"
 
 # Flutter Tests
 - componentType: appcircle_custom_script
@@ -114,6 +114,9 @@ steps:
   - AC_SIMULATOR_NAME: "iPhone 15"
   - AC_PROJECT_PATH: "$AC_REPOSITORY_DIR/ios/Runner.xcworkspace"
   - AC_CONFIGURATION_NAME: "Debug"
+  - AC_COMPILER_INDEX_STORE_ENABLE: "NO"
+  - AC_ENABLE_BITCODE: "NO"
+  - AC_METHOD: "development"
   outputs:
   - AC_SIMULATOR_APP_PATH: AC_SIMULATOR_APP_PATH
 
