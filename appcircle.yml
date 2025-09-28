@@ -18,14 +18,14 @@ steps:
   outputs:
   - AC_REPOSITORY_DIR: AC_REPOSITORY_DIR
 
-# Install Flutter 3.27.1 for Sprint 2.5 (includes Dart 3.8.0+)
+# Install Flutter 3.35.4 for Sprint 2.5 (includes Dart 3.8.0+)
 - componentType: appcircle_flutter_install
   componentVersion: 1.0.*
   stepName: Flutter Install
   enabled: true
   onError: $exit
   inputs:
-  - AC_SELECTED_FLUTTER_VERSION: "3.27.1"
+  - AC_SELECTED_FLUTTER_VERSION: "3.35.4"
   outputs:
   - PATH: "PATH"
 
@@ -48,23 +48,16 @@ steps:
       # Clear pub cache to avoid stale dependencies
       flutter clean
       
-      # Attempt dependency resolution with multiple strategies
+      # Attempt dependency resolution
       echo "📦 Resolving dependencies..."
       if ! flutter pub get; then
-        echo "⚠️  Initial pub get failed, trying dependency override resolution..."
+        echo "⚠️  Initial pub get failed, checking for version conflicts..."
+        echo "📋 Dependency tree:"
+        flutter pub deps --style=compact || true
         
-        # Create temporary dependency overrides
-        echo "dependency_overrides:" >> pubspec.yaml
-        echo "  path: 1.9.0  # Match Flutter SDK pinned version" >> pubspec.yaml
-        
-        if ! flutter pub get; then
-          echo "❌ Dependency resolution failed with overrides"
-          echo "📋 Available packages:"
-          flutter pub deps --style=compact || true
-          exit 1
-        else
-          echo "✅ Dependencies resolved with overrides"
-        fi
+        echo "❌ Dependency resolution failed"
+        echo "� Try updating dependencies in pubspec.yaml or use Flutter 3.35.4+"
+        exit 1
       else
         echo "✅ Dependencies resolved successfully"
       fi
