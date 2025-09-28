@@ -1,8 +1,8 @@
 // lib/services/platform/ios_auth_service.dart
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../service_locator.dart';
 import '../../utils/result.dart';
 
 /// iOS-specific authentication service implementation
@@ -18,7 +18,7 @@ class IOSAuthService {
   /// iOS-optimized Google Sign-In flow
   static Future<Result<User, Exception>> signInWithGoogle() async {
     try {
-      print('Starting iOS Google Sign-In flow');
+      debugPrint('Starting iOS Google Sign-In flow');
       
       // Configure Google Sign-In for iOS
       await _configureGoogleSignInForIOS();
@@ -26,7 +26,7 @@ class IOSAuthService {
       // Trigger the authentication flow
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        print('iOS Google Sign-In cancelled by user');
+        debugPrint('iOS Google Sign-In cancelled by user');
         return Failure(Exception('Sign in cancelled by user'));
       }
 
