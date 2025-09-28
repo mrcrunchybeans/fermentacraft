@@ -111,7 +111,7 @@ steps:
   - AC_OUTPUT_DIR_PATH: $AC_OUTPUT_DIR
   - AC_SCHEME: "Runner"
   - AC_SIMULATOR_ARCH: "arm64"
-  - AC_SIMULATOR_NAME: "iPhone 16"
+  - AC_SIMULATOR_NAME: "Any iOS Simulator Device"
   - AC_PROJECT_PATH: "$AC_REPOSITORY_DIR/ios/Runner.xcworkspace"
   - AC_CONFIGURATION_NAME: "Debug"
   - AC_COMPILER_INDEX_STORE_ENABLE: "NO"
