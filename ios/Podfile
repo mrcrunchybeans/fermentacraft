@@ -7,20 +7,12 @@ project 'Runner', {
   'Release' => :release,
 }
 
-# Resolve FLUTTER_ROOT from Generated.xcconfig (created by `flutter pub get`)
-def flutter_root
-  generated_xcode_build_settings_path = File.expand_path(File.join('Flutter', 'Generated.xcconfig'), __dir__)
-  unless File.exist?(generated_xcode_build_settings_path)
-    raise "Generated.xcconfig must exist. Run `flutter pub get` in the Flutter project root before running CocoaPods."
-  end
-  File.foreach(generated_xcode_build_settings_path) do |line|
-    matches = line.match(/FLUTTER_ROOT\=(.*)/)
-    return matches[1].strip if matches
-  end
-  raise "FLUTTER_ROOT not found in Generated.xcconfig. Ensure Flutter is set up correctly."
-end
+# Standard Flutter-resolved paths (project-local helper)
+flutter_root = File.expand_path(File.join('Flutter'), __dir__)
+require File.expand_path(File.join(flutter_root, 'flutter_export_environment.rb'), __FILE__)
+require File.expand_path(File.join(flutter_root, 'podhelper.rb'), __FILE__)
 
-require File.expand_path('packages/flutter_tools/bin/podhelper', flutter_root)
+# Required by Flutter
 flutter_ios_podfile_setup
 
 target 'Runner' do
@@ -31,6 +23,10 @@ target 'Runner' do
 end
 
 post_install do |installer|
+  # Let Flutter apply its fixes (defines flutter_post_install)
+  flutter_post_install(installer)
+
+  # Your extra tweaks
   installer.pods_project.targets.each do |t|
     t.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
@@ -46,8 +42,5 @@ post_install do |installer|
         config.build_settings['OTHER_SWIFT_FLAGS'] = flags + ['-D', 'DEBUG']
       end
     end
-    flutter_additional_ios_build_settings(t)
   end
-
-  flutter_post_install(installer)
 end
