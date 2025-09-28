@@ -8,7 +8,6 @@ project 'Runner', {
 }
 
 # Resolve FLUTTER_ROOT from Generated.xcconfig (created by `flutter pub get`)
-# Resolve FLUTTER_ROOT from Generated.xcconfig (created by `flutter pub get`)
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('Flutter', 'Generated.xcconfig'), __dir__)
   unless File.exist?(generated_xcode_build_settings_path)
@@ -21,45 +20,45 @@ def flutter_root
   raise "FLUTTER_ROOT not found in Generated.xcconfig. Ensure Flutter is set up correctly."
 end
 
-# Require podhelper from the Flutter SDK (reliable on CI)
+# Load Flutter's CocoaPods helpers from the SDK
 require File.expand_path('packages/flutter_tools/bin/podhelper', flutter_root)
+
+# Required by Flutter (do this outside target)
+flutter_ios_podfile_setup
 
 target 'Runner' do
   # Frameworks are fine; Purchases uses XCFrameworks
   use_frameworks! :linkage => :dynamic
   use_modular_headers!
 
-  flutter_ios_podfile_setup
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
 
-  post_install do |installer|
-    installer.pods_project.targets.each do |t|
-      t.build_configurations.each do |config|
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
-        config.build_settings['ENABLE_BITCODE'] = 'NO'
-        # IMPORTANT: do NOT exclude arm64 for iOS Simulator on Apple-silicon
-        # (This broke Swift XCFrameworks like RevenueCat with "Unsupported Swift architecture")
-        # config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+# Post-install customizations live OUTSIDE the target block
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
+      # Optional but helpful for some vendored pods
+      config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
+      config.build_settings['SWIFT_VERSION'] = '5.0'
 
-        # Optional but harmless: helps some vendored pods
-        config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'YES'
-        # Ensure Swift toolchain is set (usually default anyway)
-        config.build_settings['SWIFT_VERSION'] = '5.0'
-        
-        # Sprint 2.5: Enhanced iOS build settings for better compatibility
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
-          '$(inherited)',
-          'PERMISSION_CAMERA=1',
-          'PERMISSION_PHOTOS=1',
-        ]
-        
-        # Resolve signing issues for development
-        if config.name == 'Debug'
-          config.build_settings['OTHER_SWIFT_FLAGS'] = ['-D', 'DEBUG']
-        end
+      # Preprocessor flags
+      defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || '$(inherited)'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = [defs, 'PERMISSION_CAMERA=1', 'PERMISSION_PHOTOS=1']
+
+      # Debug-only Swift flag
+      if config.name == 'Debug'
+        flags = Array(config.build_settings['OTHER_SWIFT_FLAGS'])
+        config.build_settings['OTHER_SWIFT_FLAGS'] = flags + ['-D', 'DEBUG']
       end
-      flutter_additional_ios_build_settings(t)
     end
-    end
+
+    # Keep Flutter’s extra per-target settings
+    flutter_additional_ios_build_settings(t)
   end
+
+  # Keep Flutter’s global post-install fixes (e.g., new Xcode quirks)
+  flutter_post_install(installer)
 end
