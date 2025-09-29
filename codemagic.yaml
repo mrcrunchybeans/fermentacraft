@@ -18,13 +18,13 @@ workflows:
           pod --version
 
       - name: Static checks (warnings only)
+        onError: $next
         script: |
           set -euo pipefail
           flutter pub get
           # Only fail on errors, not on info or warnings
           flutter analyze --no-fatal-infos || echo "⚠️ Analysis completed with warnings - continuing build"
           echo "✅ Analysis step completed - proceeding with build"
-        fail_on_script_failure: false
 
       - name: Verify Firebase plist & bundle id
         script: |
