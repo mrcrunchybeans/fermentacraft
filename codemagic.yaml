@@ -41,10 +41,47 @@ workflows:
         script: |
           set -euo pipefail
           (cd ios && pod install)
+          
+      - name: Fix Firebase dependencies
+        script: |
+          set -euo pipefail
+          # Fix GTMSessionFetcherCore issue
+          echo "Patching FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore"
+          if [ -f "ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift" ]; then
+            chmod +rw ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift
+            sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift || { 
+              echo "Failed to patch with sed, trying patch command" 
+              patch -p1 < fix_use_measured_og_v2.patch || echo "Patch already applied or failed"
+            }
+          fi
+          
+          # Fix GoogleUtilities_AppDelegateSwizzler issue
+          echo "Patching FirebaseAuth to use GoogleUtilities instead of GoogleUtilities_AppDelegateSwizzler"
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift" ]; then
+            chmod +rw ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+            sed -i '' 's/import GoogleUtilities_AppDelegateSwizzler/import GoogleUtilities/g' ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift || {
+              echo "Failed to patch with sed, trying patch command"
+              patch -p1 < fix_google_utilities.patch || echo "Patch already applied or failed"
+            }
+          fi
 
       - name: Build app (same experience as Android)
         script: |
           set -euo pipefail
+          # Ensure iOS minimum version is set to 15.0
+          if [ -f "ios/Flutter/AppFrameworkInfo.plist" ]; then
+            /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 15.0" ios/Flutter/AppFrameworkInfo.plist
+            echo "Updated AppFrameworkInfo.plist minimum OS version to 15.0"
+          fi
+          
+          if [ -f "ios/Podfile" ]; then
+            if ! grep -q "platform :ios, '15.0'" ios/Podfile; then
+              sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/g" ios/Podfile
+              echo "Updated Podfile platform to iOS 15.0"
+              (cd ios && pod install)
+            fi
+          fi
+          
           flutter build ios --simulator --debug -t lib/main.dart \
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
@@ -113,12 +150,29 @@ workflows:
           # Only delete if we created a temp device (avoids Python here)
           if [[ "$CREATED" == "1" ]]; then xcrun simctl delete "$UUID" || true; fi
 
+          # Capture build logs for diagnostics
+          mkdir -p build_logs
+          if [[ -f ios/Pods/Pods.xcodeproj/project.pbxproj ]]; then
+            cp ios/Pods/Pods.xcodeproj/project.pbxproj build_logs/pods_project.pbxproj || true
+          fi
+          
+          if [[ $EXIT -ne 0 ]]; then
+            echo "Build or run failed, collecting diagnostic info..."
+            # Log Flutter doctor info
+            flutter doctor -v > build_logs/flutter_doctor.log
+            # Log pod environment
+            (cd ios && pod env) > build_logs/pod_env.log 2>&1 || true
+            # Check for common issues in the log file
+            grep -i "error" "$LOGFILE" > build_logs/error_summary.log || true
+          fi
+
           exit $EXIT
 
     artifacts:
       - build/ios/iphonesimulator/*.app
       - preview/*.mp4
       - sim_logs/*.log
+      - build_logs/*
     cache:
       cache_paths:
         - $HOME/.pub-cache
