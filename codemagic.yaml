@@ -251,7 +251,7 @@ workflows:
           # Check for important errors in the build logs
           if [ -d "ios" ]; then
             echo "===== Firebase Related Files =====" > build_diagnostics/file_paths.txt
-            find ios -name "Auth.swift" -o -name "AuthBackend.swift" -o -name "Functions.swift" -o -name "AuthAPNSTokenManager.swift" | sort >> build_diagnostics/file_paths.txt
+            find ios -name "Auth.swift" -o -name "AuthBackend.swift" -o -name "Functions.swift" -o -name "AuthAPNSTokenManager.swift" -o -name "AuthBackendRPCIssuer.swift" | sort >> build_diagnostics/file_paths.txt
             
             # List import statements from key files to verify patches
             echo "===== Firebase Import Statements =====" > build_diagnostics/imports.txt
@@ -259,8 +259,9 @@ workflows:
             AUTH_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift"
             AUTH_BACKEND_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift"
             AUTH_APNS_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift"
+            AUTH_BACKEND_RPC_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift"
             
-            for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE" "$AUTH_APNS_FILE"; do
+            for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE" "$AUTH_APNS_FILE" "$AUTH_BACKEND_RPC_FILE"; do
               if [ -f "$FILE" ]; then
                 echo -e "\n--- $FILE ---" >> build_diagnostics/imports.txt
                 grep "import " "$FILE" >> build_diagnostics/imports.txt 2>/dev/null || echo "No imports found" >> build_diagnostics/imports.txt

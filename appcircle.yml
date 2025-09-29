@@ -156,7 +156,7 @@ steps:
           # Check for important errors in the build logs
           if [ -d "ios" ]; then
             echo "===== Firebase Related Files =====" > "$AC_OUTPUT_DIR/diagnostics/file_paths.txt"
-            find ios -name "Auth.swift" -o -name "AuthBackend.swift" -o -name "Functions.swift" -o -name "AuthAPNSTokenManager.swift" | sort >> "$AC_OUTPUT_DIR/diagnostics/file_paths.txt"
+            find ios -name "Auth.swift" -o -name "AuthBackend.swift" -o -name "Functions.swift" -o -name "AuthAPNSTokenManager.swift" -o -name "AuthBackendRPCIssuer.swift" | sort >> "$AC_OUTPUT_DIR/diagnostics/file_paths.txt"
             
             # List import statements from key files to verify patches
             echo "===== Firebase Import Statements =====" > "$AC_OUTPUT_DIR/diagnostics/imports_final.txt"
@@ -164,8 +164,9 @@ steps:
             AUTH_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift"
             AUTH_BACKEND_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift"
             AUTH_APNS_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift"
+            AUTH_BACKEND_RPC_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift"
             
-            for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE" "$AUTH_APNS_FILE"; do
+            for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE" "$AUTH_APNS_FILE" "$AUTH_BACKEND_RPC_FILE"; do
               if [ -f "$FILE" ]; then
                 echo -e "\n--- $FILE ---" >> "$AC_OUTPUT_DIR/diagnostics/imports_final.txt"
                 grep "import " "$FILE" >> "$AC_OUTPUT_DIR/diagnostics/imports_final.txt" 2>/dev/null || echo "No imports found" >> "$AC_OUTPUT_DIR/diagnostics/imports_final.txt"
@@ -230,6 +231,7 @@ steps:
           echo "  - GoogleUtilities_AppDelegateSwizzler → GoogleUtilities"
           echo "  - GoogleUtilities_Environment → GoogleUtilities (Auth.swift)"
           echo "  - GoogleUtilities_Environment → GoogleUtilities (AuthAPNSTokenManager.swift)"
+          echo "  - @preconcurrency GTMSessionFetcherCore → @preconcurrency GTMSessionFetcher (AuthBackendRPCIssuer.swift)"
           echo ""
           echo "Next: Continue Sprint 2.5 on macOS for device testing!"
     alwaysRun: false
