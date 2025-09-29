@@ -1,0 +1,13 @@
+diff --git a/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift b/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+index 1234567..abcdefg 100644
+--- a/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
++++ b/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+@@ -18,7 +18,7 @@
+ 
+ import Foundation
+ 
+-import GTMSessionFetcherCore
++import GTMSessionFetcher
+ 
+ #if SWIFT_PACKAGE
+ @_implementationOnly import FirebaseAppCheckInterop

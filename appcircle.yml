@@ -71,10 +71,17 @@ steps:
             sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift || { echo "Failed to patch with sed, trying patch command"; sudo patch -p1 < fix_use_measured_og_v2.patch || echo "Patch already applied or failed"; }
           fi
           
-          echo "Patching FirebaseAuth to use GoogleUtilities instead of GoogleUtilities_AppDelegateSwizzler"
+          echo "Patching FirebaseAuth/Sources/Swift/Auth/Auth.swift for GoogleUtilities"
           if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift" ]; then
             sudo chmod +rw ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
-            sed -i '' 's/import GoogleUtilities_AppDelegateSwizzler/import GoogleUtilities/g' ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift || { echo "Failed to patch with sed, trying patch command"; sudo patch -p1 < fix_google_utilities.patch || echo "Patch already applied or failed"; }
+            sed -i '' 's/import GoogleUtilities_AppDelegateSwizzler/import GoogleUtilities/g' ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+            sed -i '' 's/import GoogleUtilities_Environment/import GoogleUtilities/g' ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift || { echo "Failed to patch with sed, trying patch command"; sudo patch -p1 < fix_google_utilities_auth.patch || echo "Patch already applied or failed"; }
+          fi
+          
+          echo "Patching FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift for GTMSessionFetcher"
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift" ]; then
+            sudo chmod +rw ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+            sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift || { echo "Failed to patch with sed, trying patch command"; sudo patch -p1 < fix_auth_backend.patch || echo "Patch already applied or failed"; }
           fi
           
           # Try the simulator build via Flutter (no codesign)

@@ -1,0 +1,15 @@
+diff --git a/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift b/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+index 1234567..abcdefg 100644
+--- a/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
++++ b/ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+@@ -21,8 +21,8 @@
+ 
+ import Foundation
+ 
+-import GoogleUtilities_AppDelegateSwizzler
+-import GoogleUtilities_Environment
++import GoogleUtilities
++import GoogleUtilities
+ 
+ #if SWIFT_PACKAGE
+ @_implementationOnly import FirebaseAuthInterop
