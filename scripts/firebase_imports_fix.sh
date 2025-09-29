@@ -60,6 +60,43 @@ patch_file() {
   fi
 }
 
+# Function to find and patch all Swift files with a specific import pattern
+find_and_patch_all() {
+  local base_dir="$1"
+  local pattern="$2"
+  local replacement="$3"
+  local description="$4"
+  
+  log_message "🔍 Searching for all files with $pattern in $base_dir..."
+  
+  # Find all Swift files that contain the pattern
+  local files=$(grep -l "$pattern" "$base_dir"/*.swift "$base_dir"/*/*.swift "$base_dir"/*/*/*.swift "$base_dir"/*/*/*/*.swift 2>/dev/null || echo "")
+  
+  if [ -z "$files" ]; then
+    log_message "ℹ️ No files found containing '$pattern'"
+    return 0
+  fi
+  
+  log_message "🔍 Found $(echo "$files" | wc -w | xargs) files with '$pattern'"
+  
+  # Loop through each file and apply the patch
+  local success=true
+  for file in $files; do
+    if ! patch_file "$file" "$pattern" "$replacement" "$description in $(basename "$file")"; then
+      success=false
+      log_message "⚠️ Failed to patch $file"
+    fi
+  done
+  
+  if [ "$success" = true ]; then
+    log_message "✅ Successfully patched all files containing '$pattern'"
+    return 0
+  else
+    log_message "⚠️ Some files with '$pattern' could not be patched"
+    return 1
+  fi
+}
+
 # Main execution
 log_message "🔍 Checking iOS directory structure..."
 
@@ -84,18 +121,20 @@ fi
 FUNCTIONS_FILE="ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
 AUTH_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift"
 AUTH_BACKEND_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift"
+AUTH_APNS_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift"
 
-# Array of patches to apply - format: [file, old_import, new_import, description]
-declare -a PATCHES=(
+# Array of specific file patches to apply - format: [file, old_import, new_import, description]
+declare -a SPECIFIC_PATCHES=(
   "$FUNCTIONS_FILE|import GTMSessionFetcherCore|import GTMSessionFetcher|GTMSessionFetcherCore in FirebaseFunctions"
   "$AUTH_FILE|import GoogleUtilities_AppDelegateSwizzler|import GoogleUtilities|GoogleUtilities_AppDelegateSwizzler in Auth.swift"
   "$AUTH_FILE|import GoogleUtilities_Environment|import GoogleUtilities|GoogleUtilities_Environment in Auth.swift"
   "$AUTH_BACKEND_FILE|import GTMSessionFetcherCore|import GTMSessionFetcher|GTMSessionFetcherCore in AuthBackend.swift"
+  "$AUTH_APNS_FILE|import GoogleUtilities_Environment|import GoogleUtilities|GoogleUtilities_Environment in AuthAPNSTokenManager.swift"
 )
 
-# Apply all patches
+# Apply all specific patches first
 SUCCESS=true
-for patch_info in "${PATCHES[@]}"; do
+for patch_info in "${SPECIFIC_PATCHES[@]}"; do
   IFS="|" read -r file old_import new_import description <<< "$patch_info"
   
   if [ -f "$file" ]; then
@@ -118,6 +157,30 @@ for patch_info in "${PATCHES[@]}"; do
     fi
   fi
 done
+
+# Now search for any other instances of problematic imports in the Firebase directories
+log_message "🔍 Searching for any additional problematic imports in the entire Pods directory..."
+
+# Firebase Pods directory
+FIREBASE_DIR="ios/Pods"
+if [ -d "$FIREBASE_DIR" ]; then
+  # Search and patch all GTMSessionFetcherCore imports
+  find_and_patch_all "$FIREBASE_DIR" "import GTMSessionFetcherCore" "import GTMSessionFetcher" "GTMSessionFetcherCore import"
+  
+  # Search and patch all GoogleUtilities_AppDelegateSwizzler imports
+  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_AppDelegateSwizzler" "import GoogleUtilities" "GoogleUtilities_AppDelegateSwizzler import"
+  
+  # Search and patch all GoogleUtilities_Environment imports
+  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Environment" "import GoogleUtilities" "GoogleUtilities_Environment import"
+  
+  # Additional searches for any other known problematic imports
+  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Logger" "import GoogleUtilities" "GoogleUtilities_Logger import"
+  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Network" "import GoogleUtilities" "GoogleUtilities_Network import"
+  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Reachability" "import GoogleUtilities" "GoogleUtilities_Reachability import"
+  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_UserDefaults" "import GoogleUtilities" "GoogleUtilities_UserDefaults import"
+else
+  log_message "⚠️ Firebase Pods directory not found at $FIREBASE_DIR"
+fi
 
 # Final verification
 log_message "🔍 Final verification of patched files..."
@@ -142,12 +205,13 @@ verify_imports() {
 verify_imports "$FUNCTIONS_FILE" "GTMSessionFetcherCore" "GTMSessionFetcherCore import"
 verify_imports "$AUTH_FILE" "GoogleUtilities_" "GoogleUtilities_ imports"
 verify_imports "$AUTH_BACKEND_FILE" "GTMSessionFetcherCore" "GTMSessionFetcherCore import"
+verify_imports "$AUTH_APNS_FILE" "GoogleUtilities_Environment" "GoogleUtilities_Environment import"
 
 # Store current import states for reference
 IMPORTS_FILE="${SCRIPT_DIR}/firebase_imports.txt"
 echo "===== Firebase Import Statements After Patching =====" > "$IMPORTS_FILE"
 
-for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE"; do
+for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE" "$AUTH_APNS_FILE"; do
   if [ -f "$FILE" ]; then
     echo -e "\n--- $FILE ---" >> "$IMPORTS_FILE"
     grep "import " "$FILE" >> "$IMPORTS_FILE" 2>/dev/null || echo "No imports found" >> "$IMPORTS_FILE"
@@ -156,7 +220,39 @@ done
 
 log_message "📄 Import statements saved to $IMPORTS_FILE"
 
+# Search for any remaining problematic imports for reporting
+REMAINING_GTM=$(find ios -name "*.swift" -type f -exec grep -l "import GTMSessionFetcherCore" {} \; 2>/dev/null || echo "")
+REMAINING_GU=$(find ios -name "*.swift" -type f -exec grep -l "import GoogleUtilities_" {} \; 2>/dev/null || echo "")
+
 # Final status message
+log_message "===== Firebase Import Fix Summary ====="
+log_message "Checked specific files:"
+for patch_info in "${SPECIFIC_PATCHES[@]}"; do
+  IFS="|" read -r file old_import new_import description <<< "$patch_info"
+  log_message " - $file"
+done
+
+log_message "Also searched entire Pods directory for problematic imports"
+
+if [ -n "$REMAINING_GTM" ] || [ -n "$REMAINING_GU" ]; then
+  SUCCESS=false
+  log_message "⚠️ Found remaining problematic imports:"
+  
+  if [ -n "$REMAINING_GTM" ]; then
+    log_message "Files still containing GTMSessionFetcherCore imports:"
+    echo "$REMAINING_GTM" | while read -r file; do
+      log_message " - $file"
+    done
+  fi
+  
+  if [ -n "$REMAINING_GU" ]; then
+    log_message "Files still containing GoogleUtilities_ imports:"
+    echo "$REMAINING_GU" | while read -r file; do
+      log_message " - $file"
+    done
+  fi
+fi
+
 if [ "$SUCCESS" = true ]; then
   log_message "✅ Firebase import fixes completed successfully"
   exit 0
