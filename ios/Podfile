@@ -36,6 +36,10 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  
+  # Pin GTMSessionFetcher to a version that still has GTMSessionFetcherCore
+  # This is needed for compatibility with FirebaseFunctions
+  pod 'GTMSessionFetcher', '1.7.2'
 end
 
 post_install do |installer|
