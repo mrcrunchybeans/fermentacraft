@@ -49,30 +49,162 @@ workflows:
           
       - name: Fix Firebase dependencies
         script: |
-          set -euo pipefail
-          # Fix GTMSessionFetcherCore issue
-          echo "Patching FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore"
-          if [ -f "ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift" ]; then
-            chmod +rw ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift
-            sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift || { 
-              echo "Failed to patch with sed, trying patch command" 
-              patch -p1 < fix_use_measured_og_v2.patch || echo "Patch already applied or failed"
-            }
+          # Don't use set -e so we can capture and report all issues
+          set -uo pipefail
+          
+          # Create a log file for diagnostic information
+          mkdir -p build_logs
+          PATCH_LOG="build_logs/firebase_patch_$(date +%s).log"
+          echo "Firebase patch log - $(date)" > "$PATCH_LOG"
+          
+          echo "Starting Firebase dependency fixes..."
+          
+          # Function to log messages to both console and log file
+          log_message() {
+            echo "$1" | tee -a "$PATCH_LOG"
+          }
+          
+          # Fix GTMSessionFetcherCore issue in FirebaseFunctions
+          FUNCTIONS_FILE="ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
+          log_message "🔍 Checking $FUNCTIONS_FILE"
+          
+          if [ -f "$FUNCTIONS_FILE" ]; then
+            chmod +rw "$FUNCTIONS_FILE" 2>> "$PATCH_LOG" || log_message "⚠️ Warning: Could not change permissions on $FUNCTIONS_FILE"
+            
+            if grep -q "import GTMSessionFetcherCore" "$FUNCTIONS_FILE"; then
+              log_message "📝 Patching FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore"
+              
+              if sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' "$FUNCTIONS_FILE" 2>> "$PATCH_LOG"; then
+                log_message "✅ Successfully patched $FUNCTIONS_FILE"
+              else
+                log_message "⚠️ Sed failed, trying patch command"
+                if patch -p1 < fix_use_measured_og_v2.patch 2>> "$PATCH_LOG"; then
+                  log_message "✅ Successfully applied patch to $FUNCTIONS_FILE"
+                else
+                  log_message "⚠️ Patch command failed, but continuing"
+                fi
+              fi
+              
+              # Verify the patch worked
+              if grep -q "import GTMSessionFetcherCore" "$FUNCTIONS_FILE"; then
+                log_message "❌ ERROR: Failed to patch $FUNCTIONS_FILE - GTMSessionFetcherCore import still exists"
+              else
+                log_message "✅ Verified patch was successfully applied to $FUNCTIONS_FILE"
+              fi
+            else
+              log_message "✅ $FUNCTIONS_FILE already patched or doesn't need patching"
+            fi
+          else
+            log_message "ℹ️ $FUNCTIONS_FILE not found, skipping patch"
           fi
           
-          # Fix GoogleUtilities_AppDelegateSwizzler issue
-          echo "Patching FirebaseAuth to use GoogleUtilities instead of GoogleUtilities_AppDelegateSwizzler"
-          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift" ]; then
-            chmod +rw ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
-            sed -i '' 's/import GoogleUtilities_AppDelegateSwizzler/import GoogleUtilities/g' ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift || {
-              echo "Failed to patch with sed, trying patch command"
-              patch -p1 < fix_google_utilities.patch || echo "Patch already applied or failed"
-            }
+          # Fix GoogleUtilities imports in Auth.swift
+          AUTH_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift"
+          log_message "🔍 Checking $AUTH_FILE"
+          
+          if [ -f "$AUTH_FILE" ]; then
+            chmod +rw "$AUTH_FILE" 2>> "$PATCH_LOG" || log_message "⚠️ Warning: Could not change permissions on $AUTH_FILE"
+            NEEDS_PATCH=0
+            
+            # Check for both GoogleUtilities imports
+            if grep -q "import GoogleUtilities_AppDelegateSwizzler" "$AUTH_FILE"; then
+              NEEDS_PATCH=1
+              log_message "📝 Patching $AUTH_FILE to fix GoogleUtilities_AppDelegateSwizzler import"
+              sed -i '' 's/import GoogleUtilities_AppDelegateSwizzler/import GoogleUtilities/g' "$AUTH_FILE" 2>> "$PATCH_LOG" || log_message "⚠️ Failed to patch GoogleUtilities_AppDelegateSwizzler import"
+            fi
+            
+            if grep -q "import GoogleUtilities_Environment" "$AUTH_FILE"; then
+              NEEDS_PATCH=1
+              log_message "📝 Patching $AUTH_FILE to fix GoogleUtilities_Environment import"
+              sed -i '' 's/import GoogleUtilities_Environment/import GoogleUtilities/g' "$AUTH_FILE" 2>> "$PATCH_LOG" || log_message "⚠️ Failed to patch GoogleUtilities_Environment import"
+            fi
+            
+            if [ $NEEDS_PATCH -eq 1 ]; then
+              # Check if we still need to apply the patch file as a fallback
+              if grep -q "import GoogleUtilities_" "$AUTH_FILE"; then
+                log_message "⚠️ Sed replacements incomplete, trying patch command"
+                if patch -p1 < fix_google_utilities_auth.patch 2>> "$PATCH_LOG"; then
+                  log_message "✅ Successfully applied patch to $AUTH_FILE"
+                else
+                  log_message "⚠️ Patch command failed, but continuing"
+                fi
+              fi
+              
+              # Verify the patch worked
+              if grep -q "import GoogleUtilities_" "$AUTH_FILE"; then
+                log_message "❌ ERROR: Failed to patch $AUTH_FILE - GoogleUtilities_ import(s) still exist"
+                log_message "Current Google imports in $AUTH_FILE:"
+                grep "import Google" "$AUTH_FILE" | tee -a "$PATCH_LOG"
+              else
+                log_message "✅ Verified patches were successfully applied to $AUTH_FILE"
+              fi
+            else
+              log_message "✅ $AUTH_FILE already patched or doesn't need patching"
+            fi
+          else
+            log_message "⚠️ $AUTH_FILE not found, searching for alternatives..."
+            # Try to locate it
+            FOUND_FILES=$(find ios -name "Auth.swift" | grep -i firebase 2>> "$PATCH_LOG" || echo "")
+            if [ -n "$FOUND_FILES" ]; then
+              log_message "Found potential Auth.swift files:"
+              log_message "$FOUND_FILES"
+            else
+              log_message "No Auth.swift files found in the project"
+            fi
           fi
+          
+          # Fix GTMSessionFetcherCore in AuthBackend.swift
+          AUTH_BACKEND_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift"
+          log_message "🔍 Checking $AUTH_BACKEND_FILE"
+          
+          if [ -f "$AUTH_BACKEND_FILE" ]; then
+            chmod +rw "$AUTH_BACKEND_FILE" 2>> "$PATCH_LOG" || log_message "⚠️ Warning: Could not change permissions on $AUTH_BACKEND_FILE"
+            
+            if grep -q "import GTMSessionFetcherCore" "$AUTH_BACKEND_FILE"; then
+              log_message "📝 Patching $AUTH_BACKEND_FILE to use GTMSessionFetcher instead of GTMSessionFetcherCore"
+              
+              if sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' "$AUTH_BACKEND_FILE" 2>> "$PATCH_LOG"; then
+                log_message "✅ Successfully patched $AUTH_BACKEND_FILE"
+              else
+                log_message "⚠️ Sed failed, trying patch command"
+                if patch -p1 < fix_auth_backend.patch 2>> "$PATCH_LOG"; then
+                  log_message "✅ Successfully applied patch to $AUTH_BACKEND_FILE"
+                else
+                  log_message "⚠️ Patch command failed, but continuing"
+                fi
+              fi
+              
+              # Verify the patch worked
+              if grep -q "import GTMSessionFetcherCore" "$AUTH_BACKEND_FILE"; then
+                log_message "❌ ERROR: Failed to patch $AUTH_BACKEND_FILE - GTMSessionFetcherCore import still exists"
+                log_message "Current GTM imports in $AUTH_BACKEND_FILE:"
+                grep "import GTM" "$AUTH_BACKEND_FILE" | tee -a "$PATCH_LOG"
+              else
+                log_message "✅ Verified patch was successfully applied to $AUTH_BACKEND_FILE"
+              fi
+            else
+              log_message "✅ $AUTH_BACKEND_FILE already patched or doesn't need patching"
+            fi
+          else
+            log_message "⚠️ $AUTH_BACKEND_FILE not found, searching for alternatives..."
+            # Try to locate it
+            FOUND_FILES=$(find ios -name "AuthBackend.swift" | grep -i firebase 2>> "$PATCH_LOG" || echo "")
+            if [ -n "$FOUND_FILES" ]; then
+              log_message "Found potential AuthBackend.swift files:"
+              log_message "$FOUND_FILES"
+            else
+              log_message "No AuthBackend.swift files found in the project"
+            fi
+          fi
+          
+          log_message "✅ Firebase dependency fix process completed"
+          echo "Patch log saved to $PATCH_LOG"
 
       - name: Build app (same experience as Android)
         script: |
-          set -euo pipefail
+          # Don't use set -e so we can capture diagnostics on failure
+          set -uo pipefail
+          
           # Ensure iOS minimum version is set to 15.0
           if [ -f "ios/Flutter/AppFrameworkInfo.plist" ]; then
             /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 15.0" ios/Flutter/AppFrameworkInfo.plist
@@ -87,9 +219,45 @@ workflows:
             fi
           fi
           
+          # Check patch results before building
+          echo "Verifying Firebase patches..."
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift" ]; then
+            echo "Auth.swift imports:"
+            grep "import Google" ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift || echo "No Google imports found"
+          fi
+          
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift" ]; then
+            echo "AuthBackend.swift imports:"
+            grep "import GTM" ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift || echo "No GTM imports found"
+          fi
+          
+          echo "Building iOS simulator app..."
           flutter build ios --simulator --debug -t lib/main.dart \
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
+          
+          BUILD_RESULT=$?
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "Build failed with exit code $BUILD_RESULT"
+            echo "Collecting diagnostic information..."
+            
+            # Capture diagnostics about the environment
+            flutter doctor -v > build_diagnostic_report.txt
+            
+            # Add Pod environment information
+            echo -e "\n\n===== Pod Environment =====" >> build_diagnostic_report.txt
+            (cd ios && pod env) >> build_diagnostic_report.txt 2>&1 || true
+            
+            # Try to save any useful information about the failed build
+            mkdir -p build_diagnostics
+            cp build_diagnostic_report.txt build_diagnostics/
+            
+            # Exit with the original error code
+            echo "Diagnostic information saved to build_diagnostics/"
+            exit $BUILD_RESULT
+          fi
+          
+          echo "Build completed successfully!"
 
       - name: Run on Simulator and record
         script: |
@@ -173,11 +341,65 @@ workflows:
 
           exit $EXIT
 
+      - name: Capture build diagnostics
+        script: |
+          # Always runs, even if previous steps failed
+          mkdir -p build_diagnostics
+          
+          echo "Capturing build diagnostics..."
+          
+          # Check for important errors in the build logs
+          if [ -d "ios" ]; then
+            echo "===== Firebase Related Files =====" > build_diagnostics/file_paths.txt
+            find ios -name "Auth.swift" -o -name "AuthBackend.swift" -o -name "Functions.swift" | sort >> build_diagnostics/file_paths.txt
+            
+            # List import statements from key files to verify patches
+            echo "===== Firebase Import Statements =====" > build_diagnostics/imports.txt
+            FUNCTIONS_FILE="ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
+            AUTH_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift"
+            AUTH_BACKEND_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift"
+            
+            for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE"; do
+              if [ -f "$FILE" ]; then
+                echo -e "\n--- $FILE ---" >> build_diagnostics/imports.txt
+                grep "import " "$FILE" >> build_diagnostics/imports.txt 2>/dev/null || echo "No imports found" >> build_diagnostics/imports.txt
+              fi
+            done
+          fi
+          
+          # Collect Flutter and Xcode versions for reference
+          echo "===== Environment Info =====" > build_diagnostics/environment.txt
+          flutter --version >> build_diagnostics/environment.txt 2>&1
+          xcodebuild -version >> build_diagnostics/environment.txt 2>&1
+          pod --version >> build_diagnostics/environment.txt 2>&1
+          
+          # Check if any Podfile.lock exists and include it
+          if [ -f "ios/Podfile.lock" ]; then
+            cp ios/Podfile.lock build_diagnostics/Podfile.lock
+          fi
+          
+          # Capture last build errors from Xcode logs if available
+          DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
+          if [ -d "$DERIVED_DATA" ]; then
+            echo "===== Recent Xcode Errors =====" > build_diagnostics/xcode_errors.txt
+            find "$DERIVED_DATA" -name "*.log" -type f -mtime -1 -exec grep -l "error:" {} \; | 
+              xargs grep -l "error:" 2>/dev/null | 
+              xargs tail -n 50 2>/dev/null >> build_diagnostics/xcode_errors.txt || 
+              echo "No recent error logs found" >> build_diagnostics/xcode_errors.txt
+          fi
+          
+          echo "Diagnostics captured in build_diagnostics/"
+          
+          # Always succeed to prevent failing the workflow
+          exit 0
+          
     artifacts:
       - build/ios/iphonesimulator/*.app
       - preview/*.mp4
       - sim_logs/*.log
       - build_logs/*
+      - build_diagnostics/*
+      - build_diagnostic_report.txt
     cache:
       cache_paths:
         - $HOME/.pub-cache

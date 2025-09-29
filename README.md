@@ -19,6 +19,9 @@ Cider-Craft combines recipe design, fermentation tracking, inventory, and tools 
   <a href="https://github.com/mrcrunchybeans/cider-craft/issues">
     <img src="https://img.shields.io/badge/Issues-Welcome-orange" alt="Issues Welcome">
   </a>
+  <a href="#firebase-ios-build-notes">
+    <img src="https://img.shields.io/badge/CI-iOS_Builds-lightblue?logo=apple" alt="iOS CI Build Info">
+  </a>
 </p>
 
 
@@ -300,6 +303,70 @@ flutter build appbundle --release
 # Windows portable executable
 flutter build windows
 ```
+
+## Firebase iOS Build Notes
+
+### Known Firebase Dependency Issues
+
+When building for iOS using Flutter 3.35.4 with Firebase 12.0.0, several import issues can occur in the generated Swift files. These issues typically appear in CI environments like Appcircle and Codemagic, and need to be patched during the build process:
+
+1. **GTMSessionFetcherCore → GTMSessionFetcher**:
+   - Affected files:
+     - `ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift`
+     - `ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift`
+   - Error: `import GTMSessionFetcherCore` not found
+   - Fix: Replace with `import GTMSessionFetcher`
+
+2. **GoogleUtilities Split Package Imports → GoogleUtilities**:
+   - Affected file: `ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift`
+   - Errors:
+     - `import GoogleUtilities_AppDelegateSwizzler` not found
+     - `import GoogleUtilities_Environment` not found
+   - Fix: Replace both with `import GoogleUtilities`
+
+### Automated Fix
+
+A unified patch script is available in the repository to fix all these issues:
+
+```bash
+./scripts/firebase_imports_fix.sh
+```
+
+This script should be run after `pod install` and before Flutter builds the iOS app. The script:
+
+1. Identifies all affected Swift files
+2. Applies the necessary import replacements
+3. Verifies that patches were applied correctly
+4. Logs all actions for diagnostic purposes
+
+### CI Integration
+
+Both Appcircle and Codemagic CI configurations have been updated to:
+
+1. Automatically apply these patches
+2. Capture detailed diagnostic information
+3. Verify patch success before building
+4. Provide robust error reporting if issues persist
+
+### Manual Fix
+
+If building locally, you may encounter these issues. To fix them manually:
+
+```bash
+cd ios
+pod install
+sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift
+sed -i '' 's/import GoogleUtilities_AppDelegateSwizzler/import GoogleUtilities/g' Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+sed -i '' 's/import GoogleUtilities_Environment/import GoogleUtilities/g' Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+```
+
+### Additional Resources
+
+Individual patch files for each issue are also available:
+- `fix_use_measured_og_v2.patch`: Fixes Functions.swift
+- `fix_google_utilities_auth.patch`: Fixes Auth.swift
+- `fix_auth_backend.patch`: Fixes AuthBackend.swift
 
 
 🚀 *Codename: Cider-Craft → Public app name: FermentaCraft*
