@@ -36,15 +36,20 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-  
-  # Pin GTMSessionFetcher to a version that still has GTMSessionFetcherCore
-  # This is needed for compatibility with FirebaseFunctions
-  pod 'GTMSessionFetcher', '1.7.2'
 end
 
 post_install do |installer|
-  # Call Flutter’s hook if it exists (guard avoids the undefined-method crash)
+  # Call Flutter's hook if it exists (guard avoids the undefined-method crash)
   flutter_post_install(installer) if defined?(flutter_post_install)
+  
+  # Patch FirebaseFunctions for GTMSessionFetcher compatibility
+  functions_swift_file = "Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
+  if File.exist?(functions_swift_file)
+    functions_content = File.read(functions_swift_file)
+    patched_content = functions_content.gsub("import GTMSessionFetcherCore", "import GTMSessionFetcher")
+    File.write(functions_swift_file, patched_content)
+    puts "Patched FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore"
+  end
 
   # Your extra tweaks
   installer.pods_project.targets.each do |t|
@@ -77,7 +82,7 @@ post_install do |installer|
         config.build_settings['GCC_OPTIMIZATION_LEVEL'] = '0' if config.name == 'Debug'
       end
     end
-    # Keep Flutter’s per-target extras when available
+    # Keep Flutter's per-target extras when available
     flutter_additional_ios_build_settings(t) if defined?(flutter_additional_ios_build_settings)
   end
 end

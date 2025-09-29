@@ -1,0 +1,268 @@
+
+@@[section:begin] 09/29/2025 03:06:47 Starting workflow
+Agent Version: 1.8.4 
+Agent Id: a1d4ca09-2b4d-439a-8f6b-71040c52eeee
+Product Name: macOS
+Product Version: 15.4.1
+Build Version: 24E263
+Hostname: Manageds-Virtual-Machine.local
+External IP: 77.92.102.198, 34.149.28.158
+Internal IP: 192.168.64.5
+Self-hosted Runner: No
+Build Profile Id: e3797760-605a-42a6-9bbc-976a0cf10afa
+Xcode Version: 16.2.x
+Supported Xcode Versions: 16.4.x,16.3.x,16.2.x,16.1.x,16.0.x
+Organization Id: e8bf83bf-c4a2-42a9-a9c5-351b6016ee10
+Organization: 6ayprufgn8pf
+Workflow: circle1
+Configuration: Default Configuration
+Configuration Id: 4db733d2-d47a-481c-acdb-06fba0de4f3d
+Trigger Type: User
+Triggered User: developer@fermentacraft.com
+Machine Plan: Standard
+@@[section:end] Starting workflow
+@@[section:begin] 09/29/2025 03:06:47 Step started: Git Clone
+Component Version: 1.0.1
+The Component Repository: https://github.com/appcircleio/appcircle-git-clone-component.git
+The Commit Id: e5c185f
+The Component Directory: /Volumes/agent-disk/appcircle-runner/Components/appcircle_git_clone/1.1.1
+Checking the component directory...
+The component directory already exists.
+Checking the commit id...
+The component is now ready.
+
+Component Version: 1.1.1
+@@[command] git config --global credential.helper 'cache --timeout=7200'
+@@[command] bash .../step_uyvwwxrx.0zl/git_clone.sh --localPath='.../_appcircle_temp/Repository' --gitURL='*****' --authType=Basic --authToken='*****' --commit=68e06011083722cbf775f1ac405683f00ffb9c0c --branch='main' --lfs=false
+@@[command] git --version
+git version 2.49.0
+@@[command] git lfs --version
+git-lfs/3.6.1 (GitHub; darwin arm64; go 1.23.4)
+@@[command] git init
+Initialized empty Git repository in .../_appcircle_temp/Repository/.git/
+@@[command] git remote add origin *****
+@@[command] git config gc.auto 0
+@@[command] git remote set-url origin *****
+@@[command] git remote set-url --push origin *****
+Commit = 68e06011083722cbf775f1ac405683f00ffb9c0c
+@@[command] git fetch origin main
+@@[command] git checkout --progress --force 68e06011083722cbf775f1ac405683f00ffb9c0c
+@@[command] git submodule sync --recursive
+@@[command] git submodule update --init --force --recursive
+@@[command] git remote set-url origin *****
+@@[command] git remote set-url --push origin *****
+
+@@[section:end] 09/29/2025 03:07:01 Step completed: Git Clone, Ver: 1.1.1
+@@[section:begin] 09/29/2025 03:07:01 Step started: Flutter Install
+Component Version: 1.0.1
+The Component Repository: https://github.com/appcircleio/appcircle-flutter-install-component.git
+The Commit Id: 37852d6
+The Component Directory: /Volumes/agent-disk/appcircle-runner/Components/appcircle_flutter_install/1.0.2
+Checking the component directory...
+The component directory already exists.
+Checking the commit id...
+The component is now ready.
+
+Component Version: 1.0.2
+Selected flutter version is 3.35.4
+@@[command] git clone -b 3.35.4 https://github.com/flutter/flutter.git
+PATH=/Users/appcircle/.rbenv/versions/3.2.3/bin:/opt/homebrew/Cellar/rbenv/1.3.2/libexec:/Users/appcircle/.sdkman/candidates/maven/current/bin:/Users/appcircle/.sdkman/candidates/java/current/bin:/Users/appcircle/.rbenv/shims:/Users/appcircle/.yarn/bin:/Users/appcircle/.config/yarn/global/node_modules/.bin:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/appcircle/google-cloud-sdk/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/Users/appcircle/android-sdk-linux/cmdline-tools/latest/bin:/Users/appcircle/android-sdk-linux/tools:/Users/appcircle/android-sdk-linux/tools/bin:/Users/appcircle/android-sdk-linux/platform-tools:.../flutter/bin/
+@@[command] flutter doctor
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0  206M    0  5503    0     0  18808      0  3:11:37 --:--:--  3:11:37 18781
+  1  206M    1 2336k    0     0  1844k      0  0:01:54  0:00:01  0:01:53 1843k
+ 16  206M   16 33.4M    0     0  14.7M      0  0:00:13  0:00:02  0:00:11 14.7M
+ 32  206M   32 66.0M    0     0  20.2M      0  0:00:10  0:00:03  0:00:07 20.2M
+ 47  206M   47 98.3M    0     0  23.0M      0  0:00:08  0:00:04  0:00:04 23.0M
+ 63  206M   63  130M    0     0  24.8M      0  0:00:08  0:00:05  0:00:03 26.2M
+ 78  206M   78  162M    0     0  25.8M      0  0:00:07  0:00:06  0:00:01 31.8M
+ 93  206M   93  192M    0     0  26.3M      0  0:00:07  0:00:07 --:--:-- 31.5M
+100  206M  100  206M    0     0  26.8M      0  0:00:07  0:00:07 --:--:-- 31.7M
+Downloading Material fonts...                                      288ms
+Downloading Gradle Wrapper...                                       23ms
+Downloading package sky_engine...                                   82ms
+Downloading package flutter_gpu...                                  21ms
+Downloading flutter_patched_sdk tools...                           184ms
+Downloading flutter_patched_sdk_product tools...                   175ms
+Downloading darwin-arm64 tools...                                2,535ms
+Downloading libimobiledevice...                                     28ms
+Downloading libusbmuxd...                                           21ms
+Downloading libplist...                                             21ms
+Downloading openssl...                                              96ms
+Downloading libimobiledeviceglue...                                 21ms
+Downloading ios-deploy...                                           23ms
+Downloading darwin-arm64/font-subset tools...                       88ms
+Doctor summary (to see all details, run flutter doctor -v):
+[!] Flutter (Channel [user-branch], 3.35.4, on macOS 15.4.1 24E263 darwin-arm64, locale en-US)
+    ! Flutter version 3.35.4 on channel [user-branch] at .../flutter
+      Currently on an unknown channel. Run `flutter channel` to switch to an official channel.
+      If that doesn't fix the issue, reinstall Flutter by following instructions at https://flutter.dev/setup.
+    ! Upstream repository unknown source is not a standard remote.
+      Set environment variable "FLUTTER_GIT_URL" to unknown source to dismiss this error.
+[!] Android toolchain - develop for Android devices (Android SDK version 33.0.0)
+    ! Some Android licenses not accepted. To resolve this, run: flutter doctor --android-licenses
+[✓] Xcode - develop for iOS and macOS (Xcode 16.4)
+[✗] Chrome - develop for the web (Cannot find Chrome executable at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome)
+    ! Cannot find Chrome. Try setting CHROME_EXECUTABLE to a Chrome executable.
+[!] Android Studio (not installed)
+[✓] Connected device (1 available)
+[✓] Network resources
+! Doctor found issues in 4 categories.
+
+@@[section:end] 09/29/2025 03:08:20 Step completed: Flutter Install, Ver: 1.0.2
+@@[section:begin] 09/29/2025 03:08:20 Step started: Setup Dependencies
+Component Version: 1.0.1
+The Component Repository: https://github.com/appcircleio/appcircle-custom-script.git
+The Commit Id: 8ce5005
+The Component Directory: /Volumes/agent-disk/appcircle-runner/Components/appcircle_custom_script/1.0.3
+Checking the component directory...
+The component directory already exists.
+Checking the commit id...
+The component is now ready.
+
+Component Version: 1.0.3
+🚀 FermentaCraft Sprint 2.5 - iOS Development Launch
+🔧 Checking Flutter and Dart versions...
+Flutter 3.35.4 • channel [user-branch] • unknown source
+Framework • revision d693b4b9db (13 days ago) • 2025-09-16 14:27:41 +0000
+Engine • hash feee8ee8fb8b975dd9990f86d3bda11e6e75faf3 (revision c298091351) (13 days ago) • 2025-09-15 14:04:24.000Z
+Tools • Dart 3.9.2 • DevTools 2.48.0
+Dart SDK version: 3.9.2 (stable) (Wed Aug 27 03:49:40 2025 -0700) on "macos_arm64"
+Cleaning Xcode workspace...                                      1,469ms
+Cleaning Xcode workspace...                                      2,085ms
+📦 Resolving dependencies...
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 67.0.0 (89.0.0 available)
+  _flutterfire_internals 1.3.60 (1.3.62 available)
+  analyzer 6.4.1 (8.2.0 available)
+  build 2.4.1 (4.0.0 available)
+  build_config 1.1.2 (1.2.0 available)
+  build_resolvers 2.4.2 (3.0.4 available)
+  build_runner 2.4.13 (2.8.0 available)
+  build_runner_core 7.3.2 (9.3.2 available)
+  built_value 8.11.1 (8.12.0 available)
+  characters 1.4.0 (1.4.1 available)
+  cloud_firestore 6.0.0 (6.0.2 available)
+  cloud_firestore_platform_interface 7.0.0 (7.0.2 available)
+  cloud_firestore_web 5.0.0 (5.0.2 available)
+  cloud_functions 6.0.0 (6.0.2 available)
+  cloud_functions_platform_interface 5.8.3 (5.8.5 available)
+  cloud_functions_web 5.0.0 (5.0.2 available)
+  code_builder 4.10.1 (4.11.0 available)
+  connectivity_plus 6.1.5 (7.0.0 available)
+  dart_style 2.3.6 (3.1.2 available)
+  file_picker 10.3.1 (10.3.3 available)
+  file_selector 1.0.3 (1.0.4 available)
+  file_selector_android 0.5.1+15 (0.5.1+16 available)
+  file_selector_ios 0.5.3+1 (0.5.3+2 available)
+  file_selector_macos 0.9.4+3 (0.9.4+4 available)
+  firebase_auth 6.0.1 (6.1.0 available)
+  firebase_auth_platform_interface 8.1.0 (8.1.2 available)
+  firebase_auth_web 6.0.1 (6.0.3 available)
+  firebase_core 4.0.0 (4.1.1 available)
+  firebase_core_platform_interface 6.0.0 (6.0.1 available)
+  firebase_core_web 3.0.0 (3.1.1 available)
+  firebase_crashlytics 5.0.0 (5.0.2 available)
+  firebase_crashlytics_platform_interface 3.8.11 (3.8.13 available)
+  flutter_lints 4.0.0 (6.0.0 available)
+  flutter_plugin_android_lifecycle 2.0.29 (2.0.30 available)
+  flutter_svg 2.2.0 (2.2.1 available)
+  google_fonts 6.3.0 (6.3.2 available)
+  google_sign_in 6.3.0 (7.2.0 available)
+  google_sign_in_android 6.2.1 (7.2.0 available)
+  google_sign_in_ios 5.9.0 (6.2.1 available)
+  google_sign_in_platform_interface 2.5.0 (3.1.0 available)
+  google_sign_in_web 0.12.4+4 (1.1.0 available)
+  image_picker 1.1.2 (1.2.0 available)
+  image_picker_android 0.8.12+25 (0.8.13+3 available)
+  image_picker_for_web 3.0.6 (3.1.0 available)
+  image_picker_ios 0.8.12+2 (0.8.13 available)
+  image_picker_linux 0.2.1+2 (0.2.2 available)
+  image_picker_macos 0.2.1+2 (0.2.2 available)
+  image_picker_windows 0.2.1+1 (0.2.2 available)
+  in_app_review 2.0.10 (2.0.11 available)
+  leak_tracker 11.0.1 (11.0.2 available)
+  lints 4.0.0 (6.0.0 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.16.0 (1.17.0 available)
+  package_info_plus 8.3.1 (9.0.0 available)
+  path_provider_android 2.2.17 (2.2.18 available)
+  path_provider_foundation 2.4.1 (2.4.2 available)
+  petitparser 6.1.0 (7.0.1 available)
+  pool 1.5.1 (1.5.2 available)
+  provider 6.1.5 (6.1.5+1 available)
+  purchases_flutter 9.2.1 (9.6.2 available)
+  share_plus 11.1.0 (12.0.0 available)
+  shared_preferences_android 2.4.11 (2.4.13 available)
+  shelf_web_socket 2.0.1 (3.0.0 available)
+  source_gen 1.5.0 (4.0.1 available)
+  source_helper 1.3.5 (1.3.8 available)
+  test_api 0.7.6 (0.7.7 available)
+  url_launcher_android 6.3.17 (6.3.22 available)
+  url_launcher_ios 6.3.3 (6.3.4 available)
+  url_launcher_macos 3.2.2 (3.2.3 available)
+  vector_graphics_compiler 1.1.18 (1.1.19 available)
+  wakelock_plus 1.3.2 (1.4.0 available)
+  wakelock_plus_platform_interface 1.2.3 (1.3.0 available)
+  watcher 1.1.2 (1.1.3 available)
+  xml 6.5.0 (6.6.1 available)
+Got dependencies!
+74 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+✅ Dependencies resolved successfully
+Downloading ios tools...                                            3.9s
+Downloading ios-profile tools...                                    3.3s
+Downloading ios-release tools...                                    5.0s
+Analyzing dependencies
+cloud_firestore: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+cloud_functions: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+firebase_auth: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+firebase_core: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+Warning: firebase_app_id_file.json file does not exist. This may cause issues in upload-symbols. If this error is unexpected, try running flutterfire configure again.
+firebase_crashlytics: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+Adding spec repo `trunk` with CDN `https://cdn.cocoapods.org/`
+[!] CocoaPods could not find compatible versions for pod "GTMSessionFetcher":
+[!] Smart quotes were detected and ignored in your Podfile. To avoid issues in the future, you should not use TextEdit for editing it. If you are not using TextEdit, you should turn off smart quotes in your editor of choice.
+  In snapshot (Podfile.lock):
+    GTMSessionFetcher (= 3.5.0, >= 3.4.0)
+  In Podfile:
+    GTMSessionFetcher (= 1.7.2)
+    google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`) was resolved to 0.0.1, which depends on
+      GTMSessionFetcher (>= 3.4.0)
+You have either:
+ * out-of-date source repos which you can update with `pod repo update` or with `pod install --repo-update`.
+ * changed the constraints of dependency `GTMSessionFetcher` inside your development pod `google_sign_in_ios`.
+   You should run `pod update GTMSessionFetcher` to apply changes you've made.
+@@[error] 09/29/2025 03:09:12 EXCEPTION
+@@[error] (Process exit with error code: 1, Failed)
+@@[error] zhfpoqkt.gvf Error at step: Setup Dependencies
+@@[error] EXCEPTION: Step execution has an error: Failed, Process Exit Code: 1
+@@[section:end] 09/29/2025 03:09:12 Step completed: Setup Dependencies, Ver: 1.0.3
+@@[section:begin] 09/29/2025 03:09:12 Step started: Export Build Artifacts
+Component Version: 1.0.1
+The Component Repository: https://github.com/appcircleio/appcircle-export-build-artifacts.git
+The Commit Id: f8aa050
+The Component Directory: /Volumes/agent-disk/appcircle-runner/Components/appcircle_export_build_artifacts/1.0.11
+Checking the component directory...
+The component directory already exists.
+Checking the commit id...
+The component is now ready.
+
+Component Version: 1.0.11
+09/29/2025 03:09:12 Syncing logs.. count: 30
+09/29/2025 03:09:16 Logs sent. Remaining log count: 0
+starting to upload files...
+https://api.appcircle.io/build/v1/callback?action=uploadFileChunk
+https://api.appcircle.io/build/v1/callback?action=completeUpload
+--------------------------------------
+uploading files...
+upload path is directory.
+Skipping the file .../_wf_logs/log.txt.snapshot. The file may not exist or its size is 0 byte
+Upload completing...  09/29/2025 03:09:16
+@@[section:end] 09/29/2025 03:09:17 Step completed: Export Build Artifacts, Ver: 1.0.11
+@@[section:begin] 09/29/2025 03:09:18 Step started: Completing workflow
+
+@@[section:end] 09/29/2025 03:09:18 Step completed: Completing workflow
