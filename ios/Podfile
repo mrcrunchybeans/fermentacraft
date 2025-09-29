@@ -43,12 +43,34 @@ post_install do |installer|
   flutter_post_install(installer) if defined?(flutter_post_install)
   
   # Patch FirebaseFunctions for GTMSessionFetcher compatibility
-  functions_swift_file = "Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
-  if File.exist?(functions_swift_file)
-    functions_content = File.read(functions_swift_file)
-    patched_content = functions_content.gsub("import GTMSessionFetcherCore", "import GTMSessionFetcher")
-    File.write(functions_swift_file, patched_content)
-    puts "Patched FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore"
+  begin
+    functions_swift_file = "Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
+    if File.exist?(functions_swift_file) && File.readable?(functions_swift_file)
+      # Try to make the file writable first
+      system("chmod +w \"#{functions_swift_file}\"") if !File.writable?(functions_swift_file) && system("which chmod")
+      
+      functions_content = File.read(functions_swift_file)
+      # Check if we need to patch
+      if functions_content.include?("import GTMSessionFetcherCore")
+        # Try a different approach using system commands if regular File.write fails
+        if File.writable?(functions_swift_file)
+          patched_content = functions_content.gsub("import GTMSessionFetcherCore", "import GTMSessionFetcher")
+          File.write(functions_swift_file, patched_content)
+          puts "Patched FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore"
+        else
+          # Try using sed instead
+          system("sed -i '' 's/import GTMSessionFetcherCore/import GTMSessionFetcher/g' \"#{functions_swift_file}\"")
+          puts "Patched FirebaseFunctions using sed command"
+        end
+      else
+        puts "FirebaseFunctions already appears to be patched or doesn't need patching"
+      end
+    else
+      puts "FirebaseFunctions Functions.swift file not found or not readable"
+    end
+  rescue => e
+    # Log error but continue with the rest of the installation
+    puts "Warning: Failed to patch FirebaseFunctions: #{e.message}"
   end
 
   # Your extra tweaks
