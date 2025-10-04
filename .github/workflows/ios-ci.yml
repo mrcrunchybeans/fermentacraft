@@ -3,16 +3,9 @@ name: iOS CI (Simulator)
 on:
   push:
     branches: [ main ]
-      - name: Restore CocoaPods cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ios/Pods
-          key: ${{ runner.os }}-pods-xcode16.2-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-xcode16.2-
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 concurrency:
   group: ios-ci-${{ github.ref }}
@@ -26,6 +19,14 @@ jobs:
       FLUTTER_VERSION: 3.35.4
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
       - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
         with:
@@ -38,9 +39,6 @@ jobs:
           flutter --version
           dart --version
           xcodebuild -version
-        env:
-          RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
-          RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
           pod --version || true
 
       - name: Cache Flutter pub
@@ -84,14 +82,7 @@ jobs:
             fi
           fi
 
-      - name: Install CocoaPods
-        working-directory: ios
-        run: |
-          set -euxo pipefail
-          pod repo update
-          pod install
-
-      - name: Cache CocoaPods
+      - name: Restore CocoaPods cache
         uses: actions/cache@v4
         with:
           path: |
@@ -99,6 +90,13 @@ jobs:
           key: ${{ runner.os }}-pods-xcode16.2-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-pods-xcode16.2-
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: |
+          set -euxo pipefail
+          pod repo update
+          pod install
 
       - name: Patch Firebase Swift imports
         run: |
@@ -111,11 +109,14 @@ jobs:
           fi
 
       - name: Build iOS (Simulator, no codesign)
+        env:
+          RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
+          RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
         run: |
           set -euxo pipefail
           flutter build ios --simulator --debug --no-codesign -v \
-            --dart-define=RC_API_KEY_IOS=${{ secrets.RC_API_KEY_IOS }} \
-            --dart-define=RC_API_KEY_ANDROID=${{ secrets.RC_API_KEY_ANDROID }}
+            --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS} \
+            --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID}
 
       - name: Gather diagnostics
         if: always()
