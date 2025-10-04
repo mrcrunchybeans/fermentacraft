@@ -1,0 +1,137 @@
+name: iOS CI (Simulator)
+
+on:
+  push:
+    branches: [ main ]
+      - name: Restore CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+          key: ${{ runner.os }}-pods-xcode16.2-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-xcode16.2-
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-simulator:
+    name: Build & Test (iOS Simulator)
+    runs-on: macos-15
+    env:
+      FLUTTER_VERSION: 3.35.4
+
+    steps:
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Show tool versions
+        run: |
+          set -euxo pipefail
+          flutter --version
+          dart --version
+          xcodebuild -version
+        env:
+          RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
+          RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
+          pod --version || true
+
+      - name: Cache Flutter pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-
+
+      - name: Flutter pub get
+        run: |
+          set -euxo pipefail
+          flutter pub get
+
+      - name: Static analysis (non-fatal)
+        run: |
+          set -uo pipefail
+          flutter analyze --no-fatal-infos || echo "Analysis completed with warnings"
+
+      - name: Run tests
+        run: |
+          set -euxo pipefail
+          if [ -d test ]; then flutter test --coverage; else echo "No tests found"; fi
+
+      - name: Precache iOS artifacts
+        run: |
+          set -euxo pipefail
+          flutter precache --ios
+
+      - name: Ensure iOS minimum version is 15.0
+        run: |
+          set -euxo pipefail
+          if [ -f ios/Flutter/AppFrameworkInfo.plist ]; then
+            /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 15.0" ios/Flutter/AppFrameworkInfo.plist || true
+          fi
+          if [ -f ios/Podfile ]; then
+            if ! grep -q "platform :ios, '15.0'" ios/Podfile; then
+              sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/g" ios/Podfile || true
+            fi
+          fi
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: |
+          set -euxo pipefail
+          pod repo update
+          pod install
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+          key: ${{ runner.os }}-pods-xcode16.2-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-xcode16.2-
+
+      - name: Patch Firebase Swift imports
+        run: |
+          set -euxo pipefail
+          if [ -f scripts/firebase_imports_fix.sh ]; then
+            chmod +x scripts/firebase_imports_fix.sh
+            ./scripts/firebase_imports_fix.sh || true
+          else
+            echo "Patch script not found at scripts/firebase_imports_fix.sh; continuing"
+          fi
+
+      - name: Build iOS (Simulator, no codesign)
+        run: |
+          set -euxo pipefail
+          flutter build ios --simulator --debug --no-codesign -v \
+            --dart-define=RC_API_KEY_IOS=${{ secrets.RC_API_KEY_IOS }} \
+            --dart-define=RC_API_KEY_ANDROID=${{ secrets.RC_API_KEY_ANDROID }}
+
+      - name: Gather diagnostics
+        if: always()
+        run: |
+          set -euxo pipefail
+          mkdir -p diagnostics
+          flutter doctor -v > diagnostics/flutter_doctor.txt 2>&1 || true
+          if [ -f ios/Podfile.lock ]; then cp ios/Podfile.lock diagnostics/Podfile.lock; fi
+          if [ -f scripts/firebase_imports.txt ]; then cp scripts/firebase_imports.txt diagnostics/firebase_imports.txt; fi
+          find scripts -name "firebase_patch_*.log" -type f -exec cp {} diagnostics/ \; || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-artifacts
+          path: |
+            build/ios/iphonesimulator/Runner.app
+            diagnostics/**
