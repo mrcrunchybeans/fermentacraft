@@ -141,6 +141,12 @@ declare -a SPECIFIC_PATCHES=(
   "ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in HeartbeatsPayload.swift"
   "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in SettingsCacheClient.swift"
   "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in SettingsDownloadClient.swift"
+  # Explicitly patch remaining problematic files from last CI run
+  "ios/Pods/GTMAppAuth/GTMAppAuth/Sources/AuthSession.swift|import GTMSessionFetcherCore|import GTMSessionFetcher|GTMSessionFetcherCore in AuthSession.swift"
+  "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/ApplicationInfo.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in ApplicationInfo.swift"
+  "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/NetworkInfo.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in NetworkInfo.swift"
+  "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionInitiator.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in SessionInitiator.swift"
+  "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionStartEvent.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in SessionStartEvent.swift"
 )
 
 # Apply all specific patches first

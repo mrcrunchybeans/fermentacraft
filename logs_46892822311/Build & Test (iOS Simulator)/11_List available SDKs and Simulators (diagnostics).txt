@@ -1,0 +1,302 @@
+﻿2025-10-04T04:07:38.5815860Z ##[group]Run set -euxo pipefail
+2025-10-04T04:07:38.5816120Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:07:38.5816310Z [36;1mxcodebuild -showsdks || true[0m
+2025-10-04T04:07:38.5816500Z [36;1mxcrun simctl list || true[0m
+2025-10-04T04:07:38.5847700Z shell: /bin/bash -e {0}
+2025-10-04T04:07:38.5847900Z env:
+2025-10-04T04:07:38.5848110Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:07:38.5848400Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:07:38.5848720Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:07:38.5849010Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:07:38.5849200Z ##[endgroup]
+2025-10-04T04:07:38.6154320Z + xcodebuild -showsdks
+2025-10-04T04:07:39.4574300Z DriverKit SDKs:
+2025-10-04T04:07:39.4575010Z 	DriverKit 24.2                	-sdk driverkit24.2
+2025-10-04T04:07:39.4575460Z 
+2025-10-04T04:07:39.4575680Z iOS SDKs:
+2025-10-04T04:07:39.4576180Z 	iOS 18.2                      	-sdk iphoneos18.2
+2025-10-04T04:07:39.4576630Z 
+2025-10-04T04:07:39.4576930Z iOS Simulator SDKs:
+2025-10-04T04:07:39.4577510Z 	Simulator - iOS 18.2          	-sdk iphonesimulator18.2
+2025-10-04T04:07:39.4578050Z 
+2025-10-04T04:07:39.4578210Z macOS SDKs:
+2025-10-04T04:07:39.4578760Z 	macOS 15.2                    	-sdk macosx15.2
+2025-10-04T04:07:39.4579490Z 	macOS 15.2                    	-sdk macosx15.2
+2025-10-04T04:07:39.4597680Z 
+2025-10-04T04:07:39.4597750Z tvOS SDKs:
+2025-10-04T04:07:39.4597940Z 	tvOS 18.2                     	-sdk appletvos18.2
+2025-10-04T04:07:39.4598100Z 
+2025-10-04T04:07:39.4598160Z tvOS Simulator SDKs:
+2025-10-04T04:07:39.4598370Z 	Simulator - tvOS 18.2         	-sdk appletvsimulator18.2
+2025-10-04T04:07:39.4598560Z 
+2025-10-04T04:07:39.4598620Z visionOS SDKs:
+2025-10-04T04:07:39.4598800Z 	visionOS 2.2                  	-sdk xros2.2
+2025-10-04T04:07:39.4598940Z 
+2025-10-04T04:07:39.4600120Z visionOS Simulator SDKs:
+2025-10-04T04:07:39.4600380Z 	Simulator - visionOS 2.2      	-sdk xrsimulator2.2
+2025-10-04T04:07:39.4600540Z 
+2025-10-04T04:07:39.4600620Z watchOS SDKs:
+2025-10-04T04:07:39.4600790Z 	watchOS 11.2                  	-sdk watchos11.2
+2025-10-04T04:07:39.4600950Z 
+2025-10-04T04:07:39.4601010Z watchOS Simulator SDKs:
+2025-10-04T04:07:39.4601220Z 	Simulator - watchOS 11.2      	-sdk watchsimulator11.2
+2025-10-04T04:07:39.4601400Z 
+2025-10-04T04:07:39.4601490Z + xcrun simctl list
+2025-10-04T04:07:46.2917230Z == Device Types ==
+2025-10-04T04:07:46.3021900Z iPhone 17 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro)
+2025-10-04T04:07:46.3123960Z iPhone 17 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max)
+2025-10-04T04:07:46.3225940Z iPhone Air (com.apple.CoreSimulator.SimDeviceType.iPhone-Air)
+2025-10-04T04:07:46.3326280Z iPhone 17 (com.apple.CoreSimulator.SimDeviceType.iPhone-17)
+2025-10-04T04:07:46.3427090Z iPhone 16 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro)
+2025-10-04T04:07:46.3527880Z iPhone 16 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max)
+2025-10-04T04:07:46.3628610Z iPhone 16e (com.apple.CoreSimulator.SimDeviceType.iPhone-16e)
+2025-10-04T04:07:46.3729310Z iPhone 16 (com.apple.CoreSimulator.SimDeviceType.iPhone-16)
+2025-10-04T04:07:46.3829760Z iPhone 16 Plus (com.apple.CoreSimulator.SimDeviceType.iPhone-16-Plus)
+2025-10-04T04:07:46.3930570Z iPhone 15 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro)
+2025-10-04T04:07:46.4031780Z iPhone 15 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max)
+2025-10-04T04:07:46.4133520Z iPhone 15 (com.apple.CoreSimulator.SimDeviceType.iPhone-15)
+2025-10-04T04:07:46.4234740Z iPhone 15 Plus (com.apple.CoreSimulator.SimDeviceType.iPhone-15-Plus)
+2025-10-04T04:07:46.4335650Z iPhone 14 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro)
+2025-10-04T04:07:46.4436830Z iPhone 14 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro-Max)
+2025-10-04T04:07:46.4538320Z iPhone 14 (com.apple.CoreSimulator.SimDeviceType.iPhone-14)
+2025-10-04T04:07:46.4639480Z iPhone 14 Plus (com.apple.CoreSimulator.SimDeviceType.iPhone-14-Plus)
+2025-10-04T04:07:46.4740570Z iPhone SE (3rd generation) (com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation)
+2025-10-04T04:07:46.4842180Z iPhone 13 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro)
+2025-10-04T04:07:46.4942310Z iPhone 13 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max)
+2025-10-04T04:07:46.5043710Z iPhone 13 (com.apple.CoreSimulator.SimDeviceType.iPhone-13)
+2025-10-04T04:07:46.5144300Z iPhone 13 mini (com.apple.CoreSimulator.SimDeviceType.iPhone-13-mini)
+2025-10-04T04:07:46.5245320Z iPhone 12 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-12-Pro)
+2025-10-04T04:07:46.5346090Z iPhone 12 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-12-Pro-Max)
+2025-10-04T04:07:46.5447190Z iPhone 12 (com.apple.CoreSimulator.SimDeviceType.iPhone-12)
+2025-10-04T04:07:46.5548490Z iPhone 12 mini (com.apple.CoreSimulator.SimDeviceType.iPhone-12-mini)
+2025-10-04T04:07:46.5648700Z iPhone SE (2nd generation) (com.apple.CoreSimulator.SimDeviceType.iPhone-SE--2nd-generation-)
+2025-10-04T04:07:46.5750530Z iPhone 11 Pro (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro)
+2025-10-04T04:07:46.5851860Z iPhone 11 Pro Max (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro-Max)
+2025-10-04T04:07:46.5953000Z iPhone 11 (com.apple.CoreSimulator.SimDeviceType.iPhone-11)
+2025-10-04T04:07:46.6055540Z iPhone Xʀ (com.apple.CoreSimulator.SimDeviceType.iPhone-XR)
+2025-10-04T04:07:46.6155060Z iPhone Xs (com.apple.CoreSimulator.SimDeviceType.iPhone-XS)
+2025-10-04T04:07:46.6256170Z iPhone Xs Max (com.apple.CoreSimulator.SimDeviceType.iPhone-XS-Max)
+2025-10-04T04:07:46.6357430Z iPhone X (com.apple.CoreSimulator.SimDeviceType.iPhone-X)
+2025-10-04T04:07:46.6459420Z iPhone 8 (com.apple.CoreSimulator.SimDeviceType.iPhone-8)
+2025-10-04T04:07:46.6561290Z iPhone 8 Plus (com.apple.CoreSimulator.SimDeviceType.iPhone-8-Plus)
+2025-10-04T04:07:46.6662200Z iPhone 7 (com.apple.CoreSimulator.SimDeviceType.iPhone-7)
+2025-10-04T04:07:46.6762900Z iPhone 7 Plus (com.apple.CoreSimulator.SimDeviceType.iPhone-7-Plus)
+2025-10-04T04:07:46.6865660Z iPhone SE (1st generation) (com.apple.CoreSimulator.SimDeviceType.iPhone-SE)
+2025-10-04T04:07:46.6964610Z iPhone 6s (com.apple.CoreSimulator.SimDeviceType.iPhone-6s)
+2025-10-04T04:07:46.7066150Z iPhone 6s Plus (com.apple.CoreSimulator.SimDeviceType.iPhone-6s-Plus)
+2025-10-04T04:07:46.7167770Z iPad Pro 11-inch (M4) (16GB) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M4-16GB)
+2025-10-04T04:07:46.7270900Z iPad Pro 11-inch (M4) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M4-8GB)
+2025-10-04T04:07:46.7371150Z iPad Pro 13-inch (M4) (16GB) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M4-16GB)
+2025-10-04T04:07:46.7471860Z iPad Pro 13-inch (M4) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M4-8GB)
+2025-10-04T04:07:46.7572960Z iPad (A16) (com.apple.CoreSimulator.SimDeviceType.iPad-A16)
+2025-10-04T04:07:46.7673720Z iPad Air 13-inch (M3) (com.apple.CoreSimulator.SimDeviceType.iPad-Air-13-inch-M3)
+2025-10-04T04:07:46.7774750Z iPad Air 11-inch (M3) (com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M3)
+2025-10-04T04:07:46.7877540Z iPad Air 11-inch (M2) (com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M2)
+2025-10-04T04:07:46.7979880Z iPad Air 13-inch (M2) (com.apple.CoreSimulator.SimDeviceType.iPad-Air-13-inch-M2)
+2025-10-04T04:07:46.8083220Z iPad mini (A17 Pro) (com.apple.CoreSimulator.SimDeviceType.iPad-mini-A17-Pro)
+2025-10-04T04:07:46.8182640Z iPad Pro (11-inch) (4th generation) (16GB) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-4th-generation-16GB)
+2025-10-04T04:07:46.8282920Z iPad Pro (11-inch) (4th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-4th-generation-8GB)
+2025-10-04T04:07:46.8384500Z iPad Pro (12.9-inch) (6th generation) (16GB) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-12-9-inch-6th-generation-16GB)
+2025-10-04T04:07:46.8485980Z iPad Pro (12.9-inch) (6th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-12-9-inch-6th-generation-8GB)
+2025-10-04T04:07:46.8587340Z iPad (10th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-10th-generation)
+2025-10-04T04:07:46.8687900Z iPad Air (5th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Air-5th-generation)
+2025-10-04T04:07:46.8794390Z iPad mini (6th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-mini-6th-generation)
+2025-10-04T04:07:46.8889730Z iPad Pro (11-inch) (3rd generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-3rd-generation)
+2025-10-04T04:07:46.8990290Z iPad Pro (12.9-inch) (5th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro-12-9-inch-5th-generation)
+2025-10-04T04:07:46.9091830Z iPad (9th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-9th-generation)
+2025-10-04T04:07:46.9193060Z iPad Air (4th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Air--4th-generation-)
+2025-10-04T04:07:46.9296440Z iPad (8th generation) (com.apple.CoreSimulator.SimDeviceType.iPad--8th-generation-)
+2025-10-04T04:07:46.9399420Z iPad Air (3rd generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Air--3rd-generation-)
+2025-10-04T04:07:46.9500500Z iPad mini (5th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-mini--5th-generation-)
+2025-10-04T04:07:46.9601080Z iPad Pro (11-inch) (2nd generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--11-inch---2nd-generation-)
+2025-10-04T04:07:46.9710160Z iPad Pro (12.9-inch) (4th generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--12-9-inch---4th-generation-)
+2025-10-04T04:07:46.9806170Z iPad Pro (11-inch) (1st generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--11-inch-)
+2025-10-04T04:07:46.9907940Z iPad Pro (12.9-inch) (3rd generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--12-9-inch---3rd-generation-)
+2025-10-04T04:07:47.0010840Z iPad (7th generation) (com.apple.CoreSimulator.SimDeviceType.iPad--7th-generation-)
+2025-10-04T04:07:47.0110710Z iPad Pro (10.5-inch) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--10-5-inch-)
+2025-10-04T04:07:47.0212190Z iPad Pro (12.9-inch) (2nd generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--12-9-inch---2nd-generation-)
+2025-10-04T04:07:47.0313670Z iPad (6th generation) (com.apple.CoreSimulator.SimDeviceType.iPad--6th-generation-)
+2025-10-04T04:07:47.0415020Z iPad Pro (9.7-inch) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro--9-7-inch-)
+2025-10-04T04:07:47.0516350Z iPad Pro (12.9-inch) (1st generation) (com.apple.CoreSimulator.SimDeviceType.iPad-Pro)
+2025-10-04T04:07:47.0617900Z iPad (5th generation) (com.apple.CoreSimulator.SimDeviceType.iPad--5th-generation-)
+2025-10-04T04:07:47.0718110Z iPad Air 2 (com.apple.CoreSimulator.SimDeviceType.iPad-Air-2)
+2025-10-04T04:07:47.0818990Z iPad mini 4 (com.apple.CoreSimulator.SimDeviceType.iPad-mini-4)
+2025-10-04T04:07:47.0920160Z Apple TV 4K (3rd generation) (com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-3rd-generation-4K)
+2025-10-04T04:07:47.1021190Z Apple TV 4K (3rd generation) (at 1080p) (com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-3rd-generation-1080p)
+2025-10-04T04:07:47.1121540Z Apple TV 4K (2nd generation) (com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-2nd-generation-4K)
+2025-10-04T04:07:47.1222130Z Apple TV 4K (2nd generation) (at 1080p) (com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-2nd-generation-1080p)
+2025-10-04T04:07:47.1322370Z Apple TV 4K (com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-4K)
+2025-10-04T04:07:47.1423230Z Apple TV 4K (at 1080p) (com.apple.CoreSimulator.SimDeviceType.Apple-TV-4K-1080p)
+2025-10-04T04:07:47.1523540Z Apple TV (com.apple.CoreSimulator.SimDeviceType.Apple-TV-1080p)
+2025-10-04T04:07:47.1624330Z Apple Watch Series 11 (46mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-11-46mm)
+2025-10-04T04:07:47.1725240Z Apple Watch Series 11 (42mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-11-42mm)
+2025-10-04T04:07:47.1825570Z Apple Watch Series 10 (46mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-10-46mm)
+2025-10-04T04:07:47.1833280Z Apple Watch Series 10 (42mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-10-42mm)
+2025-10-04T04:07:47.1934360Z Apple Watch Series 9 (45mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-9-45mm)
+2025-10-04T04:07:47.2036040Z Apple Watch Series 9 (41mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-9-41mm)
+2025-10-04T04:07:47.2137210Z Apple Watch Ultra 3 (49mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Ultra-3-49mm)
+2025-10-04T04:07:47.2238520Z Apple Watch Ultra 2 (49mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Ultra-2-49mm)
+2025-10-04T04:07:47.2339810Z Apple Watch SE 3 (44mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-3-44mm)
+2025-10-04T04:07:47.2441050Z Apple Watch SE 3 (40mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-3-40mm)
+2025-10-04T04:07:47.2542220Z Apple Watch Series 8 (45mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-8-45mm)
+2025-10-04T04:07:47.2643500Z Apple Watch Series 8 (41mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-8-41mm)
+2025-10-04T04:07:47.2745080Z Apple Watch Ultra (49mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Ultra-49mm)
+2025-10-04T04:07:47.2846510Z Apple Watch SE (44mm) (2nd generation) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-44mm-2nd-generation)
+2025-10-04T04:07:47.2947800Z Apple Watch SE (40mm) (2nd generation) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-40mm-2nd-generation)
+2025-10-04T04:07:47.3049240Z Apple Watch Series 7 (45mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-7-45mm)
+2025-10-04T04:07:47.3150980Z Apple Watch Series 7 (41mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-7-41mm)
+2025-10-04T04:07:47.3255150Z Apple Watch Series 6 (44mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-6-44mm)
+2025-10-04T04:07:47.3357030Z Apple Watch Series 6 (40mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-6-40mm)
+2025-10-04T04:07:47.3459340Z Apple Watch SE (44mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-44mm)
+2025-10-04T04:07:47.3561670Z Apple Watch SE (40mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-40mm)
+2025-10-04T04:07:47.3663650Z Apple Watch Series 5 (44mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-5-44mm)
+2025-10-04T04:07:47.3765250Z Apple Watch Series 5 (40mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-5-40mm)
+2025-10-04T04:07:47.3866750Z Apple Watch Series 4 (44mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-4-44mm)
+2025-10-04T04:07:47.3968320Z Apple Watch Series 4 (40mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-4-40mm)
+2025-10-04T04:07:47.4071290Z Apple Watch Series 3 (42mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-3-42mm)
+2025-10-04T04:07:47.4174820Z Apple Watch Series 3 (38mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-3-38mm)
+2025-10-04T04:07:47.4277650Z Apple Watch Series 2 (42mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-2-42mm)
+2025-10-04T04:07:47.4379690Z Apple Watch Series 2 (38mm) (com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-2-38mm)
+2025-10-04T04:07:47.4444670Z Apple Vision Pro (com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro-4K)
+2025-10-04T04:07:47.4548380Z Apple Vision Pro (com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro)
+2025-10-04T04:07:47.4653580Z iPod touch (7th generation) (com.apple.CoreSimulator.SimDeviceType.iPod-touch--7th-generation-)
+2025-10-04T04:07:47.4756530Z == Runtimes ==
+2025-10-04T04:07:47.4858230Z iOS 18.4 (18.4 - 22E238) - com.apple.CoreSimulator.SimRuntime.iOS-18-4
+2025-10-04T04:07:47.4959490Z iOS 18.5 (18.5 - 22F77) - com.apple.CoreSimulator.SimRuntime.iOS-18-5
+2025-10-04T04:07:47.5060550Z iOS 18.6 (18.6 - 22G86) - com.apple.CoreSimulator.SimRuntime.iOS-18-6
+2025-10-04T04:07:47.5161600Z iOS 26.0 (26.0 - 23A343) - com.apple.CoreSimulator.SimRuntime.iOS-26-0
+2025-10-04T04:07:47.5262630Z tvOS 18.2 (18.2 - 22K154) - com.apple.CoreSimulator.SimRuntime.tvOS-18-2
+2025-10-04T04:07:47.5363910Z tvOS 18.4 (18.4 - 22L254) - com.apple.CoreSimulator.SimRuntime.tvOS-18-4
+2025-10-04T04:07:47.5465640Z tvOS 18.5 (18.5 - 22L572) - com.apple.CoreSimulator.SimRuntime.tvOS-18-5
+2025-10-04T04:07:47.5567420Z tvOS 26.0 (26.0 - 23J352) - com.apple.CoreSimulator.SimRuntime.tvOS-26-0
+2025-10-04T04:07:47.5669100Z watchOS 11.2 (11.2 - 22S99) - com.apple.CoreSimulator.SimRuntime.watchOS-11-2
+2025-10-04T04:07:47.5759480Z watchOS 11.4 (11.4 - 22T250) - com.apple.CoreSimulator.SimRuntime.watchOS-11-4
+2025-10-04T04:07:47.5866290Z watchOS 11.5 (11.5 - 22T572) - com.apple.CoreSimulator.SimRuntime.watchOS-11-5
+2025-10-04T04:07:47.5967450Z watchOS 26.0 (26.0 - 23R353) - com.apple.CoreSimulator.SimRuntime.watchOS-26-0
+2025-10-04T04:07:47.6068820Z visionOS 2.3 (2.3 - 22N895) - com.apple.CoreSimulator.SimRuntime.xrOS-2-3
+2025-10-04T04:07:47.6170000Z visionOS 2.4 (2.4 - 22O237) - com.apple.CoreSimulator.SimRuntime.xrOS-2-4
+2025-10-04T04:07:47.6271320Z visionOS 2.5 (2.5 - 22O473) - com.apple.CoreSimulator.SimRuntime.xrOS-2-5
+2025-10-04T04:07:47.6371530Z visionOS 26.0 (26.0 - 23M336) - com.apple.CoreSimulator.SimRuntime.xrOS-26-0
+2025-10-04T04:07:47.6483410Z == Devices ==
+2025-10-04T04:07:47.6584310Z -- iOS 18.4 --
+2025-10-04T04:07:47.6684730Z     iPhone 16 Pro (8C810D0F-1949-46BE-A58D-6AE0AEEB2B52) (Shutdown) 
+2025-10-04T04:07:47.6785860Z     iPhone 16 Pro Max (7FC3F1B6-7A5E-4307-8D99-B06855BB7800) (Shutdown) 
+2025-10-04T04:07:47.6886210Z     iPhone 16e (9741BB45-BF1C-4179-A778-3E02AC1A9081) (Shutdown) 
+2025-10-04T04:07:47.6987220Z     iPhone 16 (01C0ABCC-9E2B-46B8-BBB8-F86833A8AB47) (Shutdown) 
+2025-10-04T04:07:47.7087670Z     iPhone 16 Plus (2CEE88DB-A76C-4B47-B6DE-76F67F57C36D) (Shutdown) 
+2025-10-04T04:07:47.7188710Z     iPhone SE (3rd generation) (3027915F-12C4-491D-9533-76EDDA7A6198) (Shutdown) 
+2025-10-04T04:07:47.7289970Z     iPad Pro 11-inch (M4) (C53AD165-F3D5-45DD-9305-F7109D09E901) (Shutdown) 
+2025-10-04T04:07:47.7390500Z     iPad Pro 13-inch (M4) (5B2ED28E-4881-42AA-8BCE-5185D088E439) (Shutdown) 
+2025-10-04T04:07:47.7491740Z     iPad mini (A17 Pro) (A3BA86D7-D633-436B-9858-B8D66C5F8508) (Shutdown) 
+2025-10-04T04:07:47.7593780Z     iPad (A16) (C831BD4B-7DA0-4D60-9C10-949938B50C94) (Shutdown) 
+2025-10-04T04:07:47.7695530Z     iPad Air 13-inch (M3) (83DA937D-ECBC-472B-AB02-3767BB9AAA84) (Shutdown) 
+2025-10-04T04:07:47.7796590Z     iPad Air 11-inch (M3) (756A1411-FB06-4278-9CB6-CC292CBDB103) (Shutdown) 
+2025-10-04T04:07:47.7897750Z     iPad Air 11-inch (M2) (C36F719C-0EE6-4484-95D0-B25A432DB1AD) (Shutdown) 
+2025-10-04T04:07:47.7998880Z     iPad Air 13-inch (M2) (CF73ABEA-513B-4B77-A5B9-881744C24C28) (Shutdown) 
+2025-10-04T04:07:47.8100070Z     iPad (10th generation) (D723F8EC-40FB-44CC-B82A-9DCF1F08DCB9) (Shutdown) 
+2025-10-04T04:07:47.8200470Z -- iOS 18.5 --
+2025-10-04T04:07:47.8301400Z     iPhone 16 Pro (0AE9A893-35AD-4114-B48F-D8C2C8705FB5) (Shutdown) 
+2025-10-04T04:07:47.8401850Z     iPhone 16 Pro Max (F165F3DC-CFA6-4121-B287-505E37E26AFD) (Shutdown) 
+2025-10-04T04:07:47.8503150Z     iPhone 16e (975A2EFD-82A3-44AD-96B7-365A010E0849) (Shutdown) 
+2025-10-04T04:07:47.8604450Z     iPhone 16 (2A90C9E4-1987-4CB4-AD86-7489BFBDA5BC) (Shutdown) 
+2025-10-04T04:07:47.8705210Z     iPhone 16 Plus (41CA021B-01EB-4ED1-B34A-8DA50567DA38) (Shutdown) 
+2025-10-04T04:07:47.8806520Z     iPhone SE (3rd generation) (88FFECD3-1F32-44B0-B39F-5102C0B65932) (Shutdown) 
+2025-10-04T04:07:47.8906760Z     iPad Pro 11-inch (M4) (33B113A9-115A-4458-8283-7868E089EC0D) (Shutdown) 
+2025-10-04T04:07:47.9007920Z     iPad Pro 13-inch (M4) (1C3D0AF4-20FD-411E-9743-539A28ADBE7A) (Shutdown) 
+2025-10-04T04:07:47.9110450Z     iPad (A16) (E4B29B12-A752-405D-A9B3-B58674F324E0) (Shutdown) 
+2025-10-04T04:07:47.9211500Z     iPad Air 13-inch (M3) (E45E8E1D-982F-4C24-A361-EB98EDEED85A) (Shutdown) 
+2025-10-04T04:07:47.9312630Z     iPad Air 11-inch (M2) (E9A32BE7-528A-4C34-8A3C-E79A60C4D45D) (Shutdown) 
+2025-10-04T04:07:47.9412880Z     iPad Air 13-inch (M2) (3D500852-82D4-4C27-8E14-031FF70CF842) (Shutdown) 
+2025-10-04T04:07:47.9513080Z     iPad mini (A17 Pro) (06570DFD-CACC-42F2-AE6E-178C9FE779A3) (Shutdown) 
+2025-10-04T04:07:47.9618920Z     iPad Air 11-inch (M3) (5B0C82B3-023A-4E46-9BF2-27876CDA26E7) (Shutdown) 
+2025-10-04T04:07:47.9721960Z     iPad (10th generation) (6B8078AC-D5E7-4186-8ECC-DB1664EAF64E) (Shutdown) 
+2025-10-04T04:07:47.9823090Z -- iOS 18.6 --
+2025-10-04T04:07:47.9923710Z     iPhone 16 Pro (49E23A6C-A7E3-44B0-81F5-2D7D7FEA2F02) (Shutdown) 
+2025-10-04T04:07:48.0024070Z     iPhone 16 Pro Max (37B7B09D-9B55-4B96-A535-77629E08A8FF) (Shutdown) 
+2025-10-04T04:07:48.0125040Z     iPhone 16e (F1922D7F-D134-4C4B-A18F-33A62C27783A) (Shutdown) 
+2025-10-04T04:07:48.0225480Z     iPhone 16 (6A3AF58C-5646-4865-A5CB-D5A8083D18E1) (Shutdown) 
+2025-10-04T04:07:48.0325900Z     iPhone 16 Plus (55BC8BEF-E975-4445-BDFE-4F99A01AEC2B) (Shutdown) 
+2025-10-04T04:07:48.0427130Z     iPhone SE (3rd generation) (C59BF94F-6AC0-42C2-BDA5-DBDE542FC480) (Shutdown) 
+2025-10-04T04:07:48.0527870Z     iPad Pro 11-inch (M4) (63E8B7C2-D8D9-4A4E-8600-D22E6DF3628F) (Shutdown) 
+2025-10-04T04:07:48.0629290Z     iPad Pro 13-inch (M4) (CEFA7764-74AD-4E8F-84F7-8D8BF675972C) (Shutdown) 
+2025-10-04T04:07:48.0729870Z     iPad (A16) (8D07C657-27D4-4510-8612-19946878002B) (Shutdown) 
+2025-10-04T04:07:48.0830510Z     iPad Air 13-inch (M3) (92AB9B13-5C91-42A7-9A82-532102BFC92D) (Shutdown) 
+2025-10-04T04:07:48.0931750Z     iPad Air 11-inch (M3) (9A024D4C-1702-4490-95B7-0C888D15D019) (Shutdown) 
+2025-10-04T04:07:48.1032360Z     iPad Air 11-inch (M2) (7FC4B8B1-6D89-4F6B-873F-D6AF4CC86BD4) (Shutdown) 
+2025-10-04T04:07:48.1133750Z     iPad Air 13-inch (M2) (A8D2C7EA-F559-4313-B677-7F3F8B3E57C8) (Shutdown) 
+2025-10-04T04:07:48.1235380Z     iPad mini (A17 Pro) (AF4E9C1C-5B71-48B3-ABFD-814911E71640) (Shutdown) 
+2025-10-04T04:07:48.1336600Z     iPad (10th generation) (0E4F042F-E93D-4788-A675-4EDC4F05B8F1) (Shutdown) 
+2025-10-04T04:07:48.1436830Z -- iOS 26.0 --
+2025-10-04T04:07:48.1537300Z     iPhone 17 Pro (2804DD23-BF91-4EE2-9A93-4AA07E986129) (Shutdown) 
+2025-10-04T04:07:48.1637900Z     iPhone 17 Pro Max (690AF885-1890-47F3-B70E-FF8EAE86EB6F) (Shutdown) 
+2025-10-04T04:07:48.1738770Z     iPhone Air (CFD0570B-9387-47B6-8FB5-669FB16FE1DB) (Shutdown) 
+2025-10-04T04:07:48.1839140Z     iPhone 17 (68FE8B2B-2E95-48DD-8BDB-6528A30BA1E8) (Shutdown) 
+2025-10-04T04:07:48.1940650Z     iPhone 16 Pro (572A9BA9-161E-4B7A-86F3-D45C79F84C1E) (Shutdown) 
+2025-10-04T04:07:48.2041280Z     iPhone 16 Pro Max (52ECA9E5-E92F-4053-AFF9-6271CAC1D50E) (Shutdown) 
+2025-10-04T04:07:48.2142060Z     iPhone 16e (7BEF8B00-63BA-4CD9-9DD5-37B5F896FBBD) (Shutdown) 
+2025-10-04T04:07:48.2242990Z     iPhone 16 (A1B3FE72-0B58-4943-934B-2F62BC3CAEBA) (Shutdown) 
+2025-10-04T04:07:48.2344250Z     iPhone 16 Plus (5D692D45-ABBE-40B5-B71A-494645AC5A8A) (Shutdown) 
+2025-10-04T04:07:48.2445230Z     iPhone SE (3rd generation) (914E607B-0349-4986-A49F-99EBAFB4BA42) (Shutdown) 
+2025-10-04T04:07:48.2547200Z     iPad Pro 11-inch (M4) (D9E3BA77-D9A4-4B72-A04D-7866E90A2C86) (Shutdown) 
+2025-10-04T04:07:48.2648040Z     iPad Pro 13-inch (M4) (3456CC78-D3D4-4056-863E-131B7037CB0C) (Shutdown) 
+2025-10-04T04:07:48.2750030Z     iPad (A16) (00D9980D-CC5F-4559-9FBA-568F9483534C) (Shutdown) 
+2025-10-04T04:07:48.2850310Z     iPad Air 11-inch (M2) (5FA80C93-9976-4C36-822F-0F15609A56C1) (Shutdown) 
+2025-10-04T04:07:48.2951170Z     iPad Air 13-inch (M2) (E15EC799-82B2-4A74-81C6-97151C340ECF) (Shutdown) 
+2025-10-04T04:07:48.3051990Z     iPad mini (A17 Pro) (36FB0121-9A6D-477F-84FA-4FA30BBC00DA) (Shutdown) 
+2025-10-04T04:07:48.3152740Z     iPad Air 13-inch (M3) (CF4A2DC5-6E0A-4EE4-91ED-386A9ED4DE73) (Shutdown) 
+2025-10-04T04:07:48.3253580Z     iPad Air 11-inch (M3) (BA80DC3D-D0EC-4E66-82DE-CBA135FB5FCE) (Shutdown) 
+2025-10-04T04:07:48.3354290Z     iPad (10th generation) (1F930FFC-5282-4C89-8A13-484D3EEB9634) (Shutdown) 
+2025-10-04T04:07:48.3455250Z -- tvOS 18.2 --
+2025-10-04T04:07:48.3555660Z     Apple TV 4K (3rd generation) (E15B5F29-3A6A-462E-96AD-5F6A7B9618DD) (Shutdown) 
+2025-10-04T04:07:48.3656240Z     Apple TV 4K (3rd generation) (at 1080p) (FDA117AD-C25B-4E14-A662-BA8A908B8130) (Shutdown) 
+2025-10-04T04:07:48.3757020Z     Apple TV (C8B4B991-2D5E-4C03-981B-6D962183564E) (Shutdown) 
+2025-10-04T04:07:48.3857290Z -- tvOS 18.4 --
+2025-10-04T04:07:48.3958150Z     Apple TV 4K (3rd generation) (3DF2D1C3-DDAB-4008-BB34-307FE9A52CA5) (Shutdown) 
+2025-10-04T04:07:48.4058660Z     Apple TV 4K (3rd generation) (at 1080p) (2BA9ABF6-B630-4626-BB9A-AA6A08FEB8B4) (Shutdown) 
+2025-10-04T04:07:48.4160160Z     Apple TV (A638C0BD-DFA1-421D-852C-0F081FA09537) (Shutdown) 
+2025-10-04T04:07:48.4261190Z -- tvOS 18.5 --
+2025-10-04T04:07:48.4362790Z     Apple TV 4K (3rd generation) (3B705257-8EA9-4B42-9722-7930D4DB1712) (Shutdown) 
+2025-10-04T04:07:48.4463980Z     Apple TV 4K (3rd generation) (at 1080p) (D73A61A5-50B6-47FE-99D9-D34E2CB8AB8F) (Shutdown) 
+2025-10-04T04:07:48.4564330Z     Apple TV (64890344-927D-4AD8-BB30-45E704372AED) (Shutdown) 
+2025-10-04T04:07:48.4665560Z -- tvOS 26.0 --
+2025-10-04T04:07:48.4767300Z     Apple TV 4K (3rd generation) (85B593E4-42F5-4666-882E-E819AD24F007) (Shutdown) 
+2025-10-04T04:07:48.4868530Z     Apple TV 4K (3rd generation) (at 1080p) (B834BA70-EEEF-4FB6-B6B1-8B0E340EBF48) (Shutdown) 
+2025-10-04T04:07:48.4969380Z     Apple TV (64819AA7-B6A3-4685-BE81-FC0A71278452) (Shutdown) 
+2025-10-04T04:07:48.5069960Z -- watchOS 11.2 --
+2025-10-04T04:07:48.5171040Z     Apple Watch Series 10 (46mm) (3366A437-62CE-496C-9F9F-7872E0BFBC1F) (Shutdown) 
+2025-10-04T04:07:48.5271470Z     Apple Watch Series 10 (42mm) (E20464F7-546A-476C-83AD-8B378DFCB7CA) (Shutdown) 
+2025-10-04T04:07:48.5372670Z     Apple Watch Ultra 2 (49mm) (5F3079A5-C99F-47DE-B618-801C199D9826) (Shutdown) 
+2025-10-04T04:07:48.5482870Z     Apple Watch SE (44mm) (2nd generation) (228A548E-1831-4109-ACE5-BFE0FDB400D8) (Shutdown) 
+2025-10-04T04:07:48.5607430Z     Apple Watch SE (40mm) (2nd generation) (5566CC3F-EDFB-4738-8E33-DD7B13BBFBEF) (Shutdown) 
+2025-10-04T04:07:48.5749010Z -- watchOS 11.4 --
+2025-10-04T04:07:48.5850770Z     Apple Watch Series 10 (46mm) (41B67146-B735-4059-ADE0-1E8D9CB661D5) (Shutdown) 
+2025-10-04T04:07:48.5952110Z     Apple Watch Series 10 (42mm) (8D43368E-2B12-461A-9D47-369F110DC9A3) (Shutdown) 
+2025-10-04T04:07:48.5952620Z     Apple Watch Ultra 2 (49mm) (07CCFC92-1790-4615-BBDA-95055F7A0147) (Shutdown) 
+2025-10-04T04:07:48.6053900Z     Apple Watch SE (44mm) (2nd generation) (5BFB2F76-5796-4DC3-8BF7-EF669819C5E7) (Shutdown) 
+2025-10-04T04:07:48.6155010Z     Apple Watch SE (40mm) (2nd generation) (AA5E4299-77D5-47D3-8017-93531C5E7AE4) (Shutdown) 
+2025-10-04T04:07:48.6255970Z -- watchOS 11.5 --
+2025-10-04T04:07:48.6356960Z     Apple Watch Series 10 (46mm) (651211ED-3ABF-4964-A2B1-FE8F1600467C) (Shutdown) 
+2025-10-04T04:07:48.6457270Z     Apple Watch Series 10 (42mm) (42050AC8-8637-4817-9772-51275865489A) (Shutdown) 
+2025-10-04T04:07:48.6561120Z     Apple Watch Ultra 2 (49mm) (4CDD44E4-89B6-47AD-A135-76292298A627) (Shutdown) 
+2025-10-04T04:07:48.6662470Z     Apple Watch SE (44mm) (2nd generation) (43943A06-2717-439E-96CB-F33553D8A7E7) (Shutdown) 
+2025-10-04T04:07:48.6764160Z     Apple Watch SE (40mm) (2nd generation) (5BF37602-2891-4E12-BE77-70BE579FA32C) (Shutdown) 
+2025-10-04T04:07:48.6864330Z -- watchOS 26.0 --
+2025-10-04T04:07:48.6966130Z     Apple Watch Series 11 (46mm) (E7A8DF41-8E54-445D-9058-9220C6916BDB) (Shutdown) 
+2025-10-04T04:07:48.7069290Z     Apple Watch Series 11 (42mm) (B9026660-B0D2-4997-BA0B-E7D7F31E5E41) (Shutdown) 
+2025-10-04T04:07:48.7170580Z     Apple Watch Series 10 (46mm) (36F14524-E993-4E55-87D4-C74312688B45) (Shutdown) 
+2025-10-04T04:07:48.7270770Z     Apple Watch Series 10 (42mm) (D147D60C-0987-4AD2-8E69-48D3EC2AEE45) (Shutdown) 
+2025-10-04T04:07:48.7372090Z     Apple Watch Ultra 3 (49mm) (9D832B1B-AE5C-4066-BDED-F49BDB670C03) (Shutdown) 
+2025-10-04T04:07:48.7477060Z     Apple Watch Ultra 2 (49mm) (C695CF1D-1DAE-4BE9-A17A-3253B3564038) (Shutdown) 
+2025-10-04T04:07:48.7581880Z     Apple Watch SE 3 (44mm) (BC5B031E-ED83-4B6D-8D93-6277891081FA) (Shutdown) 
+2025-10-04T04:07:48.7684020Z     Apple Watch SE 3 (40mm) (BDED6807-F502-439E-AE55-E94E29C308E2) (Shutdown) 
+2025-10-04T04:07:48.7785300Z     Apple Watch SE (44mm) (2nd generation) (CBC5B901-703E-4494-8295-BBDF93936D05) (Shutdown) 
+2025-10-04T04:07:48.7886510Z     Apple Watch SE (40mm) (2nd generation) (73F2B25F-E659-4FE4-9E9E-C385525EF0A4) (Shutdown) 
+2025-10-04T04:07:48.7987400Z -- visionOS 2.3 --
+2025-10-04T04:07:48.8068340Z     Apple Vision Pro (C0B42585-DF62-4EFC-872F-3FB14957B1E7) (Shutdown) 
+2025-10-04T04:07:48.8169290Z -- visionOS 2.4 --
+2025-10-04T04:07:48.8270210Z     Apple Vision Pro (C7244DBD-5513-4DD1-BFE9-E645A527EDD7) (Shutdown) 
+2025-10-04T04:07:48.8371050Z -- visionOS 2.5 --
+2025-10-04T04:07:48.8471950Z     Apple Vision Pro (1BC94ACD-1F55-44D7-9544-2874EA257CEA) (Shutdown) 
+2025-10-04T04:07:48.8572920Z -- visionOS 26.0 --
+2025-10-04T04:07:48.8673860Z     Apple Vision Pro (8330DF5A-6307-41BE-B44A-51F51F1B4A06) (Shutdown) 
+2025-10-04T04:07:48.8774760Z == Device Pairs ==

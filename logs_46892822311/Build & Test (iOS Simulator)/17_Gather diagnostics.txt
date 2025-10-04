@@ -1,0 +1,21 @@
+﻿2025-10-04T04:12:28.6979110Z ##[group]Run set -euxo pipefail
+2025-10-04T04:12:28.6979380Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:12:28.6979550Z [36;1mmkdir -p diagnostics[0m
+2025-10-04T04:12:28.6979800Z [36;1mflutter doctor -v > diagnostics/flutter_doctor.txt 2>&1 || true[0m
+2025-10-04T04:12:28.6980190Z [36;1mif [ -f ios/Podfile.lock ]; then cp ios/Podfile.lock diagnostics/Podfile.lock; fi[0m
+2025-10-04T04:12:28.6980680Z [36;1mif [ -f scripts/firebase_imports.txt ]; then cp scripts/firebase_imports.txt diagnostics/firebase_imports.txt; fi[0m
+2025-10-04T04:12:28.6981180Z [36;1mfind scripts -name "firebase_patch_*.log" -type f -exec cp {} diagnostics/ \; || true[0m
+2025-10-04T04:12:28.7149190Z shell: /bin/bash -e {0}
+2025-10-04T04:12:28.7149370Z env:
+2025-10-04T04:12:28.7149500Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:12:28.7149690Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:12:28.7150000Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:12:28.7150290Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:12:28.7150570Z ##[endgroup]
+2025-10-04T04:12:28.7629270Z + mkdir -p diagnostics
+2025-10-04T04:12:28.7654630Z + flutter doctor -v
+2025-10-04T04:12:41.4935440Z + '[' -f ios/Podfile.lock ']'
+2025-10-04T04:12:41.4936690Z + cp ios/Podfile.lock diagnostics/Podfile.lock
+2025-10-04T04:12:41.5034110Z + '[' -f scripts/firebase_imports.txt ']'
+2025-10-04T04:12:41.5035480Z + cp scripts/firebase_imports.txt diagnostics/firebase_imports.txt
+2025-10-04T04:12:41.5063120Z + find scripts -name 'firebase_patch_*.log' -type f -exec cp '{}' diagnostics/ ';'

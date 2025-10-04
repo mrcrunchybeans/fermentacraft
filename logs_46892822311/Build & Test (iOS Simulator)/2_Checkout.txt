@@ -1,0 +1,174 @@
+﻿2025-10-04T04:05:41.1456670Z ##[group]Run actions/checkout@v4
+2025-10-04T04:05:41.1457100Z with:
+2025-10-04T04:05:41.1457330Z   repository: mrcrunchybeans/cider-craft
+2025-10-04T04:05:41.1457730Z   token: ***
+2025-10-04T04:05:41.1457930Z   ssh-strict: true
+2025-10-04T04:05:41.1458140Z   ssh-user: git
+2025-10-04T04:05:41.1458350Z   persist-credentials: true
+2025-10-04T04:05:41.1458580Z   clean: true
+2025-10-04T04:05:41.1458810Z   sparse-checkout-cone-mode: true
+2025-10-04T04:05:41.1459060Z   fetch-depth: 1
+2025-10-04T04:05:41.1459270Z   fetch-tags: false
+2025-10-04T04:05:41.1459480Z   show-progress: true
+2025-10-04T04:05:41.1459690Z   lfs: false
+2025-10-04T04:05:41.1459890Z   submodules: false
+2025-10-04T04:05:41.1460100Z   set-safe-directory: true
+2025-10-04T04:05:41.1460480Z env:
+2025-10-04T04:05:41.1460680Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:05:41.1460910Z ##[endgroup]
+2025-10-04T04:05:41.4360180Z Syncing repository: mrcrunchybeans/cider-craft
+2025-10-04T04:05:41.4362100Z ##[group]Getting Git version info
+2025-10-04T04:05:41.4363890Z Working directory is '/Users/runner/work/cider-craft/cider-craft'
+2025-10-04T04:05:41.4364920Z [command]/opt/homebrew/bin/git version
+2025-10-04T04:05:41.4824070Z git version 2.50.1
+2025-10-04T04:05:41.4851310Z ##[endgroup]
+2025-10-04T04:05:41.4857800Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/52bb76db-6828-4787-b4e1-c52f8cdd39fe/.gitconfig'
+2025-10-04T04:05:41.4869530Z Temporarily overriding HOME='/Users/runner/work/_temp/52bb76db-6828-4787-b4e1-c52f8cdd39fe' before making global git config changes
+2025-10-04T04:05:41.4870440Z Adding repository directory to the temporary git global config as a safe directory
+2025-10-04T04:05:41.4873040Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/cider-craft/cider-craft
+2025-10-04T04:05:41.4964730Z Deleting the contents of '/Users/runner/work/cider-craft/cider-craft'
+2025-10-04T04:05:41.4967710Z ##[group]Initializing the repository
+2025-10-04T04:05:41.4971650Z [command]/opt/homebrew/bin/git init /Users/runner/work/cider-craft/cider-craft
+2025-10-04T04:05:41.5185940Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-10-04T04:05:41.5186910Z hint: is subject to change. To configure the initial branch name to use in all
+2025-10-04T04:05:41.5187610Z hint: of your new repositories, which will suppress this warning, call:
+2025-10-04T04:05:41.5188060Z hint:
+2025-10-04T04:05:41.5188490Z hint: 	git config --global init.defaultBranch <name>
+2025-10-04T04:05:41.5188900Z hint:
+2025-10-04T04:05:41.5189310Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-10-04T04:05:41.5189900Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-10-04T04:05:41.5190480Z hint:
+2025-10-04T04:05:41.5191150Z hint: 	git branch -m <name>
+2025-10-04T04:05:41.5191590Z hint:
+2025-10-04T04:05:41.5192040Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2025-10-04T04:05:41.5192700Z Initialized empty Git repository in /Users/runner/work/cider-craft/cider-craft/.git/
+2025-10-04T04:05:41.5194050Z [command]/opt/homebrew/bin/git remote add origin https://github.com/mrcrunchybeans/cider-craft
+2025-10-04T04:05:41.5255950Z ##[endgroup]
+2025-10-04T04:05:41.5256530Z ##[group]Disabling automatic garbage collection
+2025-10-04T04:05:41.5258620Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2025-10-04T04:05:41.5317210Z ##[endgroup]
+2025-10-04T04:05:41.5317950Z ##[group]Setting up auth
+2025-10-04T04:05:41.5319500Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-10-04T04:05:41.5436930Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-10-04T04:05:41.6351540Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-10-04T04:05:41.6376330Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-10-04T04:05:41.7198440Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-10-04T04:05:41.7261350Z ##[endgroup]
+2025-10-04T04:05:41.7262040Z ##[group]Fetching the repository
+2025-10-04T04:05:41.7269670Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +3a3d220b78d258a45b90906d26fd4c1cb06a0435:refs/remotes/origin/main
+2025-10-04T04:05:48.4822810Z From https://github.com/mrcrunchybeans/cider-craft
+2025-10-04T04:05:48.4823610Z  * [new ref]         3a3d220b78d258a45b90906d26fd4c1cb06a0435 -> origin/main
+2025-10-04T04:05:48.4901860Z ##[endgroup]
+2025-10-04T04:05:48.4902330Z ##[group]Determining the checkout info
+2025-10-04T04:05:48.4902830Z ##[endgroup]
+2025-10-04T04:05:48.4906300Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2025-10-04T04:05:48.4981390Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2025-10-04T04:05:48.5045760Z ##[group]Checking out the ref
+2025-10-04T04:05:48.5047590Z [command]/opt/homebrew/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2025-10-04T04:05:49.6384170Z Updating files:   1% (84/4567)
+2025-10-04T04:05:49.6973710Z Updating files:   2% (92/4567)
+2025-10-04T04:05:49.7905160Z Updating files:   3% (138/4567)
+2025-10-04T04:05:49.8070230Z Updating files:   4% (183/4567)
+2025-10-04T04:05:49.9002890Z Updating files:   5% (229/4567)
+2025-10-04T04:05:50.0146880Z Updating files:   6% (275/4567)
+2025-10-04T04:05:50.0548370Z Updating files:   7% (320/4567)
+2025-10-04T04:05:50.0930780Z Updating files:   8% (366/4567)
+2025-10-04T04:05:50.1040020Z Updating files:   9% (412/4567)
+2025-10-04T04:05:50.1104570Z Updating files:  10% (457/4567)
+2025-10-04T04:05:50.1162080Z Updating files:  11% (503/4567)
+2025-10-04T04:05:50.1207960Z Updating files:  12% (549/4567)
+2025-10-04T04:05:50.1261160Z Updating files:  13% (594/4567)
+2025-10-04T04:05:50.1582220Z Updating files:  14% (640/4567)
+2025-10-04T04:05:50.1632350Z Updating files:  15% (686/4567)
+2025-10-04T04:05:50.1805250Z Updating files:  16% (731/4567)
+2025-10-04T04:05:50.1855510Z Updating files:  17% (777/4567)
+2025-10-04T04:05:50.1931440Z Updating files:  18% (823/4567)
+2025-10-04T04:05:50.2305750Z Updating files:  19% (868/4567)
+2025-10-04T04:05:50.2384620Z Updating files:  20% (914/4567)
+2025-10-04T04:05:50.2420690Z Updating files:  21% (960/4567)
+2025-10-04T04:05:50.2451850Z Updating files:  22% (1005/4567)
+2025-10-04T04:05:50.2490630Z Updating files:  23% (1051/4567)
+2025-10-04T04:05:50.2521780Z Updating files:  24% (1097/4567)
+2025-10-04T04:05:50.2870100Z Updating files:  25% (1142/4567)
+2025-10-04T04:05:50.2906410Z Updating files:  26% (1188/4567)
+2025-10-04T04:05:50.2939090Z Updating files:  27% (1234/4567)
+2025-10-04T04:05:50.2974630Z Updating files:  28% (1279/4567)
+2025-10-04T04:05:50.3007790Z Updating files:  29% (1325/4567)
+2025-10-04T04:05:50.3041300Z Updating files:  30% (1371/4567)
+2025-10-04T04:05:50.3359870Z Updating files:  31% (1416/4567)
+2025-10-04T04:05:50.3391480Z Updating files:  32% (1462/4567)
+2025-10-04T04:05:50.3428760Z Updating files:  33% (1508/4567)
+2025-10-04T04:05:50.3465720Z Updating files:  34% (1553/4567)
+2025-10-04T04:05:50.3498240Z Updating files:  35% (1599/4567)
+2025-10-04T04:05:50.3530930Z Updating files:  36% (1645/4567)
+2025-10-04T04:05:50.3562960Z Updating files:  37% (1690/4567)
+2025-10-04T04:05:50.3937760Z Updating files:  38% (1736/4567)
+2025-10-04T04:05:50.3974090Z Updating files:  39% (1782/4567)
+2025-10-04T04:05:50.4005750Z Updating files:  40% (1827/4567)
+2025-10-04T04:05:50.4039350Z Updating files:  41% (1873/4567)
+2025-10-04T04:05:50.4077050Z Updating files:  42% (1919/4567)
+2025-10-04T04:05:50.4155110Z Updating files:  43% (1964/4567)
+2025-10-04T04:05:50.4629090Z Updating files:  44% (2010/4567)
+2025-10-04T04:05:50.4660200Z Updating files:  45% (2056/4567)
+2025-10-04T04:05:50.4691190Z Updating files:  46% (2101/4567)
+2025-10-04T04:05:50.4724120Z Updating files:  47% (2147/4567)
+2025-10-04T04:05:50.4754280Z Updating files:  48% (2193/4567)
+2025-10-04T04:05:50.4781540Z Updating files:  49% (2238/4567)
+2025-10-04T04:05:50.4810340Z Updating files:  50% (2284/4567)
+2025-10-04T04:05:50.5186140Z Updating files:  51% (2330/4567)
+2025-10-04T04:05:50.5217150Z Updating files:  51% (2342/4567)
+2025-10-04T04:05:50.5247670Z Updating files:  52% (2375/4567)
+2025-10-04T04:05:50.5287710Z Updating files:  53% (2421/4567)
+2025-10-04T04:05:50.5320950Z Updating files:  54% (2467/4567)
+2025-10-04T04:05:50.5349930Z Updating files:  55% (2512/4567)
+2025-10-04T04:05:50.5382070Z Updating files:  56% (2558/4567)
+2025-10-04T04:05:50.5755330Z Updating files:  57% (2604/4567)
+2025-10-04T04:05:50.5783350Z Updating files:  58% (2649/4567)
+2025-10-04T04:05:50.5814730Z Updating files:  59% (2695/4567)
+2025-10-04T04:05:50.5891350Z Updating files:  60% (2741/4567)
+2025-10-04T04:05:50.5923500Z Updating files:  61% (2786/4567)
+2025-10-04T04:05:50.5962310Z Updating files:  62% (2832/4567)
+2025-10-04T04:05:50.6328350Z Updating files:  63% (2878/4567)
+2025-10-04T04:05:50.6654390Z Updating files:  64% (2923/4567)
+2025-10-04T04:05:50.7157490Z Updating files:  65% (2969/4567)
+2025-10-04T04:05:50.7194030Z Updating files:  66% (3015/4567)
+2025-10-04T04:05:50.7233190Z Updating files:  67% (3060/4567)
+2025-10-04T04:05:50.7562840Z Updating files:  68% (3106/4567)
+2025-10-04T04:05:50.7601510Z Updating files:  69% (3152/4567)
+2025-10-04T04:05:50.7634410Z Updating files:  70% (3197/4567)
+2025-10-04T04:05:50.7668970Z Updating files:  71% (3243/4567)
+2025-10-04T04:05:50.7702200Z Updating files:  72% (3289/4567)
+2025-10-04T04:05:50.7740280Z Updating files:  73% (3334/4567)
+2025-10-04T04:05:50.8060430Z Updating files:  74% (3380/4567)
+2025-10-04T04:05:50.8094460Z Updating files:  75% (3426/4567)
+2025-10-04T04:05:50.8134800Z Updating files:  76% (3471/4567)
+2025-10-04T04:05:50.8189050Z Updating files:  77% (3517/4567)
+2025-10-04T04:05:50.8220350Z Updating files:  78% (3563/4567)
+2025-10-04T04:05:50.8251110Z Updating files:  79% (3608/4567)
+2025-10-04T04:05:50.8676720Z Updating files:  80% (3654/4567)
+2025-10-04T04:05:50.8710190Z Updating files:  81% (3700/4567)
+2025-10-04T04:05:50.8770590Z Updating files:  82% (3745/4567)
+2025-10-04T04:05:50.8801350Z Updating files:  83% (3791/4567)
+2025-10-04T04:05:50.8845060Z Updating files:  84% (3837/4567)
+2025-10-04T04:05:50.9187500Z Updating files:  85% (3882/4567)
+2025-10-04T04:05:50.9250420Z Updating files:  86% (3928/4567)
+2025-10-04T04:05:50.9291210Z Updating files:  87% (3974/4567)
+2025-10-04T04:05:50.9319430Z Updating files:  88% (4019/4567)
+2025-10-04T04:05:50.9356700Z Updating files:  89% (4065/4567)
+2025-10-04T04:05:50.9437880Z Updating files:  90% (4111/4567)
+2025-10-04T04:05:50.9813940Z Updating files:  91% (4156/4567)
+2025-10-04T04:05:50.9860110Z Updating files:  92% (4202/4567)
+2025-10-04T04:05:51.0170350Z Updating files:  93% (4248/4567)
+2025-10-04T04:05:51.0201960Z Updating files:  94% (4293/4567)
+2025-10-04T04:05:51.0544930Z Updating files:  95% (4339/4567)
+2025-10-04T04:05:51.0967980Z Updating files:  96% (4385/4567)
+2025-10-04T04:05:51.1035900Z Updating files:  97% (4430/4567)
+2025-10-04T04:05:51.1121390Z Updating files:  98% (4476/4567)
+2025-10-04T04:05:51.1179220Z Updating files:  99% (4522/4567)
+2025-10-04T04:05:51.1179550Z Updating files: 100% (4567/4567)
+2025-10-04T04:05:51.1179740Z Updating files: 100% (4567/4567), done.
+2025-10-04T04:05:51.1244720Z Switched to a new branch 'main'
+2025-10-04T04:05:51.1255680Z branch 'main' set up to track 'origin/main'.
+2025-10-04T04:05:51.1517370Z ##[endgroup]
+2025-10-04T04:05:51.1629950Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2025-10-04T04:05:51.1694510Z 3a3d220b78d258a45b90906d26fd4c1cb06a0435

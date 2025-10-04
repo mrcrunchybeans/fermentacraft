@@ -1,0 +1,18 @@
+﻿2025-10-04T04:06:59.0119530Z ##[group]Run actions/cache@v4
+2025-10-04T04:06:59.0119820Z with:
+2025-10-04T04:06:59.0120100Z   path: ~/.pub-cache
+
+2025-10-04T04:06:59.0120450Z   key: macOS-pub-3.35.4-7a59b168a5c03ceb6c779947643c184450527d99b6550a8e61d70e488f17cdd9
+2025-10-04T04:06:59.0120820Z   restore-keys: macOS-pub-3.35.4-
+
+2025-10-04T04:06:59.0121120Z   enableCrossOsArchive: false
+2025-10-04T04:06:59.0121350Z   fail-on-cache-miss: false
+2025-10-04T04:06:59.0121560Z   lookup-only: false
+2025-10-04T04:06:59.0121720Z   save-always: false
+2025-10-04T04:06:59.0121910Z env:
+2025-10-04T04:06:59.0122060Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:06:59.0122330Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:06:59.0127280Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:06:59.0127610Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:06:59.0127910Z ##[endgroup]
+2025-10-04T04:06:59.2581780Z Cache not found for input keys: macOS-pub-3.35.4-7a59b168a5c03ceb6c779947643c184450527d99b6550a8e61d70e488f17cdd9, macOS-pub-3.35.4-

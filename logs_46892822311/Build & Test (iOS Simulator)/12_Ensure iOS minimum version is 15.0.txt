@@ -1,0 +1,21 @@
+﻿2025-10-04T04:07:48.8907260Z ##[group]Run set -euxo pipefail
+2025-10-04T04:07:48.8907880Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:07:48.8908130Z [36;1mif [ -f ios/Flutter/AppFrameworkInfo.plist ]; then[0m
+2025-10-04T04:07:48.8908550Z [36;1m  /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 15.0" ios/Flutter/AppFrameworkInfo.plist || true[0m
+2025-10-04T04:07:48.8908900Z [36;1mfi[0m
+2025-10-04T04:07:48.8909040Z [36;1mif [ -f ios/Podfile ]; then[0m
+2025-10-04T04:07:48.8909270Z [36;1m  if ! grep -q "platform :ios, '15.0'" ios/Podfile; then[0m
+2025-10-04T04:07:48.8909590Z [36;1m    sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/g" ios/Podfile || true[0m
+2025-10-04T04:07:48.8909850Z [36;1m  fi[0m
+2025-10-04T04:07:48.8911220Z [36;1mfi[0m
+2025-10-04T04:07:48.8971130Z shell: /bin/bash -e {0}
+2025-10-04T04:07:48.8971320Z env:
+2025-10-04T04:07:48.8971450Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:07:48.8971640Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:07:48.8971960Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:07:48.8972320Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:07:48.8972500Z ##[endgroup]
+2025-10-04T04:07:48.9509210Z + '[' -f ios/Flutter/AppFrameworkInfo.plist ']'
+2025-10-04T04:07:48.9610800Z + /usr/libexec/PlistBuddy -c 'Set :MinimumOSVersion 15.0' ios/Flutter/AppFrameworkInfo.plist
+2025-10-04T04:07:48.9712470Z + '[' -f ios/Podfile ']'
+2025-10-04T04:07:48.9813290Z + grep -q 'platform :ios, '\''15.0'\''' ios/Podfile

@@ -1,0 +1,5 @@
+2025-10-04T04:05:35.2310000Z Job is about to start running on the hosted runner: GitHub Actions 1000000001
+2025-10-04T04:05:35.2310000Z Job is waiting for a hosted runner to come online.
+2025-10-04T04:05:35.2290000Z Requested labels: macos-15
+2025-10-04T04:05:35.2290000Z Job defined at: mrcrunchybeans/cider-craft/.github/workflows/ios-ci.yml@refs/heads/main
+2025-10-04T04:05:35.2290000Z Waiting for a runner to pick up this job...

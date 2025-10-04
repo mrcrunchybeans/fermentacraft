@@ -1,0 +1,13 @@
+﻿2025-10-04T04:07:38.3252730Z ##[group]Run set -euxo pipefail
+2025-10-04T04:07:38.3253040Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:07:38.3253320Z [36;1mif [ -d test ]; then flutter test --coverage; else echo "No tests found"; fi[0m
+2025-10-04T04:07:38.3284730Z shell: /bin/bash -e {0}
+2025-10-04T04:07:38.3284950Z env:
+2025-10-04T04:07:38.3285150Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:07:38.3285400Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:07:38.3285820Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:07:38.3286180Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:07:38.3286420Z ##[endgroup]
+2025-10-04T04:07:38.3625660Z + '[' -d test ']'
+2025-10-04T04:07:38.3626620Z No tests found
+2025-10-04T04:07:38.3627230Z + echo 'No tests found'

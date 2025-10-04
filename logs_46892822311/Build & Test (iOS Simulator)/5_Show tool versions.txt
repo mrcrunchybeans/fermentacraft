@@ -1,0 +1,25 @@
+﻿2025-10-04T04:06:52.8175040Z ##[group]Run set -euxo pipefail
+2025-10-04T04:06:52.8176390Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:06:52.8177030Z [36;1mflutter --version[0m
+2025-10-04T04:06:52.8177570Z [36;1mdart --version[0m
+2025-10-04T04:06:52.8178450Z [36;1mxcodebuild -version[0m
+2025-10-04T04:06:52.8178980Z [36;1mpod --version || true[0m
+2025-10-04T04:06:52.8510260Z shell: /bin/bash -e {0}
+2025-10-04T04:06:52.8510890Z env:
+2025-10-04T04:06:52.8511480Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:06:52.8512090Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:06:52.8513170Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:06:52.8514140Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:06:52.8514720Z ##[endgroup]
+2025-10-04T04:06:52.9590700Z + flutter --version
+2025-10-04T04:06:53.4032740Z Flutter 3.35.4 • channel stable • https://github.com/flutter/flutter.git
+2025-10-04T04:06:53.4034100Z Framework • revision d693b4b9db (3 weeks ago) • 2025-09-16 14:27:41 +0000
+2025-10-04T04:06:53.4036130Z Engine • hash feee8ee8fb8b975dd9990f86d3bda11e6e75faf3 (revision c298091351) (18 days ago) • 2025-09-15 14:04:24.000Z
+2025-10-04T04:06:53.4038720Z Tools • Dart 3.9.2 • DevTools 2.48.0
+2025-10-04T04:06:53.4041870Z + dart --version
+2025-10-04T04:06:53.4134030Z Dart SDK version: 3.9.2 (stable) (Wed Aug 27 03:49:40 2025 -0700) on "macos_arm64"
+2025-10-04T04:06:53.4135070Z + xcodebuild -version
+2025-10-04T04:06:56.1947210Z Xcode 16.2
+2025-10-04T04:06:56.1951280Z Build version 16C5032a
+2025-10-04T04:06:56.1954950Z + pod --version
+2025-10-04T04:06:58.3561300Z 1.16.2

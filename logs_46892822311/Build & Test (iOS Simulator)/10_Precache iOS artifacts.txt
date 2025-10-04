@@ -1,0 +1,11 @@
+﻿2025-10-04T04:07:38.3669780Z ##[group]Run set -euxo pipefail
+2025-10-04T04:07:38.3670180Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:07:38.3670420Z [36;1mflutter precache --ios[0m
+2025-10-04T04:07:38.3700690Z shell: /bin/bash -e {0}
+2025-10-04T04:07:38.3700930Z env:
+2025-10-04T04:07:38.3701130Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:07:38.3701470Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:07:38.3701810Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:07:38.3702110Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:07:38.3702410Z ##[endgroup]
+2025-10-04T04:07:38.3991680Z + flutter precache --ios
