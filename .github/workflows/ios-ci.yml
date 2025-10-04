@@ -70,6 +70,12 @@ jobs:
           set -euxo pipefail
           flutter precache --ios
 
+      - name: List available SDKs and Simulators (diagnostics)
+        run: |
+          set -euxo pipefail
+          xcodebuild -showsdks || true
+          xcrun simctl list || true
+
       - name: Ensure iOS minimum version is 15.0
         run: |
           set -euxo pipefail
@@ -108,13 +114,14 @@ jobs:
             echo "Patch script not found at scripts/firebase_imports_fix.sh; continuing"
           fi
 
-      - name: Build iOS (Simulator, no codesign)
+      - name: Build iOS (device, no codesign)
         env:
           RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
           RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
         run: |
           set -euxo pipefail
-          flutter build ios --simulator --debug --no-codesign -v \
+          # Build for physical device SDK to avoid requiring a Simulator runtime on the runner
+          flutter build ios --debug --no-codesign -v \
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID}
 
@@ -135,4 +142,5 @@ jobs:
           name: ios-simulator-artifacts
           path: |
             build/ios/iphonesimulator/Runner.app
+            build/ios/iphoneos/Runner.app
             diagnostics/**

@@ -1,0 +1,94 @@
+﻿2025-10-04T03:48:13.1465690Z ##[group]Run set -uo pipefail
+2025-10-04T03:48:13.1465940Z [36;1mset -uo pipefail[0m
+2025-10-04T03:48:13.1466220Z [36;1mflutter analyze --no-fatal-infos || echo "Analysis completed with warnings"[0m
+2025-10-04T03:48:13.1503690Z shell: /bin/bash -e {0}
+2025-10-04T03:48:13.1504000Z env:
+2025-10-04T03:48:13.1504160Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T03:48:13.1504430Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T03:48:13.1504780Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T03:48:13.1505420Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T03:48:13.1505630Z ##[endgroup]
+2025-10-04T03:48:13.3931960Z Resolving dependencies...
+2025-10-04T03:48:13.8558270Z Downloading packages...
+2025-10-04T03:48:14.0129790Z   _fe_analyzer_shared 67.0.0 (89.0.0 available)
+2025-10-04T03:48:14.0130510Z   _flutterfire_internals 1.3.60 (1.3.62 available)
+2025-10-04T03:48:14.0131070Z   analyzer 6.4.1 (8.2.0 available)
+2025-10-04T03:48:14.0131400Z   build 2.4.1 (4.0.1 available)
+2025-10-04T03:48:14.0131770Z   build_config 1.1.2 (1.2.0 available)
+2025-10-04T03:48:14.0132010Z   build_resolvers 2.4.2 (3.0.4 available)
+2025-10-04T03:48:14.0132350Z   build_runner 2.4.13 (2.9.0 available)
+2025-10-04T03:48:14.0132610Z   build_runner_core 7.3.2 (9.3.2 available)
+2025-10-04T03:48:14.0132910Z   built_value 8.11.1 (8.12.0 available)
+2025-10-04T03:48:14.0133170Z   characters 1.4.0 (1.4.1 available)
+2025-10-04T03:48:14.0133480Z   cloud_firestore 6.0.0 (6.0.2 available)
+2025-10-04T03:48:14.0133820Z   cloud_firestore_platform_interface 7.0.0 (7.0.2 available)
+2025-10-04T03:48:14.0134130Z   cloud_firestore_web 5.0.0 (5.0.2 available)
+2025-10-04T03:48:14.0134400Z   cloud_functions 6.0.0 (6.0.2 available)
+2025-10-04T03:48:14.0134700Z   cloud_functions_platform_interface 5.8.3 (5.8.5 available)
+2025-10-04T03:48:14.0134990Z   cloud_functions_web 5.0.0 (5.0.2 available)
+2025-10-04T03:48:14.0135240Z   code_builder 4.10.1 (4.11.0 available)
+2025-10-04T03:48:14.0135460Z   connectivity_plus 6.1.5 (7.0.0 available)
+2025-10-04T03:48:14.0135710Z   dart_style 2.3.6 (3.1.2 available)
+2025-10-04T03:48:14.0135980Z   file_picker 10.3.1 (10.3.3 available)
+2025-10-04T03:48:14.0136230Z   file_selector 1.0.3 (1.0.4 available)
+2025-10-04T03:48:14.0136550Z   file_selector_android 0.5.1+15 (0.5.2 available)
+2025-10-04T03:48:14.0136840Z   file_selector_ios 0.5.3+1 (0.5.3+2 available)
+2025-10-04T03:48:14.0137120Z   file_selector_macos 0.9.4+3 (0.9.4+4 available)
+2025-10-04T03:48:14.0137360Z   firebase_auth 6.0.1 (6.1.0 available)
+2025-10-04T03:48:14.0137600Z   firebase_auth_platform_interface 8.1.0 (8.1.2 available)
+2025-10-04T03:48:14.0137840Z   firebase_auth_web 6.0.1 (6.0.3 available)
+2025-10-04T03:48:14.0138050Z   firebase_core 4.0.0 (4.1.1 available)
+2025-10-04T03:48:14.0138280Z   firebase_core_platform_interface 6.0.0 (6.0.1 available)
+2025-10-04T03:48:14.0138520Z   firebase_core_web 3.0.0 (3.1.1 available)
+2025-10-04T03:48:14.0138740Z   firebase_crashlytics 5.0.0 (5.0.2 available)
+2025-10-04T03:48:14.0139010Z   firebase_crashlytics_platform_interface 3.8.11 (3.8.13 available)
+2025-10-04T03:48:14.0139290Z   flutter_lints 4.0.0 (6.0.0 available)
+2025-10-04T03:48:14.0139530Z   flutter_plugin_android_lifecycle 2.0.29 (2.0.30 available)
+2025-10-04T03:48:14.0139760Z   flutter_svg 2.2.0 (2.2.1 available)
+2025-10-04T03:48:14.0139950Z   google_fonts 6.3.0 (6.3.2 available)
+2025-10-04T03:48:14.0140150Z   google_sign_in 6.3.0 (7.2.0 available)
+2025-10-04T03:48:14.0140360Z   google_sign_in_android 6.2.1 (7.2.0 available)
+2025-10-04T03:48:14.0140580Z   google_sign_in_ios 5.9.0 (6.2.1 available)
+2025-10-04T03:48:14.0140830Z   google_sign_in_platform_interface 2.5.0 (3.1.0 available)
+2025-10-04T03:48:14.0141070Z   google_sign_in_web 0.12.4+4 (1.1.0 available)
+2025-10-04T03:48:14.0141290Z   image_picker 1.1.2 (1.2.0 available)
+2025-10-04T03:48:14.0141510Z   image_picker_android 0.8.12+25 (0.8.13+3 available)
+2025-10-04T03:48:14.0141790Z   image_picker_for_web 3.0.6 (3.1.0 available)
+2025-10-04T03:48:14.0142040Z   image_picker_ios 0.8.12+2 (0.8.13 available)
+2025-10-04T03:48:14.0143150Z   image_picker_linux 0.2.1+2 (0.2.2 available)
+2025-10-04T03:48:14.0143370Z   image_picker_macos 0.2.1+2 (0.2.2 available)
+2025-10-04T03:48:14.0143590Z   image_picker_windows 0.2.1+1 (0.2.2 available)
+2025-10-04T03:48:14.0143800Z   in_app_review 2.0.10 (2.0.11 available)
+2025-10-04T03:48:14.0143990Z   leak_tracker 11.0.1 (11.0.2 available)
+2025-10-04T03:48:14.0144190Z   lints 4.0.0 (6.0.0 available)
+2025-10-04T03:48:14.0144600Z   material_color_utilities 0.11.1 (0.13.0 available)
+2025-10-04T03:48:14.0144810Z   meta 1.16.0 (1.17.0 available)
+2025-10-04T03:48:14.0145010Z   package_info_plus 8.3.1 (9.0.0 available)
+2025-10-04T03:48:14.0145230Z   path_provider_android 2.2.17 (2.2.18 available)
+2025-10-04T03:48:14.0145500Z   path_provider_foundation 2.4.1 (2.4.2 available)
+2025-10-04T03:48:14.0145770Z   petitparser 6.1.0 (7.0.1 available)
+2025-10-04T03:48:14.0145960Z   pool 1.5.1 (1.5.2 available)
+2025-10-04T03:48:14.0146130Z   provider 6.1.5 (6.1.5+1 available)
+2025-10-04T03:48:14.0146340Z   purchases_flutter 9.2.1 (9.7.0 available)
+2025-10-04T03:48:14.0146540Z   share_plus 11.1.0 (12.0.0 available)
+2025-10-04T03:48:14.0146760Z   shared_preferences_android 2.4.11 (2.4.14 available)
+2025-10-04T03:48:14.0148260Z   shelf_web_socket 2.0.1 (3.0.0 available)
+2025-10-04T03:48:14.0148460Z   source_gen 1.5.0 (4.0.1 available)
+2025-10-04T03:48:14.0148650Z   source_helper 1.3.5 (1.3.8 available)
+2025-10-04T03:48:14.0148840Z   test_api 0.7.6 (0.7.7 available)
+2025-10-04T03:48:14.0149040Z   url_launcher_android 6.3.17 (6.3.23 available)
+2025-10-04T03:48:14.0149250Z   url_launcher_ios 6.3.3 (6.3.4 available)
+2025-10-04T03:48:14.0149490Z   url_launcher_macos 3.2.2 (3.2.3 available)
+2025-10-04T03:48:14.0149720Z   vector_graphics_compiler 1.1.18 (1.1.19 available)
+2025-10-04T03:48:14.0149940Z   wakelock_plus 1.3.2 (1.4.0 available)
+2025-10-04T03:48:14.0150180Z   wakelock_plus_platform_interface 1.2.3 (1.3.0 available)
+2025-10-04T03:48:14.0150410Z   watcher 1.1.2 (1.1.4 available)
+2025-10-04T03:48:14.0150590Z   xml 6.5.0 (6.6.1 available)
+2025-10-04T03:48:14.0150920Z Got dependencies!
+2025-10-04T03:48:14.0165310Z 74 packages have newer versions incompatible with dependency constraints.
+2025-10-04T03:48:14.0165720Z Try `flutter pub outdated` for more information.
+2025-10-04T03:48:42.7846850Z Analyzing cider-craft...                                        
+2025-10-04T03:48:42.7907680Z 
+2025-10-04T03:48:42.8018390Z    info • The type of the right operand ('ConnectivityResult') isn't a subtype or a supertype of the left operand ('List<ConnectivityResult>') • lib/services/sync_coordinator.dart:278:31 • unrelated_type_equality_checks
+2025-10-04T03:48:42.8140570Z 
+2025-10-04T03:48:42.8364800Z 1 issue found. (ran in 28.2s)

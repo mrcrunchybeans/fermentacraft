@@ -274,8 +274,9 @@ class SyncCoordinator {
   }
   
   void _setupConnectivityListener() {
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((result) {
-      final isOnline = result != ConnectivityResult.none;
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> result) {
+      // connectivity_plus v6+: onConnectivityChanged emits List<ConnectivityResult>
+      final isOnline = result.any((r) => r != ConnectivityResult.none);
       
       if (isOnline && canSync && !_isSyncing) {
         log('Network connectivity restored, triggering sync', name: 'SyncCoordinator');

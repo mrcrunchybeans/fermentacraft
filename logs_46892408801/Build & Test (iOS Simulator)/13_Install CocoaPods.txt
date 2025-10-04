@@ -1,0 +1,84 @@
+﻿2025-10-04T03:48:44.2789700Z ##[group]Run set -euxo pipefail
+2025-10-04T03:48:44.2789980Z [36;1mset -euxo pipefail[0m
+2025-10-04T03:48:44.2790160Z [36;1mpod repo update[0m
+2025-10-04T03:48:44.2790350Z [36;1mpod install[0m
+2025-10-04T03:48:44.2831760Z shell: /bin/bash -e {0}
+2025-10-04T03:48:44.2831990Z env:
+2025-10-04T03:48:44.2832130Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T03:48:44.2832360Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T03:48:44.2832690Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T03:48:44.2832980Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T03:48:44.2833160Z ##[endgroup]
+2025-10-04T03:48:44.3396390Z + pod repo update
+2025-10-04T03:48:46.7721060Z + pod install
+2025-10-04T03:48:47.6372890Z Analyzing dependencies
+2025-10-04T03:48:47.6532670Z cloud_firestore: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+2025-10-04T03:48:47.6547690Z cloud_functions: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+2025-10-04T03:48:47.6663570Z firebase_auth: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+2025-10-04T03:48:47.6709670Z firebase_core: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+2025-10-04T03:48:47.8815430Z Warning: firebase_app_id_file.json file does not exist. This may cause issues in upload-symbols. If this error is unexpected, try running flutterfire configure again.
+2025-10-04T03:48:47.9213560Z firebase_crashlytics: Using Firebase SDK version '12.0.0' defined in 'firebase_core'
+2025-10-04T03:49:12.2024650Z Adding spec repo `trunk` with CDN `https://cdn.cocoapods.org/`
+2025-10-04T03:49:12.2025890Z Downloading dependencies
+2025-10-04T03:49:12.2026510Z Installing AppAuth (1.7.6)
+2025-10-04T03:49:13.5770430Z Installing AppCheckCore (11.2.0)
+2025-10-04T03:49:14.4984100Z Installing BoringSSL-GRPC (0.0.37)
+2025-10-04T03:49:48.8834750Z Installing DKImagePickerController (4.3.9)
+2025-10-04T03:49:50.2715650Z Installing DKPhotoGallery (0.0.19)
+2025-10-04T03:49:51.7309150Z Installing Firebase (12.0.0)
+2025-10-04T03:49:56.8346690Z Installing FirebaseAppCheckInterop (12.0.0)
+2025-10-04T03:50:01.0882910Z Installing FirebaseAuth (12.0.0)
+2025-10-04T03:50:05.6771970Z Installing FirebaseAuthInterop (12.0.0)
+2025-10-04T03:50:10.0372490Z Installing FirebaseCore (12.0.0)
+2025-10-04T03:50:14.6051030Z Installing FirebaseCoreExtension (12.0.0)
+2025-10-04T03:50:20.8278620Z Installing FirebaseCoreInternal (12.0.0)
+2025-10-04T03:50:25.0873450Z Installing FirebaseCrashlytics (12.0.0)
+2025-10-04T03:50:30.4410760Z Installing FirebaseFirestore (12.0.0)
+2025-10-04T03:50:35.4909370Z Installing FirebaseFirestoreInternal (12.0.0)
+2025-10-04T03:50:41.5520800Z Installing FirebaseFunctions (12.0.0)
+2025-10-04T03:50:45.9723780Z Installing FirebaseInstallations (12.0.0)
+2025-10-04T03:50:51.5268760Z Installing FirebaseMessagingInterop (12.0.0)
+2025-10-04T03:50:57.3661210Z Installing FirebaseRemoteConfigInterop (12.0.0)
+2025-10-04T03:51:02.4832370Z Installing FirebaseSessions (12.0.0)
+2025-10-04T03:51:08.3486220Z Installing FirebaseSharedSwift (12.0.0)
+2025-10-04T03:51:14.1608860Z Installing Flutter (1.0.0)
+2025-10-04T03:51:14.1609440Z Installing GTMAppAuth (4.1.1)
+2025-10-04T03:51:15.1087190Z Installing GTMSessionFetcher (3.5.0)
+2025-10-04T03:51:16.0576770Z Installing GoogleDataTransport (10.1.0)
+2025-10-04T03:51:17.1678110Z Installing GoogleSignIn (8.0.0)
+2025-10-04T03:51:18.3420840Z Installing GoogleUtilities (8.1.0)
+2025-10-04T03:51:19.3471420Z Installing PromisesObjC (2.4.0)
+2025-10-04T03:51:20.3068380Z Installing PromisesSwift (2.4.0)
+2025-10-04T03:51:21.2957780Z Installing PurchasesHybridCommon (16.2.2)
+2025-10-04T03:51:22.4170200Z Installing RecaptchaInterop (101.0.0)
+2025-10-04T03:51:23.2185010Z Installing RevenueCat (5.34.0)
+2025-10-04T03:51:27.0039600Z Installing SDWebImage (5.21.2)
+2025-10-04T03:51:29.1212150Z Installing SwiftyGif (5.4.5)
+2025-10-04T03:51:30.3805740Z Installing abseil (1.20240722.0)
+2025-10-04T03:51:32.8286830Z Installing cloud_firestore (6.0.0)
+2025-10-04T03:51:32.8388050Z Installing cloud_functions (6.0.0)
+2025-10-04T03:51:32.8490550Z Installing connectivity_plus (0.0.1)
+2025-10-04T03:51:32.8592020Z Installing file_picker (0.0.1)
+2025-10-04T03:51:32.8693200Z Installing file_selector_ios (0.0.1)
+2025-10-04T03:51:32.8794270Z Installing firebase_auth (6.0.1)
+2025-10-04T03:51:32.8896630Z Installing firebase_core (4.0.0)
+2025-10-04T03:51:32.8998390Z Installing firebase_crashlytics (5.0.0)
+2025-10-04T03:51:32.9099590Z Installing flutter_native_splash (2.4.3)
+2025-10-04T03:51:32.9201940Z Installing gRPC-C++ (1.69.0)
+2025-10-04T03:51:44.5896860Z Installing gRPC-Core (1.69.0)
+2025-10-04T03:51:55.8315010Z Installing google_sign_in_ios (0.0.1)
+2025-10-04T03:51:55.8319270Z Installing image_picker_ios (0.0.1)
+2025-10-04T03:51:55.8320090Z Installing in_app_review (2.0.0)
+2025-10-04T03:51:55.8320450Z Installing leveldb-library (1.22.6)
+2025-10-04T03:51:56.9048650Z Installing nanopb (3.30910.0)
+2025-10-04T03:52:17.7145980Z Installing package_info_plus (0.4.5)
+2025-10-04T03:52:17.7147350Z Installing path_provider_foundation (0.0.1)
+2025-10-04T03:52:17.7148060Z Installing purchases_flutter (9.2.1)
+2025-10-04T03:52:17.7148340Z Installing share_plus (0.0.1)
+2025-10-04T03:52:17.7148670Z Installing shared_preferences_foundation (0.0.1)
+2025-10-04T03:52:17.7149090Z Installing url_launcher_ios (0.0.1)
+2025-10-04T03:52:17.7149370Z Installing wakelock_plus (0.0.1)
+2025-10-04T03:52:17.7149640Z Generating Pods project
+2025-10-04T03:52:17.7150170Z Patched FirebaseFunctions to use GTMSessionFetcher instead of GTMSessionFetcherCore
+2025-10-04T03:52:17.7150620Z Integrating client project
+2025-10-04T03:52:17.7151230Z Pod installation complete! There are 20 dependencies from the Podfile and 58 total pods installed.

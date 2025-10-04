@@ -1,0 +1,18 @@
+﻿2025-10-04T03:48:43.7184920Z ##[group]Run actions/cache@v4
+2025-10-04T03:48:43.7185500Z with:
+2025-10-04T03:48:43.7185860Z   path: ios/Pods
+
+2025-10-04T03:48:43.7186700Z   key: macOS-pods-xcode16.2-63623559cec88d5a29da367a8f3398c85ccc180f62d763eaa2833ef28db0d112
+2025-10-04T03:48:43.7187650Z   restore-keys: macOS-pods-xcode16.2-
+
+2025-10-04T03:48:43.7188220Z   enableCrossOsArchive: false
+2025-10-04T03:48:43.7188730Z   fail-on-cache-miss: false
+2025-10-04T03:48:43.7189190Z   lookup-only: false
+2025-10-04T03:48:43.7189590Z   save-always: false
+2025-10-04T03:48:43.7194470Z env:
+2025-10-04T03:48:43.7194870Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T03:48:43.7195420Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T03:48:43.7196580Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T03:48:43.7199160Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T03:48:43.7199440Z ##[endgroup]
+2025-10-04T03:48:44.2611200Z Cache not found for input keys: macOS-pods-xcode16.2-63623559cec88d5a29da367a8f3398c85ccc180f62d763eaa2833ef28db0d112, macOS-pods-xcode16.2-

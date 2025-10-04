@@ -1,3 +1,5 @@
+## DEPRECATED: This Codemagic config is no longer used. We build only with GitHub Actions.
+## Keep for historical reference; do not update. Use .github/workflows/ios-ci.yml instead.
 workflows:
   ios-sim-fast:
     name: iOS Simulator — Fast Boot

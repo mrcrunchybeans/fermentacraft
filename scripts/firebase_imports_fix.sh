@@ -36,14 +36,15 @@ patch_file() {
     }
   }
   
-  if grep -q "$pattern" "$file"; then
+  if grep -E -q "$pattern" "$file"; then
     log_message "📝 Patching $file to fix $description"
     
-    if sed -i '' "s/$pattern/$replacement/g" "$file" 2>> "$LOG_FILE"; then
+    # Use extended regex for flexible patterns
+    if sed -E -i '' "s/$pattern/$replacement/g" "$file" 2>> "$LOG_FILE"; then
       log_message "✅ Successfully patched $file"
       
       # Verify the patch worked
-      if grep -q "$pattern" "$file"; then
+      if grep -E -q "$pattern" "$file"; then
         log_message "❌ ERROR: Failed to patch $file - $pattern still exists"
         return 1
       else
@@ -69,8 +70,8 @@ find_and_patch_all() {
   
   log_message "🔍 Searching for all files with $pattern in $base_dir..."
   
-  # Find all Swift files that contain the pattern
-  local files=$(grep -l "$pattern" "$base_dir"/*.swift "$base_dir"/*/*.swift "$base_dir"/*/*/*.swift "$base_dir"/*/*/*/*.swift 2>/dev/null || echo "")
+  # Find all Swift files that contain the pattern (recursive, any depth)
+  local files=$(grep -RIl --include="*.swift" "$pattern" "$base_dir" 2>/dev/null || echo "")
   
   if [ -z "$files" ]; then
     log_message "ℹ️ No files found containing '$pattern'"
@@ -132,6 +133,14 @@ declare -a SPECIFIC_PATCHES=(
   "$AUTH_BACKEND_FILE|import GTMSessionFetcherCore|import GTMSessionFetcher|GTMSessionFetcherCore in AuthBackend.swift"
   "$AUTH_APNS_FILE|import GoogleUtilities_Environment|import GoogleUtilities|GoogleUtilities_Environment in AuthAPNSTokenManager.swift"
   "$AUTH_BACKEND_RPC_FILE|@preconcurrency import GTMSessionFetcherCore|@preconcurrency import GTMSessionFetcher|@preconcurrency GTMSessionFetcherCore in AuthBackendRPCIssuer.swift"
+  # Additional files observed in CI logs
+  "ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/GTMOAuth2Compatibility.swift|import GTMSessionFetcherCore|import GTMSessionFetcher|GTMSessionFetcherCore in GTMOAuth2Compatibility.swift"
+  "ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/KeychainStore.swift|import GTMSessionFetcherCore|import GTMSessionFetcher|GTMSessionFetcherCore in KeychainStore.swift"
+  "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/MultiFactor/TOTP/TOTPSecret.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in TOTPSecret.swift"
+  "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Utilities/AuthDefaultUIDelegate.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in AuthDefaultUIDelegate.swift"
+  "ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in HeartbeatsPayload.swift"
+  "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in SettingsCacheClient.swift"
+  "ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift|import GoogleUtilities_[A-Za-z_]+|import GoogleUtilities|GoogleUtilities_* in SettingsDownloadClient.swift"
 )
 
 # Apply all specific patches first
@@ -167,26 +176,12 @@ log_message "🔍 Searching for any additional problematic imports in the entire
 FIREBASE_DIR="ios/Pods"
 if [ -d "$FIREBASE_DIR" ]; then
   # Search and patch all GTMSessionFetcherCore imports (both regular and @preconcurrency)
-  find_and_patch_all "$FIREBASE_DIR" "import GTMSessionFetcherCore" "import GTMSessionFetcher" "GTMSessionFetcherCore import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GTMSessionFetcherCore" "@preconcurrency import GTMSessionFetcher" "@preconcurrency GTMSessionFetcherCore import"
-  
-  # Search and patch all GoogleUtilities_AppDelegateSwizzler imports (both regular and @preconcurrency)
-  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_AppDelegateSwizzler" "import GoogleUtilities" "GoogleUtilities_AppDelegateSwizzler import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GoogleUtilities_AppDelegateSwizzler" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_AppDelegateSwizzler import"
-  
-  # Search and patch all GoogleUtilities_Environment imports (both regular and @preconcurrency)
-  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Environment" "import GoogleUtilities" "GoogleUtilities_Environment import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GoogleUtilities_Environment" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_Environment import"
-  
-  # Additional searches for any other known problematic imports
-  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Logger" "import GoogleUtilities" "GoogleUtilities_Logger import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GoogleUtilities_Logger" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_Logger import"
-  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Network" "import GoogleUtilities" "GoogleUtilities_Network import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GoogleUtilities_Network" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_Network import"
-  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_Reachability" "import GoogleUtilities" "GoogleUtilities_Reachability import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GoogleUtilities_Reachability" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_Reachability import"
-  find_and_patch_all "$FIREBASE_DIR" "import GoogleUtilities_UserDefaults" "import GoogleUtilities" "GoogleUtilities_UserDefaults import"
-  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency import GoogleUtilities_UserDefaults" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_UserDefaults import"
+  find_and_patch_all "$FIREBASE_DIR" "import[[:space:]]+GTMSessionFetcherCore" "import GTMSessionFetcher" "GTMSessionFetcherCore import"
+  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency[[:space:]]+import[[:space:]]+GTMSessionFetcherCore" "@preconcurrency import GTMSessionFetcher" "@preconcurrency GTMSessionFetcherCore import"
+
+  # Catch-all: any GoogleUtilities_* import becomes GoogleUtilities (both regular and @preconcurrency)
+  find_and_patch_all "$FIREBASE_DIR" "import[[:space:]]+GoogleUtilities_[A-Za-z_]+" "import GoogleUtilities" "GoogleUtilities_* import"
+  find_and_patch_all "$FIREBASE_DIR" "@preconcurrency[[:space:]]+import[[:space:]]+GoogleUtilities_[A-Za-z_]+" "@preconcurrency import GoogleUtilities" "@preconcurrency GoogleUtilities_* import"
 else
   log_message "⚠️ Firebase Pods directory not found at $FIREBASE_DIR"
 fi
