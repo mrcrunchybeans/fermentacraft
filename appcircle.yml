@@ -1,3 +1,15 @@
+  - componentType: appcircle_custom_script
+    stepName: Upload .ipa to TestFlight (Fastlane)
+    enabled: true
+    inputs:
+      - Execute: "bash"
+      - Script: |
+          set -e
+          cd "$AC_OUTPUT_DIR"
+          echo "🔄 Uploading Runner.ipa to TestFlight via Fastlane..."
+          # You must set FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD and FASTLANE_APPLE_ID in Appcircle environment variables
+          fastlane pilot upload -u "$FASTLANE_APPLE_ID" -i Runner.ipa --skip_waiting_for_build_processing
+          echo "✅ Fastlane upload step completed"
 directories:
   - AC_SOURCE
   - AC_OUTPUT_DIR
@@ -132,6 +144,22 @@ steps:
               cp ios/Podfile.lock "$AC_OUTPUT_DIR/diagnostics/Podfile.lock"
             fi
             
+      - componentType: appcircle_custom_script
+        stepName: Flutter iOS Device Build (Release, Codesign)
+        enabled: true
+        inputs:
+          - Execute: "bash"
+          - Script: |
+              set -e
+              cd "$AC_REPOSITORY_DIR"
+              echo "🔄 Building Flutter iOS app for device (release, codesign)..."
+              flutter build ios --release
+              echo "✅ Flutter build ios --release completed"
+              # Archive and export .ipa using Xcode
+              cd ios
+              xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -archivePath "$AC_OUTPUT_DIR/Runner.xcarchive" archive
+              xcodebuild -exportArchive -archivePath "$AC_OUTPUT_DIR/Runner.xcarchive" -exportOptionsPlist ExportOptions.plist -exportPath "$AC_OUTPUT_DIR"
+              echo "✅ Xcode archive and export completed"
             # Exit with the original error code
             log_message "Diagnostic information saved to diagnostics/"
             exit $BUILD_RESULT
@@ -142,6 +170,16 @@ steps:
     componentVersion: 1.0.*
     stepName: Capture Diagnostics
     enabled: true
+      - componentType: appcircle_export_build_artifacts
+        componentVersion: 1.0.*
+        stepName: Export Build Artifacts
+        alwaysRun: true
+        enabled: true
+        onError: $exit
+        inputs:
+          - AC_UPLOAD_DIR: $AC_OUTPUT_DIR
+          - AC_EXPORT_PATHS:
+              - Runner.ipa
     onError: $next
     alwaysRun: true
     inputs:
@@ -203,6 +241,9 @@ steps:
     onError: $exit
     inputs:
       - AC_UPLOAD_DIR: $AC_OUTPUT_DIR
+      - AC_EXPORT_PATHS:
+          - build/ios/iphonesimulator/Runner.app
+          - Runner.ipa
   - componentType: appcircle_custom_script
     componentVersion: 1.0.*
     stepName: Build Summary
