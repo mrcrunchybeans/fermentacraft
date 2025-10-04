@@ -1,0 +1,30 @@
+﻿2025-10-04T04:37:14.6080520Z ##[group]Run actions/upload-artifact@v4
+2025-10-04T04:37:14.6080830Z with:
+2025-10-04T04:37:14.6081060Z   name: ios-simulator-artifacts
+2025-10-04T04:37:14.6081700Z   path: build/ios/iphonesimulator/Runner.app
+build/ios/iphoneos/Runner.app
+diagnostics/**
+
+2025-10-04T04:37:14.6082660Z   if-no-files-found: warn
+2025-10-04T04:37:14.6083000Z   compression-level: 6
+2025-10-04T04:37:14.6083240Z   overwrite: false
+2025-10-04T04:37:14.6083490Z   include-hidden-files: false
+2025-10-04T04:37:14.6083800Z env:
+2025-10-04T04:37:14.6083980Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:37:14.6084270Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:37:14.6084730Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:37:14.6085100Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:37:14.6085330Z ##[endgroup]
+2025-10-04T04:37:15.7369770Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2025-10-04T04:37:15.7778540Z The least common ancestor is /Users/runner/work/cider-craft/cider-craft. This will be the root directory of the artifact
+2025-10-04T04:37:15.7881920Z With the provided path, there will be 4 files uploaded
+2025-10-04T04:37:15.8099010Z Artifact name is valid!
+2025-10-04T04:37:15.8201560Z Root directory input is valid!
+2025-10-04T04:37:15.9594510Z Beginning upload of artifact content to blob storage
+2025-10-04T04:37:16.0147310Z Uploaded bytes 11123
+2025-10-04T04:37:16.0567650Z Finished uploading artifact content to blob storage!
+2025-10-04T04:37:16.0699060Z SHA256 digest of uploaded artifact zip is ef4008b3bd38e679e3dbc7c8f81fa59e4ff4602ae17b22bf23cd095e3a8d3b93
+2025-10-04T04:37:16.0801310Z Finalizing artifact upload
+2025-10-04T04:37:16.2062960Z Artifact ios-simulator-artifacts.zip successfully finalized. Artifact ID 4181054677
+2025-10-04T04:37:16.2182860Z Artifact ios-simulator-artifacts has been successfully uploaded! Final size is 11123 bytes. Artifact ID is 4181054677
+2025-10-04T04:37:16.2285130Z Artifact download URL: https://github.com/mrcrunchybeans/cider-craft/actions/runs/18239577087/artifacts/4181054677

@@ -1,0 +1,45 @@
+===== Firebase Import Statements After Patching =====
+
+--- ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift ---
+import FirebaseAppCheckInterop
+import FirebaseAuthInterop
+import FirebaseCore
+import FirebaseMessagingInterop
+import FirebaseSharedSwift
+import Foundation
+  @preconcurrency import GTMSessionFetcher
+  @preconcurrency import GTMSessionFetcher
+internal import FirebaseCoreExtension
+private import FirebaseCoreInternal
+
+--- ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift ---
+import Foundation
+import FirebaseAppCheckInterop
+import FirebaseAuthInterop
+import FirebaseCore
+import FirebaseCoreExtension
+  internal import GoogleUtilities
+  internal import GoogleUtilities
+  internal import GoogleUtilities
+  import UIKit
+  @_exported import FirebaseAuthInternal
+
+--- ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift ---
+import FirebaseCore
+import FirebaseCoreExtension
+import Foundation
+  import GTMSessionFetcher
+  import GTMSessionFetcher
+
+--- ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift ---
+  import Foundation
+  import UIKit
+    internal import GoogleUtilities
+    internal import GoogleUtilities
+
+--- ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift ---
+import FirebaseCore
+import FirebaseCoreExtension
+import Foundation
+  @preconcurrency import GTMSessionFetcher
+  @preconcurrency import GTMSessionFetcher

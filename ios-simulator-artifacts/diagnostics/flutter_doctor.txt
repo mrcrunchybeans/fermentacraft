@@ -1,0 +1,41 @@
+[✓] Flutter (Channel stable, 3.35.4, on macOS 15.6.1 24G90 darwin-arm64, locale en-US) [2.7s]
+    • Flutter version 3.35.4 on channel stable at /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+    • Upstream repository https://github.com/flutter/flutter.git
+    • Framework revision d693b4b9db (3 weeks ago), 2025-09-16 14:27:41 +0000
+    • Engine revision c298091351
+    • Dart version 3.9.2
+    • DevTools version 2.48.0
+    • Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-lldb-debugging
+
+[!] Android toolchain - develop for Android devices (Android SDK version 36.1.0) [10.7s]
+    • Android SDK at /Users/runner/Library/Android/sdk
+    • Emulator version 36.1.9.0 (build_id 13823996) (CL:N/A)
+    • Platform android-36-ext19, build-tools 36.1.0
+    • ANDROID_HOME = /Users/runner/Library/Android/sdk
+    • ANDROID_SDK_ROOT = /Users/runner/Library/Android/sdk
+    • Java binary at: /Users/runner/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.8-9.0/arm64/Contents/Home/bin/java
+      This JDK is specified by the JAVA_HOME environment variable.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    • Java version OpenJDK Runtime Environment Temurin-21.0.8+9 (build 21.0.8+9-LTS)
+    ! Some Android licenses not accepted. To resolve this, run: flutter doctor --android-licenses
+
+[✓] Xcode - develop for iOS and macOS (Xcode 16.2) [11.6s]
+    • Xcode at /Applications/Xcode_16.2.app/Contents/Developer
+    • Build 16C5032a
+    • CocoaPods version 1.16.2
+
+[✓] Chrome - develop for the web [23ms]
+    • Chrome at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+
+[!] Android Studio (not installed) [20ms]
+    • Android Studio not found; download from https://developer.android.com/studio/index.html
+      (or visit https://flutter.dev/to/macos-android-setup for detailed instructions).
+
+[✓] Connected device (2 available) [17.8s]
+    • macOS (desktop) • macos  • darwin-arm64   • macOS 15.6.1 24G90 darwin-arm64
+    • Chrome (web)    • chrome • web-javascript • Google Chrome 140.0.7339.214
+
+[✓] Network resources [581ms]
+    • All expected network resources are available.
+
+! Doctor found issues in 2 categories.

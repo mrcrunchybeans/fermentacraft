@@ -114,14 +114,14 @@ jobs:
             echo "Patch script not found at scripts/firebase_imports_fix.sh; continuing"
           fi
 
-      - name: Build iOS (device, no codesign)
+      - name: Build iOS (simulator, no codesign)
         env:
           RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
           RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
         run: |
           set -euxo pipefail
-          # Build for physical device SDK to avoid requiring a Simulator runtime on the runner
-          flutter build ios --debug --no-codesign -v \
+          # Build for simulator SDK (iphonesimulator) to ensure output on GitHub Actions runner
+          flutter build ios --debug --no-codesign -v --simulator \
             --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS} \
             --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID}
 
@@ -142,5 +142,4 @@ jobs:
           name: ios-simulator-artifacts
           path: |
             build/ios/iphonesimulator/Runner.app
-            build/ios/iphoneos/Runner.app
             diagnostics/**

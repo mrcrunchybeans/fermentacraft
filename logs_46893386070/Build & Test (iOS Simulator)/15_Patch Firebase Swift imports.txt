@@ -1,0 +1,127 @@
+﻿2025-10-04T04:35:11.2327960Z ##[group]Run set -euxo pipefail
+2025-10-04T04:35:11.2329570Z [36;1mset -euxo pipefail[0m
+2025-10-04T04:35:11.2329970Z [36;1mif [ -f scripts/firebase_imports_fix.sh ]; then[0m
+2025-10-04T04:35:11.2330370Z [36;1m  chmod +x scripts/firebase_imports_fix.sh[0m
+2025-10-04T04:35:11.2331010Z [36;1m  ./scripts/firebase_imports_fix.sh || true[0m
+2025-10-04T04:35:11.2331480Z [36;1melse[0m
+2025-10-04T04:35:11.2331900Z [36;1m  echo "Patch script not found at scripts/firebase_imports_fix.sh; continuing"[0m
+2025-10-04T04:35:11.2332520Z [36;1mfi[0m
+2025-10-04T04:35:11.2747570Z shell: /bin/bash -e {0}
+2025-10-04T04:35:11.2747890Z env:
+2025-10-04T04:35:11.2748400Z   FLUTTER_VERSION: 3.35.4
+2025-10-04T04:35:11.2748740Z   MD_APPLE_SDK_ROOT: /Applications/Xcode_16.2.app
+2025-10-04T04:35:11.2749220Z   FLUTTER_ROOT: /Users/runner/hostedtoolcache/flutter/stable-3.35.4-arm64
+2025-10-04T04:35:11.2749730Z   PUB_CACHE: /Users/runner/.pub-cache
+2025-10-04T04:35:11.2750040Z ##[endgroup]
+2025-10-04T04:35:11.3805130Z + '[' -f scripts/firebase_imports_fix.sh ']'
+2025-10-04T04:35:11.3811330Z + chmod +x scripts/firebase_imports_fix.sh
+2025-10-04T04:35:11.3869910Z + ./scripts/firebase_imports_fix.sh
+2025-10-04T04:35:11.4125920Z 🔍 Checking iOS directory structure...
+2025-10-04T04:35:11.4172640Z 🔍 Checking ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift for GTMSessionFetcherCore in FirebaseFunctions...
+2025-10-04T04:35:11.4343250Z ✅ ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift already patched or doesn't need patching for import GTMSessionFetcherCore
+2025-10-04T04:35:11.4424620Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift for GoogleUtilities_AppDelegateSwizzler in Auth.swift...
+2025-10-04T04:35:11.4616960Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift to fix GoogleUtilities_AppDelegateSwizzler in Auth.swift
+2025-10-04T04:35:11.4869190Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:11.4960920Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:11.5002540Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift for GoogleUtilities_Environment in Auth.swift...
+2025-10-04T04:35:11.5277390Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift to fix GoogleUtilities_Environment in Auth.swift
+2025-10-04T04:35:11.5366390Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:11.5465890Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:11.5510540Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift for GTMSessionFetcherCore in AuthBackend.swift...
+2025-10-04T04:35:11.5617170Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift to fix GTMSessionFetcherCore in AuthBackend.swift
+2025-10-04T04:35:11.5701290Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+2025-10-04T04:35:11.5773430Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+2025-10-04T04:35:11.5818640Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift for GoogleUtilities_Environment in AuthAPNSTokenManager.swift...
+2025-10-04T04:35:11.5939790Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift to fix GoogleUtilities_Environment in AuthAPNSTokenManager.swift
+2025-10-04T04:35:11.6020120Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift
+2025-10-04T04:35:11.6092440Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift
+2025-10-04T04:35:11.6132000Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift for @preconcurrency GTMSessionFetcherCore in AuthBackendRPCIssuer.swift...
+2025-10-04T04:35:11.6247680Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift to fix @preconcurrency GTMSessionFetcherCore in AuthBackendRPCIssuer.swift
+2025-10-04T04:35:11.6478010Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift
+2025-10-04T04:35:11.6604990Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift
+2025-10-04T04:35:11.6655910Z 🔍 Checking ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/GTMOAuth2Compatibility.swift for GTMSessionFetcherCore in GTMOAuth2Compatibility.swift...
+2025-10-04T04:35:11.6789270Z 📝 Patching ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/GTMOAuth2Compatibility.swift to fix GTMSessionFetcherCore in GTMOAuth2Compatibility.swift
+2025-10-04T04:35:11.6874140Z ✅ Successfully patched ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/GTMOAuth2Compatibility.swift
+2025-10-04T04:35:11.6946970Z ✅ Verified patch was successfully applied to ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/GTMOAuth2Compatibility.swift
+2025-10-04T04:35:11.6987010Z 🔍 Checking ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/KeychainStore.swift for GTMSessionFetcherCore in KeychainStore.swift...
+2025-10-04T04:35:11.7098410Z 📝 Patching ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/KeychainStore.swift to fix GTMSessionFetcherCore in KeychainStore.swift
+2025-10-04T04:35:11.7186980Z ✅ Successfully patched ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/KeychainStore.swift
+2025-10-04T04:35:11.7260020Z ✅ Verified patch was successfully applied to ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/KeychainStore.swift
+2025-10-04T04:35:11.7304490Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/MultiFactor/TOTP/TOTPSecret.swift for GoogleUtilities_* in TOTPSecret.swift...
+2025-10-04T04:35:11.7418530Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/MultiFactor/TOTP/TOTPSecret.swift to fix GoogleUtilities_* in TOTPSecret.swift
+2025-10-04T04:35:11.7634350Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/MultiFactor/TOTP/TOTPSecret.swift
+2025-10-04T04:35:11.7798700Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/MultiFactor/TOTP/TOTPSecret.swift
+2025-10-04T04:35:11.7855650Z 🔍 Checking ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Utilities/AuthDefaultUIDelegate.swift for GoogleUtilities_* in AuthDefaultUIDelegate.swift...
+2025-10-04T04:35:11.8021720Z 📝 Patching ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Utilities/AuthDefaultUIDelegate.swift to fix GoogleUtilities_* in AuthDefaultUIDelegate.swift
+2025-10-04T04:35:11.8114580Z ✅ Successfully patched ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Utilities/AuthDefaultUIDelegate.swift
+2025-10-04T04:35:11.8323210Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Utilities/AuthDefaultUIDelegate.swift
+2025-10-04T04:35:11.8434930Z 🔍 Checking ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift for GoogleUtilities_* in HeartbeatsPayload.swift...
+2025-10-04T04:35:11.8615390Z 📝 Patching ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift to fix GoogleUtilities_* in HeartbeatsPayload.swift
+2025-10-04T04:35:11.8703220Z ✅ Successfully patched ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift
+2025-10-04T04:35:11.8785910Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift
+2025-10-04T04:35:11.8918480Z 🔍 Checking ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift for GoogleUtilities_* in SettingsCacheClient.swift...
+2025-10-04T04:35:11.9062180Z 📝 Patching ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift to fix GoogleUtilities_* in SettingsCacheClient.swift
+2025-10-04T04:35:11.9150250Z ✅ Successfully patched ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift
+2025-10-04T04:35:11.9239490Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift
+2025-10-04T04:35:11.9290670Z 🔍 Checking ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift for GoogleUtilities_* in SettingsDownloadClient.swift...
+2025-10-04T04:35:11.9409350Z 📝 Patching ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift to fix GoogleUtilities_* in SettingsDownloadClient.swift
+2025-10-04T04:35:11.9489140Z ✅ Successfully patched ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift
+2025-10-04T04:35:11.9562900Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift
+2025-10-04T04:35:11.9608570Z 🔍 Checking ios/Pods/GTMAppAuth/GTMAppAuth/Sources/AuthSession.swift for GTMSessionFetcherCore in AuthSession.swift...
+2025-10-04T04:35:11.9824110Z 📝 Patching ios/Pods/GTMAppAuth/GTMAppAuth/Sources/AuthSession.swift to fix GTMSessionFetcherCore in AuthSession.swift
+2025-10-04T04:35:11.9916720Z ✅ Successfully patched ios/Pods/GTMAppAuth/GTMAppAuth/Sources/AuthSession.swift
+2025-10-04T04:35:12.0001440Z ✅ Verified patch was successfully applied to ios/Pods/GTMAppAuth/GTMAppAuth/Sources/AuthSession.swift
+2025-10-04T04:35:12.0055300Z 🔍 Checking ios/Pods/FirebaseSessions/FirebaseSessions/Sources/ApplicationInfo.swift for GoogleUtilities_* in ApplicationInfo.swift...
+2025-10-04T04:35:12.0180430Z 📝 Patching ios/Pods/FirebaseSessions/FirebaseSessions/Sources/ApplicationInfo.swift to fix GoogleUtilities_* in ApplicationInfo.swift
+2025-10-04T04:35:12.0266310Z ✅ Successfully patched ios/Pods/FirebaseSessions/FirebaseSessions/Sources/ApplicationInfo.swift
+2025-10-04T04:35:12.0339040Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseSessions/FirebaseSessions/Sources/ApplicationInfo.swift
+2025-10-04T04:35:12.0385910Z 🔍 Checking ios/Pods/FirebaseSessions/FirebaseSessions/Sources/NetworkInfo.swift for GoogleUtilities_* in NetworkInfo.swift...
+2025-10-04T04:35:12.0497150Z 📝 Patching ios/Pods/FirebaseSessions/FirebaseSessions/Sources/NetworkInfo.swift to fix GoogleUtilities_* in NetworkInfo.swift
+2025-10-04T04:35:12.0570460Z ✅ Successfully patched ios/Pods/FirebaseSessions/FirebaseSessions/Sources/NetworkInfo.swift
+2025-10-04T04:35:12.0641540Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseSessions/FirebaseSessions/Sources/NetworkInfo.swift
+2025-10-04T04:35:12.0688740Z 🔍 Checking ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionInitiator.swift for GoogleUtilities_* in SessionInitiator.swift...
+2025-10-04T04:35:12.0897410Z 📝 Patching ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionInitiator.swift to fix GoogleUtilities_* in SessionInitiator.swift
+2025-10-04T04:35:12.0983990Z ✅ Successfully patched ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionInitiator.swift
+2025-10-04T04:35:12.1065620Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionInitiator.swift
+2025-10-04T04:35:12.1115620Z 🔍 Checking ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionStartEvent.swift for GoogleUtilities_* in SessionStartEvent.swift...
+2025-10-04T04:35:12.1244370Z 📝 Patching ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionStartEvent.swift to fix GoogleUtilities_* in SessionStartEvent.swift
+2025-10-04T04:35:12.1329390Z ✅ Successfully patched ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionStartEvent.swift
+2025-10-04T04:35:12.1402110Z ✅ Verified patch was successfully applied to ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionStartEvent.swift
+2025-10-04T04:35:12.1437450Z 🔍 Searching for any additional problematic imports in the entire Pods directory...
+2025-10-04T04:35:12.1475470Z 🔍 Searching for all files with import[[:space:]]+GTMSessionFetcherCore in ios/Pods...
+2025-10-04T04:35:12.3762600Z ℹ️ No files found containing 'import[[:space:]]+GTMSessionFetcherCore'
+2025-10-04T04:35:12.3801320Z 🔍 Searching for all files with @preconcurrency[[:space:]]+import[[:space:]]+GTMSessionFetcherCore in ios/Pods...
+2025-10-04T04:35:12.4532160Z ℹ️ No files found containing '@preconcurrency[[:space:]]+import[[:space:]]+GTMSessionFetcherCore'
+2025-10-04T04:35:12.4571020Z 🔍 Searching for all files with import[[:space:]]+GoogleUtilities_[A-Za-z_]+ in ios/Pods...
+2025-10-04T04:35:12.5622270Z ℹ️ No files found containing 'import[[:space:]]+GoogleUtilities_[A-Za-z_]+'
+2025-10-04T04:35:12.5678890Z 🔍 Searching for all files with @preconcurrency[[:space:]]+import[[:space:]]+GoogleUtilities_[A-Za-z_]+ in ios/Pods...
+2025-10-04T04:35:12.6677520Z ℹ️ No files found containing '@preconcurrency[[:space:]]+import[[:space:]]+GoogleUtilities_[A-Za-z_]+'
+2025-10-04T04:35:12.6760290Z 🔍 Final verification of patched files...
+2025-10-04T04:35:12.6929020Z ✅ GTMSessionFetcherCore import successfully fixed in ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift
+2025-10-04T04:35:12.7235630Z ✅ GoogleUtilities_ imports successfully fixed in ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:12.7414140Z ✅ GTMSessionFetcherCore import successfully fixed in ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+2025-10-04T04:35:12.7534990Z ✅ GoogleUtilities_Environment import successfully fixed in ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift
+2025-10-04T04:35:12.7706800Z ✅ GTMSessionFetcherCore import successfully fixed in ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift
+2025-10-04T04:35:12.8201550Z 📄 Import statements saved to /Users/runner/work/cider-craft/cider-craft/scripts/firebase_imports.txt
+2025-10-04T04:35:32.5242420Z ===== Firebase Import Fix Summary =====
+2025-10-04T04:35:32.5281270Z Checked specific files:
+2025-10-04T04:35:32.5370690Z  - ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift
+2025-10-04T04:35:32.5452550Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:32.5590510Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift
+2025-10-04T04:35:32.5632810Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift
+2025-10-04T04:35:32.5675960Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift
+2025-10-04T04:35:32.5726060Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift
+2025-10-04T04:35:32.5761300Z  - ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/GTMOAuth2Compatibility.swift
+2025-10-04T04:35:32.5813570Z  - ios/Pods/GTMAppAuth/GTMAppAuth/Sources/KeychainStore/KeychainStore.swift
+2025-10-04T04:35:32.5896040Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/MultiFactor/TOTP/TOTPSecret.swift
+2025-10-04T04:35:32.5965510Z  - ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Utilities/AuthDefaultUIDelegate.swift
+2025-10-04T04:35:32.6008980Z  - ios/Pods/FirebaseCoreInternal/FirebaseCore/Internal/Sources/HeartbeatLogging/HeartbeatsPayload.swift
+2025-10-04T04:35:32.6058890Z  - ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsCacheClient.swift
+2025-10-04T04:35:32.6100290Z  - ios/Pods/FirebaseSessions/FirebaseSessions/Sources/Settings/SettingsDownloadClient.swift
+2025-10-04T04:35:32.6151590Z  - ios/Pods/GTMAppAuth/GTMAppAuth/Sources/AuthSession.swift
+2025-10-04T04:35:32.6196480Z  - ios/Pods/FirebaseSessions/FirebaseSessions/Sources/ApplicationInfo.swift
+2025-10-04T04:35:32.6237500Z  - ios/Pods/FirebaseSessions/FirebaseSessions/Sources/NetworkInfo.swift
+2025-10-04T04:35:32.6281470Z  - ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionInitiator.swift
+2025-10-04T04:35:32.6318220Z  - ios/Pods/FirebaseSessions/FirebaseSessions/Sources/SessionStartEvent.swift
+2025-10-04T04:35:32.6352660Z Also searched entire Pods directory for problematic imports
+2025-10-04T04:35:32.6390690Z ✅ Firebase import fixes completed successfully
