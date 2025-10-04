@@ -20,7 +20,7 @@ class _SyncDebugPageState extends State<SyncDebugPage> {
   bool _testing = false;
 
   void _log(String message) {
-    print('🔍 SYNC DEBUG: $message');
+    debugPrint('🔍 SYNC DEBUG: $message');
     setState(() {
       _logs.add('${DateTime.now().toIso8601String().substring(11, 19)}: $message');
     });

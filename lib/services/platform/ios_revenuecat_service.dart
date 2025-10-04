@@ -1,5 +1,6 @@
 // lib/services/platform/ios_revenuecat_service.dart
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../../utils/result.dart';
 
@@ -15,7 +16,7 @@ class IOSRevenueCatService {
         return const Success(null);
       }
 
-      print('Configuring RevenueCat for iOS...');
+  debugPrint('Configuring RevenueCat for iOS...');
       
       // iOS-specific configuration
       final configuration = PurchasesConfiguration(_apiKey);
@@ -32,11 +33,11 @@ class IOSRevenueCatService {
       });
 
       _isConfigured = true;
-      print('RevenueCat configured successfully for iOS');
+  debugPrint('RevenueCat configured successfully for iOS');
       
       return const Success(null);
     } catch (e) {
-      print('Failed to configure RevenueCat for iOS: $e');
+      debugPrint('Failed to configure RevenueCat for iOS: $e');
       return Failure(Exception('RevenueCat configuration failed: $e'));
     }
   }
@@ -51,11 +52,11 @@ class IOSRevenueCatService {
       }
 
       final packages = offerings.current!.availablePackages;
-      print('Found ${packages.length} iOS subscription packages');
+  debugPrint('Found ${packages.length} iOS subscription packages');
       
       return Success(packages);
     } catch (e) {
-      print('Failed to get iOS subscription products: $e');
+      debugPrint('Failed to get iOS subscription products: $e');
       return Failure(Exception('Failed to load subscription products: $e'));
     }
   }
@@ -63,15 +64,15 @@ class IOSRevenueCatService {
   /// Purchase iOS subscription
   static Future<Result<CustomerInfo, Exception>> purchaseProduct(Package package) async {
     try {
-      print('Attempting to purchase iOS package: ${package.identifier}');
+  debugPrint('Attempting to purchase iOS package: ${package.identifier}');
       
       final purchaserInfo = await Purchases.purchasePackage(package);
       
-      print('iOS purchase successful: ${purchaserInfo.customerInfo.entitlements.all}');
+  debugPrint('iOS purchase successful: ${purchaserInfo.customerInfo.entitlements.all}');
       
       return Success(purchaserInfo.customerInfo);
     } catch (e) {
-      print('iOS purchase failed: $e');
+      debugPrint('iOS purchase failed: $e');
       
       if (e is PlatformException) {
         final errorCode = e.code;
@@ -97,15 +98,15 @@ class IOSRevenueCatService {
   /// Restore iOS purchases
   static Future<Result<CustomerInfo, Exception>> restorePurchases() async {
     try {
-      print('Restoring iOS purchases...');
+  debugPrint('Restoring iOS purchases...');
       
       final customerInfo = await Purchases.restorePurchases();
       
-      print('iOS purchases restored successfully');
+  debugPrint('iOS purchases restored successfully');
       
       return Success(customerInfo);
     } catch (e) {
-      print('Failed to restore iOS purchases: $e');
+      debugPrint('Failed to restore iOS purchases: $e');
       return Failure(Exception('Failed to restore purchases: $e'));
     }
   }
@@ -118,11 +119,11 @@ class IOSRevenueCatService {
       // Check for active entitlements
       final isPremium = customerInfo.entitlements.active.isNotEmpty;
       
-      print('iOS Premium status: $isPremium');
+  debugPrint('iOS Premium status: $isPremium');
       
       return Success(isPremium);
     } catch (e) {
-      print('Failed to check iOS premium status: $e');
+      debugPrint('Failed to check iOS premium status: $e');
       return Failure(Exception('Failed to check premium status: $e'));
     }
   }
@@ -133,7 +134,7 @@ class IOSRevenueCatService {
       final customerInfo = await Purchases.getCustomerInfo();
       return Success(customerInfo);
     } catch (e) {
-      print('Failed to get iOS customer info: $e');
+      debugPrint('Failed to get iOS customer info: $e');
       return Failure(Exception('Failed to get customer info: $e'));
     }
   }
@@ -150,11 +151,11 @@ class IOSRevenueCatService {
         'login_timestamp': DateTime.now().toIso8601String(),
       });
       
-      print('iOS user ID set successfully: $userID');
+  debugPrint('iOS user ID set successfully: $userID');
       
       return const Success(null);
     } catch (e) {
-      print('Failed to set iOS user ID: $e');
+      debugPrint('Failed to set iOS user ID: $e');
       return Failure(Exception('Failed to set user ID: $e'));
     }
   }
@@ -165,7 +166,7 @@ class IOSRevenueCatService {
     Map<String, dynamic> eventData,
   ) async {
     try {
-      print('Handling iOS subscription event: $eventType');
+  debugPrint('Handling iOS subscription event: $eventType');
       
       // iOS-specific subscription event handling
       switch (eventType) {
@@ -182,33 +183,33 @@ class IOSRevenueCatService {
           await _handleSubscriptionExpired(eventData);
           break;
         default:
-          print('Unknown iOS subscription event: $eventType');
+          debugPrint('Unknown iOS subscription event: $eventType');
       }
       
       return const Success(null);
     } catch (e) {
-      print('Failed to handle iOS subscription event: $e');
+      debugPrint('Failed to handle iOS subscription event: $e');
       return Failure(Exception('Failed to handle subscription event: $e'));
     }
   }
 
   static Future<void> _handleSubscriptionStarted(Map<String, dynamic> data) async {
-    print('iOS subscription started: $data');
+  debugPrint('iOS subscription started: $data');
     // Handle subscription start logic
   }
 
   static Future<void> _handleSubscriptionRenewed(Map<String, dynamic> data) async {
-    print('iOS subscription renewed: $data');
+  debugPrint('iOS subscription renewed: $data');
     // Handle subscription renewal logic
   }
 
   static Future<void> _handleSubscriptionCancelled(Map<String, dynamic> data) async {
-    print('iOS subscription cancelled: $data');
+  debugPrint('iOS subscription cancelled: $data');
     // Handle subscription cancellation logic
   }
 
   static Future<void> _handleSubscriptionExpired(Map<String, dynamic> data) async {
-    print('iOS subscription expired: $data');
+  debugPrint('iOS subscription expired: $data');
     // Handle subscription expiration logic
   }
 
@@ -217,7 +218,7 @@ class IOSRevenueCatService {
     try {
       // Perform any iOS-specific cleanup
       _isConfigured = false;
-      print('iOS RevenueCat service cleaned up');
+  debugPrint('iOS RevenueCat service cleaned up');
       return const Success(null);
     } catch (e) {
       return Failure(Exception('Failed to cleanup iOS RevenueCat service: $e'));

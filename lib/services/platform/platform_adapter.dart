@@ -16,15 +16,15 @@ class PlatformAdapter {
   /// Initialize platform-specific services
   static Future<Result<void, Exception>> initializePlatformServices() async {
     try {
-      print('Initializing platform services for: ${Platform.operatingSystem}');
+  debugPrint('Initializing platform services for: ${Platform.operatingSystem}');
       
       if (Platform.isIOS) {
-        print('Setting up iOS-specific services...');
+  debugPrint('Setting up iOS-specific services...');
         
         // Configure iOS-specific RevenueCat
         final revenueCatResult = await IOSRevenueCatService.configure();
         if (revenueCatResult is Failure) {
-          print('Warning: iOS RevenueCat configuration failed: ${revenueCatResult.error}');
+          debugPrint('Warning: iOS RevenueCat configuration failed: ${revenueCatResult.error}');
           // Don't fail initialization for RevenueCat issues
         }
         
@@ -34,14 +34,14 @@ class PlatformAdapter {
           return Failure(Exception('iOS file system not accessible: ${storageResult.error}'));
         }
         
-        print('iOS platform services initialized successfully');
+        debugPrint('iOS platform services initialized successfully');
       } else {
-        print('Using default platform services for ${Platform.operatingSystem}');
+        debugPrint('Using default platform services for ${Platform.operatingSystem}');
       }
       
       return const Success(null);
     } catch (e) {
-      print('Failed to initialize platform services: $e');
+      debugPrint('Failed to initialize platform services: $e');
       return Failure(Exception('Platform services initialization failed: $e'));
     }
   }
@@ -119,7 +119,7 @@ class PlatformAdapter {
   /// Handle platform-specific app lifecycle events
   static Future<Result<void, Exception>> handleAppLifecycleChange(AppLifecycleState state) async {
     try {
-      print('Handling app lifecycle change: $state on ${Platform.operatingSystem}');
+  debugPrint('Handling app lifecycle change: $state on ${Platform.operatingSystem}');
       
       if (Platform.isIOS) {
         switch (state) {
@@ -130,7 +130,7 @@ class PlatformAdapter {
             break;
           case AppLifecycleState.paused:
             // iOS-specific pause handling
-            print('iOS app paused - saving state if needed');
+            debugPrint('iOS app paused - saving state if needed');
             break;
           case AppLifecycleState.detached:
             // iOS-specific cleanup
@@ -143,7 +143,7 @@ class PlatformAdapter {
       
       return const Success(null);
     } catch (e) {
-      print('Failed to handle app lifecycle change: $e');
+      debugPrint('Failed to handle app lifecycle change: $e');
       return Failure(Exception('App lifecycle handling failed: $e'));
     }
   }
@@ -164,17 +164,17 @@ class PlatformAdapter {
   /// Clean up platform-specific resources
   static Future<Result<void, Exception>> cleanup() async {
     try {
-      print('Cleaning up platform services...');
+      debugPrint('Cleaning up platform services...');
       
       if (Platform.isIOS) {
         await IOSRevenueCatService.cleanup();
         await IOSFileService.cleanupTemporaryFiles();
       }
       
-      print('Platform services cleanup completed');
+      debugPrint('Platform services cleanup completed');
       return const Success(null);
     } catch (e) {
-      print('Failed to cleanup platform services: $e');
+      debugPrint('Failed to cleanup platform services: $e');
       return Failure(Exception('Platform cleanup failed: $e'));
     }
   }

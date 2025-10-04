@@ -11,7 +11,7 @@
 //     --dart-define=RC_API_KEY_ANDROID=goog_xxx \
 //     --dart-define=RC_API_KEY_IOS=rc_ios_xxx
 //
-// Codemagic: pass the same defines in your build step.
+// CI: pass the same defines in your build step (e.g., GitHub Actions).
 
 import 'dart:async';
 

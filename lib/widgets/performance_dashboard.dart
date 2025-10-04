@@ -949,6 +949,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
       await Future.delayed(const Duration(milliseconds: 100));
     }
     
+    if (!mounted) return;
     Navigator.of(context).pop();
     _showTestComplete('Frame Rate Test completed');
   }
@@ -966,6 +967,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
     // Let it collect
     heavyData.clear();
     
+    if (!mounted) return;
     Navigator.of(context).pop();
     _showTestComplete('Memory Test completed');
   }
@@ -979,6 +981,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
       await Future.delayed(const Duration(milliseconds: 50));
     }
     
+    if (!mounted) return;
     Navigator.of(context).pop();
     _showTestComplete('Rebuild Test completed');
   }
@@ -992,6 +995,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
     await Future.delayed(const Duration(milliseconds: 200));
     await _runRebuildTest();
     
+    if (!mounted) return;
     Navigator.of(context).pop();
     _showTestComplete('Full Performance Validation completed');
   }
@@ -1002,7 +1006,8 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
       final _ = List.generate(1000, (index) => index * 2);
       await Future.delayed(const Duration(milliseconds: 16));
     }
-    _showTestComplete('Light load simulation completed');
+  if (!mounted) return;
+  _showTestComplete('Light load simulation completed');
   }
 
   void _simulateHeavyLoad() async {
@@ -1125,6 +1130,7 @@ ${_formatExportData(data)}
       
       _showTestComplete('Performance data copied to clipboard');
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Export failed: $e'),

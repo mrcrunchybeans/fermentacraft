@@ -34,7 +34,7 @@ class IOSAuthService {
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       
       if (googleAuth.accessToken == null || googleAuth.idToken == null) {
-        print('iOS Google Sign-In failed to get tokens');
+  debugPrint('iOS Google Sign-In failed to get tokens');
         return Failure(Exception('Failed to obtain authentication tokens'));
       }
 
@@ -49,18 +49,18 @@ class IOSAuthService {
       final User? user = userCredential.user;
       
       if (user == null) {
-        print('iOS Firebase sign-in returned null user');
+        debugPrint('iOS Firebase sign-in returned null user');
         return Failure(Exception('Authentication failed'));
       }
 
-      print('iOS Google Sign-In successful for user: ${user.email}');
+      debugPrint('iOS Google Sign-In successful for user: ${user.email}');
       
       // Set up user attributes for iOS
       await _setupUserAttributes(user);
       
       return Success(user);
     } catch (e, stackTrace) {
-      print('iOS Google Sign-In failed: $e\n$stackTrace');
+      debugPrint('iOS Google Sign-In failed: $e\n$stackTrace');
       return Failure(Exception('Sign in failed: ${e.toString()}'));
     }
   }
@@ -70,7 +70,7 @@ class IOSAuthService {
     // iOS-specific configuration if needed
     if (Platform.isIOS) {
       // Additional iOS-specific setup can go here
-      print('Configuring Google Sign-In for iOS');
+  debugPrint('Configuring Google Sign-In for iOS');
     }
   }
 
@@ -86,13 +86,13 @@ class IOSAuthService {
         'created_at': DateTime.now().toIso8601String(),
       };
 
-      print('Setting up iOS user attributes: $attributes');
+  debugPrint('Setting up iOS user attributes: $attributes');
       
       // This would integrate with RevenueCat when we implement Task 5
       // await RevenueCatService.setUserAttributes(attributes);
       
     } catch (e, stackTrace) {
-      print('Failed to set up iOS user attributes: $e\n$stackTrace');
+      debugPrint('Failed to set up iOS user attributes: $e\n$stackTrace');
       // Don't fail auth for attribute setup errors
     }
   }
@@ -100,7 +100,7 @@ class IOSAuthService {
   /// iOS-specific sign out handling
   static Future<Result<void, Exception>> signOut() async {
     try {
-      print('Starting iOS sign out');
+  debugPrint('Starting iOS sign out');
       
       // Sign out from Google Sign-In
       await _googleSignIn.signOut();
@@ -108,10 +108,10 @@ class IOSAuthService {
       // Sign out from Firebase
       await _firebaseAuth.signOut();
       
-      print('iOS sign out successful');
+      debugPrint('iOS sign out successful');
       return const Success(null);
     } catch (e, stackTrace) {
-      print('iOS sign out failed: $e\n$stackTrace');
+      debugPrint('iOS sign out failed: $e\n$stackTrace');
       return Failure(Exception('Sign out failed: ${e.toString()}'));
     }
   }
@@ -130,16 +130,16 @@ class IOSAuthService {
   static Future<void> handleAppLifecycle() async {
     if (Platform.isIOS) {
       // iOS-specific auth lifecycle handling
-      print('Handling iOS app lifecycle for auth');
+  debugPrint('Handling iOS app lifecycle for auth');
       
       // Check if user is still valid after app becomes active
       final user = getCurrentUser();
       if (user != null) {
         try {
           await user.reload();
-          print('iOS auth state refreshed successfully');
+          debugPrint('iOS auth state refreshed successfully');
         } catch (e) {
-          print('Failed to refresh iOS auth state: $e');
+          debugPrint('Failed to refresh iOS auth state: $e');
         }
       }
     }
