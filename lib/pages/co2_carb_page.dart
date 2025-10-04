@@ -520,7 +520,7 @@ class _SugarTypePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = const [
+    const options = [
       'Corn Sugar (Dextrose)',
       'Table Sugar (Sucrose)',
       'DME (Light)',
@@ -568,7 +568,7 @@ class _PerBottleHelper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final presets = const [
+    const presets = [
       '330 mL',
       '355 mL (12 oz)',
       '375 mL',

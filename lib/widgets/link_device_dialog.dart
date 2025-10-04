@@ -434,9 +434,9 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
             const SizedBox(height: 12),
             _SectionCard(
               title: 'Payload Format',
-              trailing: Tooltip(
+              trailing: const Tooltip(
                 message: 'JSON recommended. Form is for older bridges.',
-                child: const Icon(Icons.help_outline, size: 18),
+                child: Icon(Icons.help_outline, size: 18),
               ),
               child: SegmentedButton<PayloadFormat>(
                 segments: const [

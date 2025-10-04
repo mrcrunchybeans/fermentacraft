@@ -175,7 +175,7 @@ bool get _allowSyncByPlan =>
   void _cleanupRecentWrites() {
     final now = DateTime.now().millisecondsSinceEpoch;
     _recentWrites.removeWhere((key, timestamp) => 
-      (now - timestamp) > Duration(minutes: 5).inMilliseconds);
+      (now - timestamp) > const Duration(minutes: 5).inMilliseconds);
       
     // More aggressive cleanup - limit the size of all sync maps
     if (_lastSentJson.length > 100) {
@@ -503,7 +503,7 @@ bool get _allowSyncByPlan =>
     print('[SYNC] Bootstrap completed - enabling normal sync after delay');
     
     // Add a delay to prevent immediate echo loops
-    Timer(Duration(seconds: 5), () {
+    Timer(const Duration(seconds: 5), () {
       _startupSyncComplete = true;
       print('[SYNC] Startup sync now enabled after bootstrap delay');
     });
@@ -666,7 +666,7 @@ bool get _allowSyncByPlan =>
     try {
       final settingsMap = _collectSettingsAsMap();
       if (settingsMap.isNotEmpty) {
-        final key = '__settings__::singleton';
+        const key = '__settings__::singleton';
         final s = jsonEncode(settingsMap);
         if (_lastSentJson[key] != s) {
           await FirestorePaths.settingsDoc(uid).set({
@@ -797,7 +797,7 @@ bool get _allowSyncByPlan =>
         try {
           final map = _collectSettingsAsMap();
           if (map.isEmpty) return;
-          final key = '__settings__::singleton';
+          const key = '__settings__::singleton';
           final s = jsonEncode(map);
           if (_lastSentJson[key] == s) return;
 
@@ -1430,7 +1430,7 @@ bool get _allowSyncByPlan =>
       final settings = Hive.box('settings');
       final map = Map<String, dynamic>.from(data)..remove('_meta');
 
-      final key = '__settings__::singleton';
+      const key = '__settings__::singleton';
       _lastSentJson[key] = jsonEncode(map);
 
       for (final entry in map.entries) {

@@ -9,7 +9,7 @@ import 'package:fermentacraft/services/firestore_paths.dart';
 import 'package:fermentacraft/services/firestore_user.dart';
 
 class SyncDebugPage extends StatefulWidget {
-  const SyncDebugPage({Key? key}) : super(key: key);
+  const SyncDebugPage({super.key});
 
   @override
   State<SyncDebugPage> createState() => _SyncDebugPageState();

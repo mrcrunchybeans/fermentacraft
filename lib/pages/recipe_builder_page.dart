@@ -679,7 +679,7 @@ _kv(
 
 
               // ——— Gravity & ABV (final) ———
-              _SectionTitle("Gravity & ABV"),
+              const _SectionTitle("Gravity & ABV"),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),

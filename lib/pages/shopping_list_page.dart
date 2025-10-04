@@ -186,10 +186,10 @@ showPaywall(context);
 
     return Scaffold(
 appBar: AppBar(
-  title: Row(
+  title: const Row(
     children: [
-      const Text('🛒 Shopping List'),
-      const SizedBox(width: 8),
+      Text('🛒 Shopping List'),
+      SizedBox(width: 8),
       
     ],
   ),

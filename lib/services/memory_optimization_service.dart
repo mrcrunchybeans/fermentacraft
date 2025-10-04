@@ -1,5 +1,6 @@
 /// Memory optimization service to reduce memory usage and prevent leaks
 /// Provides utilities to optimize memory consumption throughout the app
+library;
 
 import 'dart:async';
 import 'dart:collection';
@@ -17,7 +18,7 @@ class MemoryOptimizationService {
 
   Timer? _cleanupTimer;
   final Set<WeakReference<dynamic>> _trackedObjects = <WeakReference<dynamic>>{};
-  int _lastCleanupCount = 0;
+  final int _lastCleanupCount = 0;
 
   /// Initialize memory optimization
   void initialize() {
@@ -317,7 +318,7 @@ class MemoryOptimizationService {
             if (kDebugMode) print('[MEM] Closed box: $boxName');
             
             // Wait a moment then reopen
-            Future.delayed(Duration(milliseconds: 100), () async {
+            Future.delayed(const Duration(milliseconds: 100), () async {
               try {
                 await Hive.openBox(boxName);
                 if (kDebugMode) print('[MEM] Reopened box: $boxName');
@@ -654,7 +655,7 @@ extension ExtremeMemoryOptimization on MemoryOptimizationService {
         
         // Small delay between cycles
         if (cycle % 10 == 0) {
-          await Future.delayed(Duration(milliseconds: 10));
+          await Future.delayed(const Duration(milliseconds: 10));
         }
       }
       

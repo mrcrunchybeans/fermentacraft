@@ -10,7 +10,7 @@ import '../acid_tools/strip_reader_tab.dart';
 
 class PHStripStore {
   static const boxName = 'ph_strips';
-  static final _uuid = const Uuid();
+  static const _uuid = Uuid();
 
   Box<PHStrip>? _box;
 

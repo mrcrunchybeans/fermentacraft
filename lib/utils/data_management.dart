@@ -303,7 +303,7 @@ Future<void> _rekeyBox<T>({
   required Box<T> box,
   required String Function(T) idFrom,
 }) async {
-  final uuid = const Uuid();
+  const uuid = Uuid();
   final keys = box.keys.toList(growable: false);
   final fromJson = DataManagementService.fromJsonFor(boxName);
 

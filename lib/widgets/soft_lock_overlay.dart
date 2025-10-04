@@ -40,9 +40,9 @@ class SoftLockOverlay extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Theme.of(context).dividerColor),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
+                    children: [
                       Icon(Icons.lock),
                       SizedBox(width: 8),
                       Text('Premium feature'),

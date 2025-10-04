@@ -1,5 +1,6 @@
 /// Retry utility for handling transient failures in sync operations
 /// with exponential backoff and circuit breaker pattern.
+library;
 
 import 'dart:async';
 import 'dart:math';

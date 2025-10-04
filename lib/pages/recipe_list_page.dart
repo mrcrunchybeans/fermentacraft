@@ -298,10 +298,10 @@ Future.delayed(const Duration(milliseconds: 1800), () {
           child: Text(recipe.isArchived ? 'Unarchive' : 'Archive'),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: _RecipeAction.delete,
           child: Row(
-            children: const [
+            children: [
               Icon(Icons.delete_outline),
               SizedBox(width: 8),
               Text('Delete'),

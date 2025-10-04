@@ -451,12 +451,12 @@ class _DeviceCard extends StatelessWidget {
                         ),
                       ),
                       if ((linkedBid).isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8),
                           child: Tooltip(
                             message: 'Linked',
                             child: Chip(
-                              label: const Text('Linked'),
+                              label: Text('Linked'),
                               padding: EdgeInsets.zero,
                               visualDensity: VisualDensity.compact,
                             ),
@@ -945,10 +945,10 @@ _IconTextButton(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _Label('Endpoint URL'),
+                      const _Label('Endpoint URL'),
                       _MonoBox(fullUrl, maxLines: 3),
                       const SizedBox(height: 12),
-                      _Label('Headers'),
+                      const _Label('Headers'),
                       _MonoBox('$contentHeader\n$secretHeader', maxLines: 2),
                       _CopyRow(values: const [
                         ('Copy Content-Type', contentHeader),
@@ -956,9 +956,9 @@ _IconTextButton(
                         ('Copy Secret', secretHeader),
                       ]),
                       const SizedBox(height: 12),
-                      _Label('POST JSON body template'),
-                      _MonoBox(bodyTemplate, maxLines: 8),
-                      _CopyRow(values: const [
+                      const _Label('POST JSON body template'),
+                      const _MonoBox(bodyTemplate, maxLines: 8),
+                      const _CopyRow(values: [
                         ('Copy Body', bodyTemplate),
                       ]),
                       const SizedBox(height: 8),
@@ -984,10 +984,10 @@ _IconTextButton(
                         'Port': '443',
                       }),
                       const SizedBox(height: 8),
-                      _Label('Path'),
+                      const _Label('Path'),
                       _MonoBox(path, maxLines: 2),
                       const SizedBox(height: 12),
-                      _Label('Headers'),
+                      const _Label('Headers'),
                       _MonoBox('$contentHeader\n$secretHeader', maxLines: 2),
                       _CopyRow(values: [
                         ('Copy Host', host),

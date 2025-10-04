@@ -1,5 +1,6 @@
 /// Simple memory usage display widget for debugging memory issues
 /// Only shows in debug builds - hidden in release
+library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';

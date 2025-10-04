@@ -308,7 +308,7 @@ flutter build windows
 
 ### Known Firebase Dependency Issues
 
-When building for iOS using Flutter 3.35.4 with Firebase 12.0.0, several import issues can occur in the generated Swift files. These issues typically appear in CI environments like Appcircle and Codemagic, and need to be patched during the build process:
+When building for iOS using Flutter 3.35.4 with Firebase 12.0.0, several import issues can occur in the generated Swift files. These issues typically appear in CI environments and need to be patched during the build process (handled in our GitHub Actions workflow):
 
 1. **GTMSessionFetcherCore → GTMSessionFetcher**:
    - Affected files:
@@ -341,7 +341,7 @@ This script should be run after `pod install` and before Flutter builds the iOS 
 
 ### CI Integration
 
-Both Appcircle and Codemagic CI configurations have been updated to:
+Our GitHub Actions workflow has been updated to:
 
 1. Automatically apply these patches
 2. Capture detailed diagnostic information

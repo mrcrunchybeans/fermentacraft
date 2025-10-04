@@ -46,14 +46,14 @@ class EmergencyMemoryCleanup {
     
     // 5. Force garbage collection multiple times
     for (int i = 0; i < 5; i++) {
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 100));
       // Force GC by creating and discarding large objects
       List<int> temp = List.filled(10000, 0);
       temp.clear();
     }
     
     // 6. Give system time to clean up
-    await Future.delayed(Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 2));
     
     // 7. Re-enable sync if it was enabled
     if (wasEnabled) {

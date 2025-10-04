@@ -10,6 +10,8 @@
 /// - IOSFileService: iOS document handling and file operations
 /// - IOSRevenueCatService: iOS App Store subscription management
 /// - PlatformAdapter: Automatic platform-appropriate service selection
+library;
+
 
 export 'ios_auth_service.dart';
 export 'ios_file_service.dart';

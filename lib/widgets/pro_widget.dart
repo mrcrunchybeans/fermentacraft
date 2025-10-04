@@ -15,9 +15,9 @@ class ProBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: cs.primary, width: 1),
       ),
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
-        children: const [
+        children: [
           Icon(Icons.workspace_premium, size: 14),
           SizedBox(width: 4),
           Text('Premium', style: TextStyle(fontWeight: FontWeight.w600)),

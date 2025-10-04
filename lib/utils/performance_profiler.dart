@@ -1,5 +1,6 @@
 /// Comprehensive performance monitoring and profiling system
 /// Tracks frame rates, memory usage, widget rebuilds, and sync performance
+library;
 
 import 'dart:async';
 import 'dart:io';
@@ -337,21 +338,21 @@ class PerformanceProfiler {
   
   // Performance baselines for validation
   final List<PerformanceBaseline> _baselines = [
-    PerformanceBaseline(
+    const PerformanceBaseline(
       name: 'Average Frame Time',
       category: PerformanceCategory.frameRate,
       expectedValue: 16.67, // 60fps target
       tolerance: 0.2, // 20% tolerance
       unit: 'ms',
     ),
-    PerformanceBaseline(
+    const PerformanceBaseline(
       name: 'Memory Usage',
       category: PerformanceCategory.memory,
       expectedValue: 150.0, // 150MB baseline
       tolerance: 0.5, // 50% tolerance
       unit: 'MB',
     ),
-    PerformanceBaseline(
+    const PerformanceBaseline(
       name: 'Sync Operation Duration',
       category: PerformanceCategory.syncOperation,
       expectedValue: 500.0, // 500ms baseline

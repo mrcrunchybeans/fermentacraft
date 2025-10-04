@@ -32,10 +32,10 @@ class PHStripHelpButton extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 // Tip chips
-                Wrap(
+                const Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: const [
+                  children: [
                     _TipChip('Good light (daylight if possible)'),
                     _TipChip('Avoid tinted bulbs / colored countertops'),
                     _TipChip('Keep strip/key parallel to the camera'),

@@ -182,10 +182,10 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.cloud_off, size: 22),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.cloud_off, size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

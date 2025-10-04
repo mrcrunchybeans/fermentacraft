@@ -1,5 +1,6 @@
 /// Centralized error handling system for sync operations
 /// Provides user-visible feedback and recovery options for critical failures
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

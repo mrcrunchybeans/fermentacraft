@@ -1,5 +1,6 @@
 /// Memory leak detection and fixing utilities
 /// Identifies and resolves common memory leak patterns in Flutter apps
+library;
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';

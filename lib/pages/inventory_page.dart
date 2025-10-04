@@ -208,10 +208,10 @@ showPaywall(context);
           child: Text(item.isArchived ? 'Unarchive' : 'Archive'),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: _InvAction.delete,
           child: Row(
-            children: const [
+            children: [
               Icon(Icons.delete_outline),
               SizedBox(width: 8),
               Text('Delete'),

@@ -1,5 +1,6 @@
 /// Widget that provides sync error handling context to the error handler
 /// Should wrap major navigation areas to ensure error dialogs can be shown
+library;
 
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';

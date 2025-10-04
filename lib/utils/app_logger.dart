@@ -1,5 +1,6 @@
 /// Enhanced logging system for FermentaCraft with structured logging,
 /// error categorization, and proper log levels.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';

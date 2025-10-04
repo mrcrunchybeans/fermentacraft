@@ -1,5 +1,6 @@
 /// Widget rebuild tracking helper
 /// Makes it easy to track widget rebuilds for performance monitoring
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';

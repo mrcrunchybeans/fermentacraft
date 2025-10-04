@@ -1,5 +1,6 @@
 /// Debug widget for testing and monitoring sync error handling
 /// Shows circuit breaker status, health metrics, and allows manual error testing
+library;
 
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
@@ -42,7 +43,7 @@ class _SyncHealthDashboardState extends State<SyncHealthDashboard> {
           IconButton(
             onPressed: _refreshing ? null : _refreshHealthStatus,
             icon: _refreshing 
-              ? SizedBox(
+              ? const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),

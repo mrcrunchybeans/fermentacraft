@@ -1,5 +1,6 @@
 /// Performance monitoring dashboard widget
 /// Provides real-time performance metrics, profiling controls, and validation tools
+library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -78,30 +79,30 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
           PopupMenuButton<String>(
             onSelected: (value) => _handleMenuAction(value),
             itemBuilder: (context) => [
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'clear',
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.clear_all),
                     SizedBox(width: 8),
                     Text('Clear Metrics'),
                   ],
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'cleanup',
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.cleaning_services),
                     SizedBox(width: 8),
                     Text('Force Memory Cleanup'),
                   ],
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'export',
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.download),
                     SizedBox(width: 8),
                     Text('Export Data'),
@@ -265,7 +266,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
       '$totalRebuilds Total',
       rebuildColor,
       icon: Icons.build,
-      subtitle: '${totalWidgets} Widgets Tracked',
+      subtitle: '$totalWidgets Widgets Tracked',
       details: [
         'Average: ${avgRebuilds.toStringAsFixed(1)} rebuilds/widget',
         'Most Rebuilt: $mostRebuiltWidget ($maxRebuilds times)',
@@ -406,7 +407,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
             ),
             const SizedBox(height: 16),
             
-            _buildStatRow('Average FPS', '${(1000.0 / stats.mean).toStringAsFixed(1)}'),
+            _buildStatRow('Average FPS', (1000.0 / stats.mean).toStringAsFixed(1)),
             _buildStatRow('Average Frame Time', '${stats.mean.toStringAsFixed(2)}ms'),
             _buildStatRow('Min Frame Time', '${stats.min.toStringAsFixed(2)}ms'),
             _buildStatRow('Max Frame Time', '${stats.max.toStringAsFixed(2)}ms'),
@@ -681,7 +682,7 @@ class _PerformanceDashboardState extends State<PerformanceDashboard>
                   ),
                 ],
               ),
-            )).toList(),
+            )),
             
             if (sortedEntries.length > 20) ...[
               const SizedBox(height: 8),

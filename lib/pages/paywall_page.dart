@@ -425,7 +425,7 @@ class _PlanComparison extends StatelessWidget {
     }
 
     final rows = <_RowSpec>[
-      _RowSpec(
+      const _RowSpec(
         'Unlimited recipes, batches, inventory, shopping list',
         free: _Avail.limited,
         pro: _Avail.yes,
@@ -433,18 +433,18 @@ class _PlanComparison extends StatelessWidget {
         tooltip:
             'Free has limit of 3 active batches, 5 recipes, and 12 inventory items. Pro-Offline and Premium remove all caps.',
       ),
-      _RowSpec(
+      const _RowSpec(
         'Pro tools (Gravity adjuster, SO₂, TA, strip reader, etc.)',
         free: _Avail.limited,
         pro: _Avail.yes,
         premium: _Avail.yes,
         tooltip: 'Free includes only basic tools. Full toolset requires Pro-Offline or Premium.',
       ),
-      _RowSpec('Local backup & restore', free: _Avail.yes, pro: _Avail.yes, premium: _Avail.yes),
-      _RowSpec('Cloud sync & cross-device access', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
-      _RowSpec('Online backup & restore', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
-      _RowSpec('Live device streaming & cloud exports (iSpindel/Tilt)', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
-      _RowSpec(
+      const _RowSpec('Local backup & restore', free: _Avail.yes, pro: _Avail.yes, premium: _Avail.yes),
+      const _RowSpec('Cloud sync & cross-device access', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
+      const _RowSpec('Online backup & restore', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
+      const _RowSpec('Live device streaming & cloud exports (iSpindel/Tilt)', free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
+      const _RowSpec(
         'Billing type',
         free: _Avail.limited,
         pro: _Avail.yes,
@@ -532,7 +532,7 @@ class _PlanComparison extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(flex: 3, child: Text(r.title, style: theme.textTheme.bodyMedium)),
-                SizedBox(width: _kColGap),
+                const SizedBox(width: _kColGap),
                 Expanded(
                   flex: 1,
                   child: planCell(
@@ -543,7 +543,7 @@ class _PlanComparison extends StatelessWidget {
                     symbol: r.freeSymbol,
                   ),
                 ),
-                SizedBox(width: _kColGap),
+                const SizedBox(width: _kColGap),
                 Expanded(
                   flex: 1,
                   child: planCell(
@@ -554,7 +554,7 @@ class _PlanComparison extends StatelessWidget {
                     symbol: r.proSymbol,
                   ),
                 ),
-                SizedBox(width: _kColGap),
+                const SizedBox(width: _kColGap),
                 Expanded(
                   flex: 1,
                   child: planCell(
@@ -582,11 +582,11 @@ class _PlanComparison extends StatelessWidget {
       child: Row(
         children: [
           Expanded(flex: 3, child: headCell('Feature')),
-          SizedBox(width: _kColGap),
+          const SizedBox(width: _kColGap),
           Expanded(flex: 1, child: headCell('Free',        highlight: currentPlan() == 'Free')),
-          SizedBox(width: _kColGap),
+          const SizedBox(width: _kColGap),
           Expanded(flex: 1, child: headCell('Pro-Offline', highlight: currentPlan() == 'Pro-Offline')),
-          SizedBox(width: _kColGap),
+          const SizedBox(width: _kColGap),
           Expanded(flex: 1, child: headCell('Premium',     highlight: currentPlan() == 'Premium')),
         ],
       ),
@@ -1239,9 +1239,9 @@ class _BottomActionsCompact extends StatelessWidget {
   const _BottomActionsCompact();
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      child: const _RestoreRowContent(),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 12),
+      child: _RestoreRowContent(),
     );
   }
 }

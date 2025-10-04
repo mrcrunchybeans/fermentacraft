@@ -11,7 +11,7 @@ class _DiagApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       title: 'FermentaCraft iOS DIAG',
       debugShowCheckedModeBanner: false,
       home: Scaffold(
@@ -19,7 +19,7 @@ class _DiagApp extends StatelessWidget {
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Icon(Icons.apple, size: 96, color: Colors.white),
               SizedBox(height: 24),
               Text(

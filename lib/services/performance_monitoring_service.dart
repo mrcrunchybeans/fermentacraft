@@ -1,5 +1,6 @@
 /// Performance monitoring integration service
 /// Integrates performance monitoring with existing app services
+library;
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';

@@ -235,7 +235,7 @@ class _FermentationChart2State extends State<FermentationChart2> {
   @override
   Widget build(BuildContext context) {
     if (_data.isEmpty) {
-      return _EmptyChartState(
+      return const _EmptyChartState(
         hint: 'No measurements yet.\nAdd SG or temperature to see the chart.',
       );
     }

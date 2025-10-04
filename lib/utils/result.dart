@@ -2,6 +2,7 @@
 /// 
 /// This provides a type-safe way to handle operations that can succeed or fail
 /// without throwing exceptions, making error handling more explicit and reliable.
+library;
 
 /// Base result class for success/failure operations
 sealed class Result<T, E> {
@@ -46,7 +47,7 @@ sealed class Result<T, E> {
   /// Execute side effect if success
   Result<T, E> onSuccess(void Function(T value) callback) {
     if (isSuccess) {
-      callback(value!);
+      callback(value as T);
     }
     return this;
   }
@@ -54,7 +55,7 @@ sealed class Result<T, E> {
   /// Execute side effect if failure
   Result<T, E> onFailure(void Function(E error) callback) {
     if (isFailure) {
-      callback(error!);
+      callback(error as E);
     }
     return this;
   }
@@ -75,6 +76,7 @@ sealed class Result<T, E> {
 final class Success<T, E> extends Result<T, E> {
   const Success(this.value);
   
+  @override
   final T value;
   
   @override
@@ -93,6 +95,7 @@ final class Success<T, E> extends Result<T, E> {
 final class Failure<T, E> extends Result<T, E> {
   const Failure(this.error);
   
+  @override
   final E error;
   
   @override
