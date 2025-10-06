@@ -217,7 +217,8 @@ class AuthService {
       // Prepare a secure nonce
       final rawNonce = _randomUrlSafe(32);
       // Firebase expects you to pass the SHA256 hash of the raw nonce (hex string)
-      final String hashedNonceHex = sha256.convert(utf8.encode(rawNonce)).toString();
+      final String hashedNonceHex =
+          sha256.convert(utf8.encode(rawNonce)).toString();
 
       if (kIsWeb) {
         final provider = OAuthProvider('apple.com');
@@ -285,7 +286,8 @@ class AuthService {
           return userCred;
         } on SignInWithAppleAuthorizationException catch (e) {
           if (kAuthDebugLogs) {
-            debugPrint('[AUTH][Apple] Authorization error: ${e.code.name}: ${e.message}');
+            debugPrint(
+                '[AUTH][Apple] Authorization error: ${e.code.name}: ${e.message}');
           }
           switch (e.code) {
             case AuthorizationErrorCode.canceled:
