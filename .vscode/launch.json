@@ -20,6 +20,40 @@
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
+        },
+        {
+            "name": "Flutter iOS (Simulator)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "args": [
+                "--dart-define=RC_API_KEY_IOS=${env:RC_API_KEY_IOS}"
+            ]
+        },
+        {
+            "name": "Flutter iOS (Simulator) – Inline Key",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "args": [
+                "--dart-define=RC_API_KEY_IOS=appl_QAKngpqASRdtVjdSkUPDtQoOaXI"
+            ]
+        },
+        {
+            "name": "Flutter Android (Device/Emulator)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "args": [
+                "--dart-define=RC_API_KEY_ANDROID=${env:RC_API_KEY_ANDROID}"
+            ]
+        },
+        {
+            "name": "Flutter Web (Chrome)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "deviceId": "chrome"
         }
     ]
 }

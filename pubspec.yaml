@@ -34,6 +34,7 @@ dependencies:
   logger: ^2.3.0
   uuid: ^4.5.1
   image_picker: ^1.1.2
+  sign_in_with_apple: ^4.0.0
   file_picker: ^10.2.2
   image: ^4.2.0
   share_plus: ^11.0.0
@@ -41,18 +42,18 @@ dependencies:
   wakelock_plus: ^1.2.0
   url_launcher: ^6.3.2
   flutter_svg: ^2.0.7
-  firebase_auth: ^6.0.0
-  firebase_core: ^4.0.0
+  firebase_auth: ^5.3.1
+  firebase_core: ^3.6.0
   google_sign_in: ^6.2.1
-  cloud_firestore: ^6.0.0
+  cloud_firestore: ^5.5.0
   connectivity_plus: ^6.1.4
   purchases_flutter: ^9.2.0
   web: ^1.1.1
   get_it: ^8.0.0
-  cloud_functions: ^6.0.0
+  cloud_functions: ^5.3.0
   http: ^1.5.0
   hive: ^2.2.3
-  firebase_crashlytics: ^5.0.0
+  firebase_crashlytics: ^4.2.0
   shared_preferences: ^2.2.3
   in_app_review: ^2.0.8
   crypto: ^3.0.6
@@ -85,7 +86,7 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#1B263B"
-  image: assets/images/fermentacraftlogo_darkmode.png
+  image: assets/images/fermentacraftlogo_lightmode.png
 
   color_dark: "#1B263B"
   image_dark: assets/images/fermentacraftlogo_darkmode.png

@@ -7,7 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fermentacraft/pages/login_page.dart';
+import 'package:fermentacraft/auth_gate.dart';
+import 'package:fermentacraft/services/firestore_sync_service.dart';
 import 'home_page.dart';
 import 'pages/batch_log_page.dart';
 import 'pages/inventory_page.dart';
@@ -16,9 +17,10 @@ import 'pages/settings_page.dart';
 import 'pages/tools_page.dart';
 import 'pages/shopping_list_page.dart';
 import 'widgets/plan_badge.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'services/review_prompter.dart';
-
+import 'services/local_mode_service.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -82,7 +84,7 @@ class _AppShellState extends State<AppShell> {
             activeIcon: Icon(Icons.home),
             label: 'Home',
           ),
-                    BottomNavigationBarItem(
+          BottomNavigationBarItem(
             icon: Icon(Icons.book_outlined),
             activeIcon: Icon(Icons.book),
             label: 'Recipes',
@@ -97,7 +99,6 @@ class _AppShellState extends State<AppShell> {
             activeIcon: Icon(Icons.inventory_2),
             label: 'Inventory',
           ),
-
           BottomNavigationBarItem(
             icon: Icon(Icons.more_horiz),
             activeIcon: Icon(Icons.more_horiz),
@@ -113,23 +114,23 @@ class MorePage extends StatelessWidget {
   const MorePage({super.key});
 
   Future<void> _postLogoutHiveCleanup() async {
-  try {
-    if (Hive.isBoxOpen(Boxes.batches)) {
-      await Hive.box<BatchModel>(Boxes.batches).clear();
+    try {
+      if (Hive.isBoxOpen(Boxes.batches)) {
+        await Hive.box<BatchModel>(Boxes.batches).clear();
+      }
+      // Clear other boxes if you keep local state:
+      // if (Hive.isBoxOpen(Boxes.inventory)) {
+      //   await Hive.box<InventoryItem>(Boxes.inventory).clear();
+      // }
+      // if (Hive.isBoxOpen(Boxes.inventoryActions)) {
+      //   await Hive.box<InventoryAction>(Boxes.inventoryActions).clear();
+      // }
+      // Don't close boxes - they should stay open for the app lifetime
+      // await Hive.close(); // closes all boxes
+    } catch (_) {
+      // Swallow errors; user has already been navigated off the screen
     }
-    // Clear other boxes if you keep local state:
-    // if (Hive.isBoxOpen(Boxes.inventory)) {
-    //   await Hive.box<InventoryItem>(Boxes.inventory).clear();
-    // }
-    // if (Hive.isBoxOpen(Boxes.inventoryActions)) {
-    //   await Hive.box<InventoryAction>(Boxes.inventoryActions).clear();
-    // }
-    await Hive.close(); // closes all boxes
-  } catch (_) {
-    // Swallow errors; user has already been navigated off the screen
   }
-}
-
 
   Future<void> _showAboutAppDialog(BuildContext context) async {
     // Fetch **before** showing the dialog; only use context if still mounted.
@@ -143,7 +144,8 @@ class MorePage extends StatelessWidget {
         final cs = theme.colorScheme;
 
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: ConstrainedBox(
@@ -164,7 +166,8 @@ class MorePage extends StatelessWidget {
                   const SizedBox(height: 16),
                   Text(
                     'FermentaCraft',
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 6),
@@ -183,7 +186,8 @@ class MorePage extends StatelessWidget {
                   Text(
                     'Version ${packageInfo.version}'
                     '${packageInfo.buildNumber.isNotEmpty ? '+${packageInfo.buildNumber}' : ''}',
-                    style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: cs.onSurfaceVariant),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
@@ -204,20 +208,22 @@ class MorePage extends StatelessWidget {
                         final uri = Uri.parse(
                           'https://www.amazon.com/New-Cider-Makers-Handbook-Comprehensive/dp/1603584730',
                         );
-                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        await launchUrl(uri,
+                            mode: LaunchMode.externalApplication);
                       },
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
-  const SizedBox(height: 12),
-  FilledButton.icon(
-    icon: const Icon(Icons.thumb_up_alt_outlined),
-    onPressed: () => ReviewPrompter.instance.openRateFromSettings(),
-    label: const Text('Rate FermentaCraft'),
-  ),
-],
-
+                  if (!kIsWeb &&
+                      defaultTargetPlatform == TargetPlatform.android) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.thumb_up_alt_outlined),
+                      onPressed: () =>
+                          ReviewPrompter.instance.openRateFromSettings(),
+                      label: const Text('Rate FermentaCraft'),
+                    ),
+                  ],
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -230,7 +236,8 @@ class MorePage extends StatelessWidget {
                             applicationName: 'FermentaCraft',
                             applicationVersion:
                                 '${packageInfo.version}${packageInfo.buildNumber.isNotEmpty ? '+${packageInfo.buildNumber}' : ''}',
-                            applicationLegalese: '© ${DateTime.now().year} Brian Petry',
+                            applicationLegalese:
+                                '© ${DateTime.now().year} Brian Petry',
                           );
                         },
                       ),
@@ -262,56 +269,73 @@ class MorePage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 12),
       children: [
         ListTile(
-          leading: CircleAvatar(
-            radius: 20,
-            backgroundColor: Theme.of(context).colorScheme.secondary,
-            child: Text(initials, style: const TextStyle(color: Colors.white)),
-          ),
-          title: Text(name),
-          subtitle: const Text('Tap to log out'),
-       onTap: () async {
-  // Capture anything derived from context BEFORE the first await
-  final navigator = Navigator.of(context);
+            leading: CircleAvatar(
+              radius: 20,
+              backgroundColor: Theme.of(context).colorScheme.secondary,
+              child:
+                  Text(initials, style: const TextStyle(color: Colors.white)),
+            ),
+            title: Text(name),
+            subtitle: const Text('Tap to log out'),
+            onTap: () async {
+              // Capture anything derived from context BEFORE the first await
+              final navigator = Navigator.of(context);
 
-  final confirm = await showDialog<bool>(
-    context: context,
-    builder: (dialogCtx) => AlertDialog(
-      title: const Text('Log out?'),
-      content: const Text('Are you sure you want to sign out?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogCtx, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(dialogCtx, true),
-          child: const Text('Logout'),
-        ),
-      ],
-    ),
-  );
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (dialogCtx) => AlertDialog(
+                  title: const Text('Log out?'),
+                  content: const Text('Are you sure you want to sign out?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogCtx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogCtx, true),
+                      child: const Text('Logout'),
+                    ),
+                  ],
+                ),
+              );
 
-  if (confirm == true) {
-    // Sign out (no context usage here)
-    try {
-      await FirebaseAuth.instance.signOut();
-    } catch (_) {
-      // ignore; proceed regardless
-    }
+              if (confirm == true) {
+                // First, stop sync service to prevent race conditions
+                try {
+                  FirestoreSyncService.instance.disable();
+                  await Future.delayed(const Duration(
+                      milliseconds: 500)); // Give sync time to stop
+                } catch (_) {
+                  // ignore sync stop errors
+                }
 
-    // Navigate away using the captured navigator (no direct context)
-    navigator.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-      (_) => false,
-    );
+                // Ensure Local Mode is turned off so AuthGate shows LoginPage
+                try {
+                  await LocalModeService.instance.clearLocalOnly();
+                } catch (_) {/* ignore */}
 
-    // Fire-and-forget cleanup; does not use context
-    // ignore: discarded_futures
-    _postLogoutHiveCleanup();
-  }
-}
+                // Sign out (no context usage here)
+                try {
+                  await FirebaseAuth.instance.signOut();
+                } catch (_) {
+                  // ignore; proceed regardless
+                }
 
-        ),
+                // Wait a bit more for auth state to propagate
+                await Future.delayed(const Duration(milliseconds: 500));
+
+                // Navigate away using the captured navigator (no direct context)
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const AuthGate()),
+                  (_) => false,
+                );
+
+                // Fire-and-forget cleanup with delay to ensure sync has stopped
+                // ignore: discarded_futures
+                Future.delayed(
+                    const Duration(seconds: 1), () => _postLogoutHiveCleanup());
+              }
+            }),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.shopping_cart_outlined),
@@ -349,7 +373,4 @@ class MorePage extends StatelessWidget {
       ],
     );
   }
-  
 }
-
-

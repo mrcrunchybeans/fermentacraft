@@ -141,45 +141,100 @@ class FermentaCraftApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: _buildProviders(),
-      child: Consumer<SettingsModel>(
-        builder: (context, settings, child) {
-          return MaterialApp(
-            title: 'FermentaCraft',
-            scaffoldMessengerKey: SnackbarService.messengerKey,
-            debugShowCheckedModeBanner: false,
-            themeMode: settings.themeMode,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            home: const AuthGate(),
-          );
-        },
-      ),
-    );
+    debugPrint('[UI] Building FermentaCraftApp...');
+    
+    try {
+      final providers = _buildProviders();
+      debugPrint('[UI] Providers built successfully');
+      
+      return MultiProvider(
+        providers: providers,
+        child: Consumer<SettingsModel>(
+          builder: (context, settings, child) {
+            debugPrint('[UI] Consumer builder called');
+            return MaterialApp(
+              title: 'FermentaCraft',
+              scaffoldMessengerKey: SnackbarService.messengerKey,
+              debugShowCheckedModeBanner: false,
+              themeMode: settings.themeMode,
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              home: const AuthGate(),
+            );
+          },
+        ),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('[UI] Error building FermentaCraftApp: $e');
+      debugPrint('[UI] Stack trace: $stackTrace');
+      // Return a fallback UI
+      return MaterialApp(
+        title: 'FermentaCraft - Debug',
+        home: Scaffold(
+          appBar: AppBar(title: const Text('Error')),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Error loading app:', style: TextStyle(fontSize: 18)),
+                const SizedBox(height: 10),
+                Text(e.toString(), textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   /// Build provider list with proper organization
   List<ChangeNotifierProvider> _buildProviders() {
-    return [
-      // Core services
-      ChangeNotifierProvider<FeatureGate>.value(
-        value: ServiceLocator.get<FeatureGate>(),
-      ),
+    debugPrint('[UI] Building providers...');
+    
+    try {
+      debugPrint('[UI] Getting FeatureGate from ServiceLocator...');
+      final featureGate = ServiceLocator.get<FeatureGate>();
+      debugPrint('[UI] FeatureGate obtained successfully');
       
-      // Data models
-      ChangeNotifierProvider<SettingsModel>.value(
-        value: ServiceLocator.get<SettingsModel>(),
-      ),
-      ChangeNotifierProvider<TagManager>.value(
-        value: ServiceLocator.get<TagManager>(),
-      ),
+      debugPrint('[UI] Getting SettingsModel from ServiceLocator...');
+      final settingsModel = ServiceLocator.get<SettingsModel>();
+      debugPrint('[UI] SettingsModel obtained successfully');
       
-      // Business services
-      ChangeNotifierProvider<PresetsService>.value(
-        value: ServiceLocator.get<PresetsService>(),
-      ),
-    ];
+      debugPrint('[UI] Getting TagManager from ServiceLocator...');
+      final tagManager = ServiceLocator.get<TagManager>();
+      debugPrint('[UI] TagManager obtained successfully');
+      
+      debugPrint('[UI] Getting PresetsService from ServiceLocator...');
+      final presetsService = ServiceLocator.get<PresetsService>();
+      debugPrint('[UI] PresetsService obtained successfully');
+      
+      final providers = [
+        // Core services
+        ChangeNotifierProvider<FeatureGate>.value(
+          value: featureGate,
+        ),
+        
+        // Data models
+        ChangeNotifierProvider<SettingsModel>.value(
+          value: settingsModel,
+        ),
+        ChangeNotifierProvider<TagManager>.value(
+          value: tagManager,
+        ),
+        
+        // Business services
+        ChangeNotifierProvider<PresetsService>.value(
+          value: presetsService,
+        ),
+      ];
+      
+      debugPrint('[UI] All providers created successfully, count: ${providers.length}');
+      return providers;
+    } catch (e, stackTrace) {
+      debugPrint('[UI] Error building providers: $e');
+      debugPrint('[UI] Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 }
 

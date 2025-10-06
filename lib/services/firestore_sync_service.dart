@@ -16,9 +16,7 @@ import 'package:fermentacraft/services/firestore_user.dart';
 import 'package:fermentacraft/utils/sanitize.dart';
 import '../utils/boxes.dart';
 import '../models/batch_model.dart';
-import '../models/inventory_item.dart';
 import '../models/recipe_model.dart';
-import '../models/shopping_list_item.dart';
 import '../models/tag.dart';
 import '../utils/data_management.dart';
 import '../utils/app_logger.dart';
@@ -70,19 +68,21 @@ class FirestoreSyncService {
     if (uid != null) _resumeForUid(uid);
   }
 
-bool get _allowSyncByPlan =>
-    FeatureGate.instance.allowSync && !LocalModeService.instance.isLocalOnly;  bool get _signedIn => _uid != null;
-  bool get _canSync => 
-    _enabled && 
-    _signedIn && 
-    _allowSyncByPlan && 
-    _startupSyncComplete && 
-    !_emergencyBrakeActive;
+  bool get _allowSyncByPlan =>
+      FeatureGate.instance.allowSync && !LocalModeService.instance.isLocalOnly;
+  bool get _signedIn => _uid != null;
+  bool get _canSync =>
+      _enabled &&
+      _signedIn &&
+      _allowSyncByPlan &&
+      _startupSyncComplete &&
+      !_emergencyBrakeActive;
 
   void _debugWhyCantSync([String where = '']) {
     assert(() {
       debugPrint('[Sync] blocked @ $where '
-          'enabled=$_enabled signedIn=$_signedIn allowSyncByPlan=$_allowSyncByPlan');
+          'enabled=$_enabled signedIn=$_signedIn allowSyncByPlan=$_allowSyncByPlan '
+          'startupComplete=$_startupSyncComplete emergencyBrake=$_emergencyBrakeActive');
       return true;
     }());
   }
@@ -112,7 +112,9 @@ bool get _allowSyncByPlan =>
     if (!_enabled) return 'Sync disabled by user';
     if (!_signedIn) return 'Not signed in';
     if (LocalModeService.instance.isLocalOnly) return 'Local mode active';
-    if (!FeatureGate.instance.allowSync) return 'Plan does not include sync (${FeatureGate.instance.plan.name})';
+    if (!FeatureGate.instance.allowSync) {
+      return 'Plan does not include sync (${FeatureGate.instance.plan.name})';
+    }
     return 'Unknown reason';
   }
 
@@ -141,7 +143,7 @@ bool get _allowSyncByPlan =>
   // Prevent excessive writes - track recent write attempts
   final Map<String, int> _recentWrites = {};
   final Duration _writeThrottle = const Duration(seconds: 1);
-  
+
   // Emergency brake for runaway sync - ULTRA AGGRESSIVE
   int _rapidWriteCount = 0;
   DateTime? _rapidWriteWindowStart;
@@ -161,7 +163,7 @@ bool get _allowSyncByPlan =>
   // Prevent echo loops - add with timer-based cleanup
   void _addEchoSuppressionWithTimeout(String key) {
     _suppressLocalEcho.add(key);
-    
+
     // Also add a timer to automatically remove it after a few seconds
     // in case the immediate remove() in the Hive watcher fails
     _echoSuppressionTimers[key]?.cancel();
@@ -174,9 +176,9 @@ bool get _allowSyncByPlan =>
   // Clean old entries from recent writes map to prevent memory bloat
   void _cleanupRecentWrites() {
     final now = DateTime.now().millisecondsSinceEpoch;
-    _recentWrites.removeWhere((key, timestamp) => 
-      (now - timestamp) > const Duration(minutes: 5).inMilliseconds);
-      
+    _recentWrites.removeWhere((key, timestamp) =>
+        (now - timestamp) > const Duration(minutes: 5).inMilliseconds);
+
     // More aggressive cleanup - limit the size of all sync maps
     if (_lastSentJson.length > 100) {
       final entries = _lastSentJson.entries.toList();
@@ -186,7 +188,7 @@ bool get _allowSyncByPlan =>
         _lastSentJson[entry.key] = entry.value;
       }
     }
-    
+
     // Clear old pending payloads
     if (_pendingPayloads.length > 50) {
       _pendingPayloads.clear();
@@ -301,7 +303,7 @@ bool get _allowSyncByPlan =>
     // Auth: sign-in/out & user switching
     _authSub ??= FirebaseAuth.instance.authStateChanges().listen((user) async {
       final newUid = user?.uid;
-      
+
       if (kDebugMode) {
         print('[SYNC] === AUTH STATE CHANGE ===');
         print('[SYNC] New User: ${user?.uid}');
@@ -312,32 +314,43 @@ bool get _allowSyncByPlan =>
         print('[SYNC] Has Refresh Token: ${user?.refreshToken != null}');
         print('[SYNC] ================================');
       }
-      
+
       if (newUid == null) {
         if (kDebugMode) print('[SYNC] User signed out, stopping sync');
         await _stop();
         await _clearLocalUserData();
         return;
       }
-      
+
       // Force token refresh if token appears invalid
       if (user != null && user.refreshToken == null) {
-        if (kDebugMode) print('[SYNC] Forcing auth token refresh on auth state change...');
+        if (kDebugMode) {
+          print('[SYNC] Forcing auth token refresh on auth state change...');
+        }
         try {
           await user.getIdToken(true);
-          if (kDebugMode) print('[SYNC] ✅ Auth token refreshed successfully on auth state change');
+          if (kDebugMode) {
+            print(
+                '[SYNC] ✅ Auth token refreshed successfully on auth state change');
+          }
         } catch (refreshError) {
-          if (kDebugMode) print('[SYNC] ❌ Auth token refresh failed on auth state change: $refreshError');
+          if (kDebugMode) {
+            print(
+                '[SYNC] ❌ Auth token refresh failed on auth state change: $refreshError');
+          }
         }
       }
-      
+
       if (_uid != null && _uid != newUid) {
-        if (kDebugMode) print('[SYNC] User switched from $_uid to $newUid, restarting sync');
+        if (kDebugMode) {
+          print('[SYNC] User switched from $_uid to $newUid, restarting sync');
+        }
         await _stop();
         await _clearLocalUserData();
       }
       if (kDebugMode) print('[SYNC] Starting sync for user: $newUid');
-      await _start(newUid);
+      // Fire-and-forget start so heavy bootstrap work doesn't block auth stream / UI
+      _start(newUid);
     });
 
     // Connectivity: best-effort flush when network returns
@@ -349,7 +362,8 @@ bool get _allowSyncByPlan =>
           await _bootstrapPushLocal(_uid!);
         } catch (e) {
           if (kDebugMode) {
-            print('[ERROR] Connectivity sync failed: Failed to ensure user document: $e');
+            print(
+                '[ERROR] Connectivity sync failed: Failed to ensure user document: $e');
           }
         }
       }
@@ -361,39 +375,220 @@ bool get _allowSyncByPlan =>
 
   void _onGateChanged() {
     if (!_signedIn) return;
-    if (_canSync) {
+    // Check if we can sync, but don't require startupComplete since plan changes can happen during bootstrap
+    if (_enabled && _signedIn && _allowSyncByPlan && !_emergencyBrakeActive) {
       _resumeForUid(_uid!);
     } else {
       _pauseWatchers();
     }
   }
 
+  /// Wait for essential Hive boxes to be available before starting sync operations
+  /// Returns true if at least some critical boxes are available
+  Future<bool> _waitForBoxAvailability(
+      {int maxAttempts = 3,
+      Duration delay = const Duration(milliseconds: 200)}) async {
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      int availableBoxes = 0;
+      int totalBoxes = _userBoxNames.length + 1; // +1 for settings
+
+      for (final boxName in _userBoxNames) {
+        if (DataManagementService.isBoxAvailable(boxName)) {
+          availableBoxes++;
+        }
+      }
+
+      // Also check settings box
+      if (DataManagementService.isBoxAvailable('settings')) {
+        availableBoxes++;
+      }
+
+      // If we have at least half the boxes available, we can proceed
+      if (availableBoxes >= (totalBoxes / 2).ceil()) {
+        print(
+            '[SYNC] $availableBoxes/$totalBoxes boxes available - proceeding with sync');
+        return true;
+      }
+
+      print(
+          '[SYNC] Only $availableBoxes/$totalBoxes boxes available (attempt $attempt/$maxAttempts)');
+
+      // Try to recover boxes if they're not available
+      if (attempt < maxAttempts) {
+        try {
+          print('[SYNC] Attempting to recover essential boxes...');
+          // Try to reopen critical boxes
+          for (final boxName in [
+            'tags',
+            'recipes',
+            'batches',
+            'inventory',
+            'shopping_list',
+            'settings'
+          ]) {
+            if (!Hive.isBoxOpen(boxName)) {
+              print('[SYNC] Reopening box: $boxName');
+              await DataManagementService.openTypedBox(boxName);
+            }
+          }
+          print('[SYNC] Box recovery attempted');
+        } catch (e) {
+          print('[SYNC] Box recovery failed: $e');
+        }
+        await Future.delayed(delay);
+      }
+    }
+
+    print(
+        '[SYNC] Proceeding with limited box availability - sync may be restricted');
+    return true; // Allow app to continue even with limited box availability
+  }
+
   Future<void> _start(String uid) async {
     _uid = uid;
     if (_started) return;
+
+    // Ensure sync is enabled for this user
+    enable();
+
     if (!_enabled || !_signedIn || !_allowSyncByPlan) {
       _debugWhyCantSync('_start');
       return;
     }
-    
+
     // Block sync during startup to prevent infinite loops
-    print('[SYNC] Starting sync service - disabling sync during initialization');
+    print(
+        '[SYNC] Starting sync service - disabling sync during initialization');
     _startupSyncComplete = false;
+
+    // Wait for Hive boxes to be available before starting sync
+    final boxesAvailable = await _waitForBoxAvailability();
+    if (!boxesAvailable) {
+      print(
+          '[SYNC] Starting with limited box availability - some features may be restricted');
+    }
+
     _started = true;
 
     // Ensure user document exists before attempting any sync operations
     try {
-      await FirestoreUser.instance.ensureUserDoc();
+      // Try to ensure users/{uid} exists but do NOT block startup on it.
+      // This avoids blocking the auth flow/UI if Firestore or token refresh
+      // are slow immediately after sign-in.
+      FirestoreUser.instance.ensureUserDoc().then((_) {
+        if (kDebugMode) print('[SYNC] ensureUserDoc succeeded (non-blocking)');
+      }).catchError((e, st) {
+        if (kDebugMode) {
+          print('[SYNC] ensureUserDoc failed (non-blocking): $e');
+        }
+        appLogger.warning(
+          'ensureUserDoc failed (non-blocking)',
+          category: LogCategory.sync,
+          operation: 'ensure_user_doc',
+          error: e,
+          userId: _uid,
+        );
+      });
+
+      // Mark started and attach lightweight watchers early so the app UI
+      // can proceed while a heavier bootstrap merge runs in the background.
+      _started = true;
+      for (final box in _userBoxNames) {
+        _attachHiveWatcher(uid, box);
+      }
+      for (final box in _userBoxNames) {
+        _attachFirestoreWatcher(uid, box);
+      }
+      _attachSettingsWatchers(uid);
+
+      // Run the bootstrap merge in the background with retries. This may
+      // be slow if boxes are not yet available; running this asynchronously
+      // prevents it from blocking the login/UI flow.
+      unawaited(Future(() async {
+        int retryAttempts = 0;
+        const maxRetries = 3;
+
+        while (retryAttempts < maxRetries) {
+          try {
+            await _bootstrapMerge(uid); // pull → push converge
+            break; // Success
+          } catch (e) {
+            if (e.toString().contains('Box not found') ||
+                e.toString().contains('Box has already been closed')) {
+              retryAttempts++;
+              print(
+                  '[SYNC] Bootstrap failed due to box issues (attempt $retryAttempts/$maxRetries): $e');
+
+              if (retryAttempts < maxRetries) {
+                // Wait for boxes to become available again
+                await Future.delayed(Duration(seconds: retryAttempts));
+                final boxesAvailable = await _waitForBoxAvailability();
+                if (!boxesAvailable) {
+                  print('[SYNC] Boxes still not available after retry');
+                  _started = false;
+                  return;
+                }
+              } else {
+                print('[SYNC] Max retries reached, giving up on bootstrap');
+                _started = false;
+                return;
+              }
+            } else {
+              // Non-box related error, don't retry
+              print('[SYNC] Bootstrap failed with non-box error: $e');
+              _started = false;
+              return;
+            }
+          }
+        }
+      }));
     } catch (e) {
       if (kDebugMode) {
-        print('[ERROR] FirestoreSync._start: Failed to ensure user document: $e');
+        print(
+            '[ERROR] FirestoreSync._start: Failed to ensure user document: $e');
       }
       // Don't start sync if we can't ensure the user document exists
       _started = false;
       return;
     }
 
-    await _bootstrapMerge(uid); // pull → push converge
+    // Bootstrap merge with retry on box availability issues
+    int retryAttempts = 0;
+    const maxRetries = 3;
+
+    while (retryAttempts < maxRetries) {
+      try {
+        await _bootstrapMerge(uid); // pull → push converge
+        break; // Success, exit retry loop
+      } catch (e) {
+        if (e.toString().contains('Box not found') ||
+            e.toString().contains('Box has already been closed')) {
+          retryAttempts++;
+          print(
+              '[SYNC] Bootstrap failed due to box issues (attempt $retryAttempts/$maxRetries): $e');
+
+          if (retryAttempts < maxRetries) {
+            // Wait for boxes to become available again
+            await Future.delayed(Duration(seconds: retryAttempts));
+            final boxesAvailable = await _waitForBoxAvailability();
+            if (!boxesAvailable) {
+              print('[SYNC] Boxes still not available after retry');
+              _started = false;
+              return;
+            }
+          } else {
+            print('[SYNC] Max retries reached, giving up on bootstrap');
+            _started = false;
+            return;
+          }
+        } else {
+          // Non-box related error, don't retry
+          print('[SYNC] Bootstrap failed with non-box error: $e');
+          _started = false;
+          return;
+        }
+      }
+    }
     for (final box in _userBoxNames) {
       _attachHiveWatcher(uid, box);
     }
@@ -426,14 +621,17 @@ bool get _allowSyncByPlan =>
 
   Future<void> _resumeForUid(String uid) async {
     await _pauseWatchers();
-    if (!_canSync) {
+    if (!_enabled || !_signedIn || !_allowSyncByPlan || _emergencyBrakeActive) {
       _debugWhyCantSync('_resumeForUid');
       return;
     }
     await Future<void>.delayed(const Duration(milliseconds: 50));
     _started = true;
 
-    await _bootstrapMerge(uid);
+    // Only do bootstrap merge if startup is complete
+    if (_startupSyncComplete) {
+      await _bootstrapMerge(uid);
+    }
     for (final boxName in _userBoxNames) {
       _attachHiveWatcher(uid, boxName);
     }
@@ -462,7 +660,7 @@ bool get _allowSyncByPlan =>
     _debouncers.clear();
     _pendingPayloads.clear();
     _recentWrites.clear();
-    
+
     // Clean up echo suppression timers
     for (final t in _echoSuppressionTimers.values) {
       t.cancel();
@@ -489,19 +687,19 @@ bool get _allowSyncByPlan =>
       _debugWhyCantSync('_bootstrapMerge');
       return;
     }
-    
+
     // Cleanup old entries to prevent memory buildup
     _cleanupRecentWrites();
-    
+
     print('[SYNC] Bootstrap pull starting');
     await _bootstrapPullRemote(uid);
-    
+
     print('[SYNC] Bootstrap push starting');
     await _bootstrapPushLocal(uid);
-    
+
     // Enable normal sync after bootstrap completes with delay
     print('[SYNC] Bootstrap completed - enabling normal sync after delay');
-    
+
     // Add a delay to prevent immediate echo loops
     Timer(const Duration(seconds: 5), () {
       _startupSyncComplete = true;
@@ -527,7 +725,8 @@ bool get _allowSyncByPlan =>
       }
     } catch (e) {
       if (kDebugMode) {
-        print('[ERROR] _bootstrapPullRemote: Failed to ensure user document: $e');
+        print(
+            '[ERROR] _bootstrapPullRemote: Failed to ensure user document: $e');
       }
       return;
     }
@@ -541,7 +740,7 @@ bool get _allowSyncByPlan =>
         if (kDebugMode) {
           print('[SYNC] Found ${snap.docs.length} documents in $boxName');
         }
-        
+
         for (final doc in snap.docs) {
           try {
             await _applyRemoteDoc(boxName, doc.id, doc.data());
@@ -550,7 +749,8 @@ bool get _allowSyncByPlan =>
             }
           } catch (e, st) {
             if (kDebugMode) {
-              print('[ERROR] bootstrapPull apply fail [$boxName/${doc.id}]: $e\n$st');
+              print(
+                  '[ERROR] bootstrapPull apply fail [$boxName/${doc.id}]: $e\n$st');
             }
             appLogger.warning(
               'Bootstrap pull apply failed',
@@ -620,13 +820,26 @@ bool get _allowSyncByPlan =>
       await FirestoreUser.instance.ensureUserDoc();
     } catch (e) {
       if (kDebugMode) {
-        print('[ERROR] _bootstrapPushLocal: Failed to ensure user document: $e');
+        print(
+            '[ERROR] _bootstrapPushLocal: Failed to ensure user document: $e');
       }
       return;
     }
 
     for (final boxName in _userBoxNames) {
       try {
+        // Check if box is available before accessing
+        if (!DataManagementService.isBoxAvailable(boxName)) {
+          appLogger.warning(
+            'Box not available for bootstrap push',
+            category: LogCategory.sync,
+            operation: 'bootstrap_push',
+            details: {'box_name': boxName},
+            userId: _uid,
+          );
+          continue;
+        }
+
         final box = DataManagementService.getTypedBox(boxName);
         for (final key in box.keys) {
           try {
@@ -634,7 +847,8 @@ bool get _allowSyncByPlan =>
             if (value == null) continue;
             final json = (value as dynamic).toJson() as JsonMap;
             final id = key.toString();
-            await _pushLocalDocWithId(uid, boxName, id, json, sourceObject: value);
+            await _pushLocalDocWithId(uid, boxName, id, json,
+                sourceObject: value);
           } catch (e, st) {
             if (kDebugMode) {
               print('bootstrapPush item fail [$boxName,$key]: $e\n$st');
@@ -709,7 +923,7 @@ bool get _allowSyncByPlan =>
         }
         final dynamic val = box.get(event.key);
         if (val == null) return;
-        
+
         final json = (val as dynamic).toJson() as JsonMap;
 
         // Debounce / coalesce the latest payload per-doc
@@ -721,7 +935,8 @@ bool get _allowSyncByPlan =>
             final latest = _pendingPayloads.remove(k);
             _debouncers.remove(k);
             if (latest == null) return;
-            await _pushLocalDocWithId(uid, boxName, id, latest, sourceObject: val);
+            await _pushLocalDocWithId(uid, boxName, id, latest,
+                sourceObject: val);
           } catch (e, st) {
             if (kDebugMode) {
               print('Hive debounce flush fail [$boxName,$id]: $e\n$st');
@@ -854,28 +1069,6 @@ bool get _allowSyncByPlan =>
 
   // -------------------------------- Helpers ----------------------------------
 
-  Future<Box> _ensureTypedOpen(String name) {
-    if (Hive.isBoxOpen(name)) {
-      // Return the already-open *typed* box
-      return Future.value(DataManagementService.getTypedBox(name));
-    }
-    // Open with the correct generic type
-    switch (name) {
-      case Boxes.recipes:
-        return Hive.openBox<RecipeModel>(Boxes.recipes);
-      case Boxes.batches:
-        return Hive.openBox<BatchModel>(Boxes.batches);
-      case Boxes.inventory:
-        return Hive.openBox<InventoryItem>(Boxes.inventory);
-      case Boxes.shoppingList:
-        return Hive.openBox<ShoppingListItem>(Boxes.shoppingList);
-      case Boxes.tags:
-        return Hive.openBox<Tag>(Boxes.tags);
-      default:
-        return Hive.openBox(name);
-    }
-  }
-
   Future<void> _pushLocalDocWithId(
     String uid,
     String boxName,
@@ -898,25 +1091,28 @@ bool get _allowSyncByPlan =>
     final writeKey = '$boxName::$cleanId';
     final writeTime = DateTime.now().millisecondsSinceEpoch;
     final lastWrite = _recentWrites[writeKey];
-    if (lastWrite != null && (writeTime - lastWrite) < _writeThrottle.inMilliseconds) {
+    if (lastWrite != null &&
+        (writeTime - lastWrite) < _writeThrottle.inMilliseconds) {
       if (kDebugMode) {
         print('[SYNC] Throttling write for $writeKey (too soon)');
       }
       return;
     }
     _recentWrites[writeKey] = writeTime;
-    
+
     // Emergency brake for rapid writes
     final currentTime = DateTime.now();
-    if (_rapidWriteWindowStart == null || currentTime.difference(_rapidWriteWindowStart!) > _rapidWriteWindow) {
+    if (_rapidWriteWindowStart == null ||
+        currentTime.difference(_rapidWriteWindowStart!) > _rapidWriteWindow) {
       _rapidWriteWindowStart = currentTime;
       _rapidWriteCount = 0;
     }
-    
+
     _rapidWriteCount++;
     if (_rapidWriteCount > _maxRapidWrites) {
       if (kDebugMode) {
-        print('[SYNC] EMERGENCY BRAKE: Too many rapid writes ($_rapidWriteCount), disabling sync temporarily');
+        print(
+            '[SYNC] EMERGENCY BRAKE: Too many rapid writes ($_rapidWriteCount), disabling sync temporarily');
       }
       _emergencyBrakeActive = true;
       // Re-enable after 10 minutes
@@ -953,10 +1149,12 @@ bool get _allowSyncByPlan =>
       } catch (_) {}
 
       final refsKnown = refsList != null;
-      final refsNonEmpty = refsKnown && (refsList is Iterable) && refsList.isNotEmpty;
+      final refsNonEmpty =
+          refsKnown && (refsList is Iterable) && refsList.isNotEmpty;
 
       final legacyKnown = legacyList != null;
-      final legacyNonEmpty = legacyKnown && (legacyList is Iterable) && legacyList.isNotEmpty;
+      final legacyNonEmpty =
+          legacyKnown && (legacyList is Iterable) && legacyList.isNotEmpty;
 
       final plainKnown = plainList != null;
       final plainNonEmpty = (plainList?.isNotEmpty ?? false);
@@ -980,8 +1178,7 @@ bool get _allowSyncByPlan =>
       final payloadExplicitlyEmpty =
           json.containsKey('tags') && (rawTags is List) && rawTags.isEmpty;
 
-      final canonicalKnownEmpty =
-          (!refsKnown || !refsNonEmpty) &&
+      final canonicalKnownEmpty = (!refsKnown || !refsNonEmpty) &&
           (!legacyKnown || !legacyNonEmpty) &&
           (!plainKnown || !plainNonEmpty);
 
@@ -989,16 +1186,15 @@ bool get _allowSyncByPlan =>
           lastSentHadTags && payloadExplicitlyEmpty && canonicalKnownEmpty;
 
       // Only write tags when we truly mean to; otherwise omit to preserve server value.
-      final hasLocalTags =
-          (rawTags is List && rawTags.isNotEmpty) ||
-              refsNonEmpty ||
-              legacyNonEmpty ||
-              plainNonEmpty;
+      final hasLocalTags = (rawTags is List && rawTags.isNotEmpty) ||
+          refsNonEmpty ||
+          legacyNonEmpty ||
+          plainNonEmpty;
 
       if (hasLocalTags || shouldExplicitClear) {
-        final preferred =
-            (rawTags != null) ? rawTags : (plainList ?? const []);
-        json['tags'] = _normalizeTagsForJson(sourceObject: sourceObject, rawTags: preferred);
+        final preferred = (rawTags != null) ? rawTags : (plainList ?? const []);
+        json['tags'] = _normalizeTagsForJson(
+            sourceObject: sourceObject, rawTags: preferred);
       } else {
         json.remove('tags');
       }
@@ -1037,19 +1233,21 @@ bool get _allowSyncByPlan =>
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    
+
     if (kDebugMode) {
       print('[SYNC] === FIRESTORE WRITE ATTEMPT ===');
       print('[SYNC] UID: $uid');
       print('[SYNC] Collection: $boxName');
       print('[SYNC] Doc ID: $cleanId');
-      print('[SYNC] Firebase Auth User: ${FirebaseAuth.instance.currentUser?.uid}');
-      print('[SYNC] UIDs Match: ${FirebaseAuth.instance.currentUser?.uid == uid}');
+      print(
+          '[SYNC] Firebase Auth User: ${FirebaseAuth.instance.currentUser?.uid}');
+      print(
+          '[SYNC] UIDs Match: ${FirebaseAuth.instance.currentUser?.uid == uid}');
       print('[SYNC] Can Sync: $_canSync');
       print('[SYNC] Path: users/$uid/$boxName/$cleanId');
       print('[SYNC] ===================================');
     }
-    
+
     try {
       final firestoreResult = await syncRetry.retryFirestoreOperation(
         operation: () => FirestorePaths.doc(uid, boxName, cleanId).set({
@@ -1069,7 +1267,7 @@ bool get _allowSyncByPlan =>
           'device_updated_at': now,
         },
       );
-      
+
       if (firestoreResult.isSuccess) {
         _lastSentJson[key] = s; // only mark after success
         await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
@@ -1077,7 +1275,8 @@ bool get _allowSyncByPlan =>
         // On failure, don't poison the equality cache
         _lastSentJson.remove(key);
         if (kDebugMode) {
-          print('Firestore set failed [$boxName/$cleanId]: ${firestoreResult.error}');
+          print(
+              'Firestore set failed [$boxName/$cleanId]: ${firestoreResult.error}');
         }
         SyncLogger.syncError(
           operation: 'firestore_set',
@@ -1085,7 +1284,7 @@ bool get _allowSyncByPlan =>
           userId: _uid,
           context: {'box_name': boxName, 'clean_id': cleanId},
         );
-        
+
         // Handle user-visible error feedback
         SyncErrorHandler.instance.handleRetryError(
           operationKey: 'set_${boxName}_$cleanId',
@@ -1097,7 +1296,7 @@ bool get _allowSyncByPlan =>
             'device_updated_at': now,
           },
         );
-        
+
         throw firestoreResult.error!;
       }
     } catch (e, st) {
@@ -1143,7 +1342,7 @@ bool get _allowSyncByPlan =>
         'operation': 'mark_deleted',
       },
     );
-    
+
     if (deleteResult.isSuccess) {
       await SyncMetaStore.setLastSyncedNow(boxName, cleanId, now);
       // Also forget lastSent so a re-create won't be blocked by equality cache
@@ -1182,6 +1381,18 @@ bool get _allowSyncByPlan =>
         return;
       }
 
+      // Check if box is available before accessing
+      if (!DataManagementService.isBoxAvailable(boxName)) {
+        appLogger.warning(
+          'Box not available for sync operation',
+          category: LogCategory.sync,
+          operation: 'apply_remote_doc',
+          details: {'box_name': boxName, 'operation': 'box_check'},
+          userId: _uid,
+        );
+        return;
+      }
+
       final box = DataManagementService.getTypedBox(boxName);
 
       // If remote is marked deleted, mirror locally
@@ -1192,7 +1403,7 @@ bool get _allowSyncByPlan =>
           userId: _uid,
           context: {'box_name': boxName, 'id': id, 'reason': 'remote_deleted'},
         );
-        
+
         if (deleteResult.isSuccess) {
           await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
           _lastSentJson.remove(_keyOf(boxName, id));
@@ -1259,11 +1470,13 @@ bool get _allowSyncByPlan =>
           localHasRefs = (localObj?.tagRefs as dynamic)?.isNotEmpty == true;
         } catch (_) {}
         try {
-          localHasLegacy = (localObj?.tagsLegacy as dynamic)?.isNotEmpty == true;
+          localHasLegacy =
+              (localObj?.tagsLegacy as dynamic)?.isNotEmpty == true;
         } catch (_) {}
         try {
           localTagsArray = (localObj as dynamic)?.tags as List?;
-          localHasTagsArray = localTagsArray != null && localTagsArray.isNotEmpty;
+          localHasTagsArray =
+              localTagsArray != null && localTagsArray.isNotEmpty;
         } catch (_) {}
 
         // Last-sent fallback (helps the very first pull after a write)
@@ -1283,9 +1496,13 @@ bool get _allowSyncByPlan =>
         } catch (_) {}
 
         if (!remoteHasTags &&
-            (localHasRefs || localHasLegacy || localHasTagsArray || lastSentHadTags)) {
-          final chosenRaw =
-              localHasTagsArray ? localTagsArray : (lastSentHadTags ? lastSentTags : null);
+            (localHasRefs ||
+                localHasLegacy ||
+                localHasTagsArray ||
+                lastSentHadTags)) {
+          final chosenRaw = localHasTagsArray
+              ? localTagsArray
+              : (lastSentHadTags ? lastSentTags : null);
           clean['tags'] =
               _normalizeTagsForJson(sourceObject: localObj, rawTags: chosenRaw);
         } else {
@@ -1363,7 +1580,8 @@ bool get _allowSyncByPlan =>
             final tagBox = Hive.box<Tag>(Boxes.tags);
             final dyn = obj as dynamic;
             if (dyn.setTagsFromBox != null) {
-              await dyn.setTagsFromBox(dyn.tags, tagBox); // calls save() if implemented
+              await dyn.setTagsFromBox(
+                  dyn.tags, tagBox); // calls save() if implemented
             }
           } catch (_) {}
         });
@@ -1381,7 +1599,7 @@ bool get _allowSyncByPlan =>
           'device_updated_at': deviceUpdatedAt,
         },
       );
-      
+
       if (putResult.isSuccess) {
         await SyncMetaStore.setLastSyncedNow(boxName, id, deviceUpdatedAt);
         _lastSentJson[k] = jsonEncode(clean);
@@ -1396,7 +1614,7 @@ bool get _allowSyncByPlan =>
             'device_updated_at': deviceUpdatedAt,
           },
         );
-        
+
         // Handle user-visible error feedback
         SyncErrorHandler.instance.handleRetryError(
           operationKey: 'put_${boxName}_$id',
@@ -1408,7 +1626,7 @@ bool get _allowSyncByPlan =>
             'device_updated_at': deviceUpdatedAt,
           },
         );
-        
+
         // Don't update sync metadata if put failed
         throw putResult.error!;
       }
@@ -1427,6 +1645,18 @@ bool get _allowSyncByPlan =>
 
   Future<void> _applyRemoteSettings(JsonMap data) async {
     try {
+      // Check if settings box is available
+      if (!DataManagementService.isBoxAvailable('settings')) {
+        appLogger.warning(
+          'Settings box not available for sync',
+          category: LogCategory.sync,
+          operation: 'apply_remote_settings',
+          details: {'operation': 'settings_sync'},
+          userId: _uid,
+        );
+        return;
+      }
+
       final settings = Hive.box('settings');
       final map = Map<String, dynamic>.from(data)..remove('_meta');
 
@@ -1449,6 +1679,18 @@ bool get _allowSyncByPlan =>
   }
 
   Map<String, dynamic> _collectSettingsAsMap() {
+    // Check if settings box is available
+    if (!DataManagementService.isBoxAvailable('settings')) {
+      appLogger.warning(
+        'Settings box not available for collection',
+        category: LogCategory.sync,
+        operation: 'collect_settings',
+        details: {'operation': 'settings_collection'},
+        userId: _uid,
+      );
+      return <String, dynamic>{};
+    }
+
     final settings = Hive.box('settings');
     final result = <String, dynamic>{};
     for (final key in settings.keys) {
@@ -1458,6 +1700,7 @@ bool get _allowSyncByPlan =>
   }
 
   /// Clear all user-scoped local boxes when logging out or switching users.
+  /// Note: Boxes are cleared but kept open to prevent app functionality issues.
   Future<void> _clearLocalUserData() async {
     for (final s in _hiveSubs.values) {
       await s.cancel();
@@ -1466,16 +1709,18 @@ bool get _allowSyncByPlan =>
 
     try {
       for (final boxName in _userBoxNames) {
-        final wasOpen = Hive.isBoxOpen(boxName);
-        final box = await _ensureTypedOpen(boxName);
-        await box.clear();
-        if (!wasOpen) {
-          await box.close();
+        if (Hive.isBoxOpen(boxName)) {
+          final box = Hive.box(boxName);
+          await box.clear();
+          if (kDebugMode) print('[SYNC] Cleared box: $boxName');
+        } else {
+          if (kDebugMode) print('[SYNC] Box not open for clearing: $boxName');
         }
       }
 
       if (Hive.isBoxOpen('sync_meta')) {
         await Hive.box('sync_meta').clear();
+        if (kDebugMode) print('[SYNC] Cleared sync_meta box');
       }
 
       _suppressLocalEcho.clear();
@@ -1522,7 +1767,8 @@ bool get _allowSyncByPlan =>
         final box = DataManagementService.getTypedBox(boxName);
         final sourceObject = box.get(id);
         if (sourceObject == null) continue;
-        await _pushLocalDocWithId(uid, boxName, id, e.value, sourceObject: sourceObject);
+        await _pushLocalDocWithId(uid, boxName, id, e.value,
+            sourceObject: sourceObject);
       } catch (err, st) {
         if (kDebugMode) {
           print('flushPending fail [$boxName/$id]: $err\n$st');
@@ -1541,18 +1787,19 @@ bool get _allowSyncByPlan =>
 
   Future<void> forceSync() async {
     final uid = _uid;
-    
+
     // Debug authentication and permissions state
     if (kDebugMode) {
       final currentUser = FirebaseAuth.instance.currentUser;
       final premiumStatus = FeatureGate.instance.allowSync;
       final localMode = LocalModeService.instance.isLocalOnly;
-      
+
       print('[SYNC] === FORCE SYNC DEBUG INFO ===');
       print('[SYNC] Service UID: $uid');
       print('[SYNC] Firebase Current User: ${currentUser?.uid}');
       print('[SYNC] Firebase User Email: ${currentUser?.email}');
-      print('[SYNC] Firebase User Auth Token Valid: ${currentUser?.refreshToken != null}');
+      print(
+          '[SYNC] Firebase User Auth Token Valid: ${currentUser?.refreshToken != null}');
       print('[SYNC] Sync Enabled: $_enabled');
       print('[SYNC] Signed In: $_signedIn');
       print('[SYNC] Premium Status (allowSync): $premiumStatus');
@@ -1562,7 +1809,7 @@ bool get _allowSyncByPlan =>
       print('[SYNC] UID Match: ${uid == currentUser?.uid}');
       print('[SYNC] =====================================');
     }
-    
+
     if (uid == null || !_canSync) {
       _debugWhyCantSync('forceSync');
       if (kDebugMode) {
@@ -1625,19 +1872,23 @@ bool get _allowSyncByPlan =>
   Future<void> _testFirestoreWrite(String uid) async {
     try {
       if (kDebugMode) print('[SYNC] Testing Firestore write permissions...');
-      
+
       // First, try to refresh the auth token if it's invalid
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null && currentUser.refreshToken == null) {
-        if (kDebugMode) print('[SYNC] Auth token invalid, attempting refresh...');
+        if (kDebugMode) {
+          print('[SYNC] Auth token invalid, attempting refresh...');
+        }
         try {
           await currentUser.getIdToken(true); // force refresh
           if (kDebugMode) print('[SYNC] ✅ Auth token refreshed successfully');
         } catch (refreshError) {
-          if (kDebugMode) print('[SYNC] ❌ Auth token refresh failed: $refreshError');
+          if (kDebugMode) {
+            print('[SYNC] ❌ Auth token refresh failed: $refreshError');
+          }
         }
       }
-      
+
       final testDoc = FirestorePaths.doc(uid, 'test', 'connectivity_test');
       await testDoc.set({
         'test': true,
@@ -1645,13 +1896,12 @@ bool get _allowSyncByPlan =>
         'uid': uid,
         'testType': 'connectivity_check',
       });
-      
+
       if (kDebugMode) print('[SYNC] ✅ Firestore write test PASSED');
-      
+
       // Clean up test document
       await testDoc.delete();
       if (kDebugMode) print('[SYNC] ✅ Test document cleaned up');
-      
     } catch (e, st) {
       if (kDebugMode) {
         print('[SYNC] ❌ Firestore write test FAILED: $e');
@@ -1700,7 +1950,8 @@ bool get _allowSyncByPlan =>
       },
     });
 
-    await FirestorePaths.doc(uid, Boxes.batches, id).set(payload, SetOptions(merge: true));
+    await FirestorePaths.doc(uid, Boxes.batches, id)
+        .set(payload, SetOptions(merge: true));
 
     // cache last-sent JSON (so we can skip identical re-sends)
     _lastSentJson[_keyOf(Boxes.batches, id)] = jsonEncode(json);

@@ -41,9 +41,24 @@ class RecipeRepository implements BaseRepository<RecipeModel> {
   /// Initialize the repository - must be called before use
   Future<Result<void, Exception>> initialize() async {
     try {
-      _timestampBox = await Hive.openBox<int>('recipe_timestamps');
-      _recipeBox = await Hive.openBox<RecipeModel>(_boxName);
-      _syncBox = await Hive.openBox<Map<dynamic, dynamic>>(_syncBoxName);
+      // Check if boxes are already open
+      if (Hive.isBoxOpen('recipe_timestamps')) {
+        _timestampBox = Hive.box<int>('recipe_timestamps');
+      } else {
+        _timestampBox = await Hive.openBox<int>('recipe_timestamps');
+      }
+      
+      if (Hive.isBoxOpen(_boxName)) {
+        _recipeBox = Hive.box<RecipeModel>(_boxName);
+      } else {
+        _recipeBox = await Hive.openBox<RecipeModel>(_boxName);
+      }
+      
+      if (Hive.isBoxOpen(_syncBoxName)) {
+        _syncBox = Hive.box<Map<dynamic, dynamic>>(_syncBoxName);
+      } else {
+        _syncBox = await Hive.openBox<Map<dynamic, dynamic>>(_syncBoxName);
+      }
       
       _lastSyncTime = _getSavedSyncTime();
       _isInitialized = true;
@@ -72,6 +87,11 @@ class RecipeRepository implements BaseRepository<RecipeModel> {
   
   void _emitAllRecipes() async {
     try {
+      if (!_recipeBox.isOpen) {
+        log('Recipe box is closed, cannot emit recipes', name: 'RecipeRepository');
+        return;
+      }
+      
       final recipes = _recipeBox.values.toList();
       _recipesController.add(Success(recipes));
       

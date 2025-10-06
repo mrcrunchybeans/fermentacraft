@@ -41,9 +41,24 @@ class BatchRepository implements BaseRepository<BatchModel> {
   /// Initialize the repository - must be called before use
   Future<Result<void, Exception>> initialize() async {
     try {
-          _timestampBox = await Hive.openBox<int>('batch_timestamps');
-    _batchBox = await Hive.openBox<BatchModel>(_boxName);
-      _syncBox = await Hive.openBox<Map<dynamic, dynamic>>(_syncBoxName);
+      // Check if boxes are already open
+      if (Hive.isBoxOpen(_boxName)) {
+        _batchBox = Hive.box<BatchModel>(_boxName);
+      } else {
+        _batchBox = await Hive.openBox<BatchModel>(_boxName);
+      }
+      
+      if (Hive.isBoxOpen(_syncBoxName)) {
+        _syncBox = Hive.box<Map<dynamic, dynamic>>(_syncBoxName);
+      } else {
+        _syncBox = await Hive.openBox<Map<dynamic, dynamic>>(_syncBoxName);
+      }
+      
+      if (Hive.isBoxOpen('batch_timestamps')) {
+        _timestampBox = Hive.box<int>('batch_timestamps');
+      } else {
+        _timestampBox = await Hive.openBox<int>('batch_timestamps');
+      }
       
       _lastSyncTime = _getSavedSyncTime();
       _isInitialized = true;
@@ -71,6 +86,11 @@ class BatchRepository implements BaseRepository<BatchModel> {
   
   void _emitAllBatches() async {
     try {
+      if (!_batchBox.isOpen) {
+        log('Batch box is closed, cannot emit batches', name: 'BatchRepository');
+        return;
+      }
+      
       final batches = _batchBox.values.toList();
       _batchesController.add(Success(batches));
       

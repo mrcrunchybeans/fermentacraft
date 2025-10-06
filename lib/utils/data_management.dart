@@ -1,7 +1,7 @@
 // lib/utils/data_management.dart
 import 'dart:convert';
 import 'package:fermentacraft/utils/sanitize.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -47,23 +47,118 @@ class DataManagementService {
     return ctor;
   }
 
-  // Helper to get a typed Hive box that is ALREADY OPEN.
+  // Helper to get a typed Hive box with safety checks and automatic reopening
   static Box getTypedBox(String name) {
+    // First check if the box is open
+    if (!Hive.isBoxOpen(name)) {
+      if (kDebugMode) {
+        print('[HIVE_DEBUG] Box "$name" is not open when getTypedBox called');
+      }
+      throw HiveError('Box not found. Did you forget to call Hive.openBox()?');
+    }
+    
     switch (name) {
       case Boxes.recipes:
-        return Hive.box<RecipeModel>(Boxes.recipes);
+        final box = Hive.box<RecipeModel>(Boxes.recipes);
+        if (box.isOpen) {
+          if (kDebugMode) print('[HIVE_DEBUG] Successfully got recipes box');
+          return box;
+        }
+        if (kDebugMode) print('[HIVE_DEBUG] Recipes box was closed');
+        throw HiveError('Box has already been closed.');
       case Boxes.batches:
-        return Hive.box<BatchModel>(Boxes.batches);
+        final box = Hive.box<BatchModel>(Boxes.batches);
+        if (box.isOpen) {
+          if (kDebugMode) print('[HIVE_DEBUG] Successfully got batches box');
+          return box;
+        }
+        if (kDebugMode) print('[HIVE_DEBUG] Batches box was closed');
+        throw HiveError('Box has already been closed.');
       case Boxes.inventory:
-        return Hive.box<InventoryItem>(Boxes.inventory);
+        final box = Hive.box<InventoryItem>(Boxes.inventory);
+        if (box.isOpen) {
+          if (kDebugMode) print('[HIVE_DEBUG] Successfully got inventory box');
+          return box;
+        }
+        if (kDebugMode) print('[HIVE_DEBUG] Inventory box was closed');
+        throw HiveError('Box has already been closed.');
       case Boxes.tags:
-        return Hive.box<Tag>(Boxes.tags);
+        final box = Hive.box<Tag>(Boxes.tags);
+        if (box.isOpen) {
+          if (kDebugMode) print('[HIVE_DEBUG] Successfully got tags box');
+          return box;
+        }
+        if (kDebugMode) print('[HIVE_DEBUG] Tags box was closed');
+        throw HiveError('Box has already been closed.');
       case Boxes.settings:
-        return Hive.box(Boxes.settings);
+        final box = Hive.box(Boxes.settings);
+        if (box.isOpen) {
+          if (kDebugMode) print('[HIVE_DEBUG] Successfully got settings box');
+          return box;
+        }
+        if (kDebugMode) print('[HIVE_DEBUG] Settings box was closed');
+        throw HiveError('Box has already been closed.');
       case Boxes.shoppingList:
-        return Hive.box<ShoppingListItem>(Boxes.shoppingList);
+        final box = Hive.box<ShoppingListItem>(Boxes.shoppingList);
+        if (box.isOpen) {
+          if (kDebugMode) print('[HIVE_DEBUG] Successfully got shopping list box');
+          return box;
+        }
+        if (kDebugMode) print('[HIVE_DEBUG] Shopping list box was closed');
+        throw HiveError('Box has already been closed.');
       default:
         throw Exception('Unknown box name: $name');
+    }
+  }
+
+  // Safe getter that checks availability first
+  static bool isBoxAvailable(String name) {
+    try {
+      final isOpen = Hive.isBoxOpen(name);
+      if (kDebugMode) {
+        print('[HIVE_DEBUG] Box "$name" isOpen: $isOpen');
+      }
+      return isOpen;
+    } catch (e) {
+      if (kDebugMode) {
+        print('[HIVE_DEBUG] Error checking box "$name": $e');
+      }
+      return false;
+    }
+  }
+
+  // Safe getter with automatic retry logic for sync operations
+  static Future<Box?> getTypedBoxSafe(String name) async {
+    try {
+      if (!Hive.isBoxOpen(name)) {
+        // Try to reopen the box
+        await openTypedBox(name);
+      }
+      
+      switch (name) {
+        case Boxes.recipes:
+          final box = Hive.box<RecipeModel>(Boxes.recipes);
+          return box.isOpen ? box : null;
+        case Boxes.batches:
+          final box = Hive.box<BatchModel>(Boxes.batches);
+          return box.isOpen ? box : null;
+        case Boxes.inventory:
+          final box = Hive.box<InventoryItem>(Boxes.inventory);
+          return box.isOpen ? box : null;
+        case Boxes.tags:
+          final box = Hive.box<Tag>(Boxes.tags);
+          return box.isOpen ? box : null;
+        case Boxes.settings:
+          final box = Hive.box(Boxes.settings);
+          return box.isOpen ? box : null;
+        case Boxes.shoppingList:
+          final box = Hive.box<ShoppingListItem>(Boxes.shoppingList);
+          return box.isOpen ? box : null;
+        default:
+          return null;
+      }
+    } catch (e) {
+      return null;
     }
   }
 

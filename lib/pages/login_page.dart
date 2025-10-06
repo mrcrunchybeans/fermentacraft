@@ -1,9 +1,9 @@
 // lib/pages/login_page.dart
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
 import '../../services/local_mode_service.dart';
 import '../../services/auth_service.dart';
 import 'register_page.dart';
@@ -26,7 +26,16 @@ class _LoginPageState extends State<LoginPage> {
   bool get _rcSupported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
-       defaultTargetPlatform == TargetPlatform.iOS);
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  bool get _isDesktop =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux);
 
   @override
   void dispose() {
@@ -37,11 +46,14 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _logInRevenueCat(User? user) async {
     if (!_rcSupported || user == null) return;
+
+    // Use RevenueCat service instead of calling Purchases directly
+    // The service will handle configuration and proper initialization
     try {
-      await Purchases.logIn(user.uid);
-      debugPrint('RevenueCat login OK for ${user.uid}');
+      debugPrint('Skipping direct RevenueCat login - service will handle sync');
+      // RevenueCat service will automatically sync when auth state changes
     } catch (e) {
-      debugPrint('RevenueCat login failed: $e');
+      debugPrint('RevenueCat login preparation failed: $e');
     }
   }
 
@@ -58,11 +70,21 @@ class _LoginPageState extends State<LoginPage> {
         password: passwordController.text.trim(),
       );
       await _logInRevenueCat(cred.user);
-      // AuthGate will navigate on auth state change.
+      // If this LoginPage was pushed modally (e.g., from Settings), close it.
+      if (mounted) {
+        final nav = Navigator.of(context);
+        if (nav.canPop()) {
+          nav.pop(true);
+          return; // No need to update local state further
+        }
+      }
+      // Otherwise, AuthGate (root) will navigate on auth state change.
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() => errorMessage = e.message);
     } catch (_) {
-      if (mounted) setState(() => errorMessage = 'Login failed. Please try again.');
+      if (mounted) {
+        setState(() => errorMessage = 'Login failed. Please try again.');
+      }
     } finally {
       // If AuthGate navigates away, this setState is harmless; otherwise it stops the spinner.
       if (mounted) setState(() => isLoading = false);
@@ -80,8 +102,16 @@ class _LoginPageState extends State<LoginPage> {
       // New AuthService always returns a UserCredential on success, or throws.
       final cred = await AuthService.instance.signInWithGoogle();
       await _logInRevenueCat(cred.user);
-      // AuthGate will navigate after auth state change.
-      if (mounted) setState(() => isLoading = false);
+      // If this page was presented modally, close it on success
+      if (mounted) {
+        final nav = Navigator.of(context);
+        if (nav.canPop()) {
+          nav.pop(true);
+          return;
+        }
+        // Otherwise AuthGate will rebuild to AppShell
+        setState(() => isLoading = false);
+      }
     } on AuthFlowException catch (e) {
       // Map friendly messages per error code.
       if (!mounted) return;
@@ -108,7 +138,8 @@ class _LoginPageState extends State<LoginPage> {
 
         case AuthFlowCode.network:
           setState(() {
-            errorMessage = 'Network error. Please check your connection and try again.';
+            errorMessage =
+                'Network error. Please check your connection and try again.';
             isLoading = false;
           });
           break;
@@ -150,15 +181,17 @@ class _LoginPageState extends State<LoginPage> {
 
         case AuthFlowCode.accountExistsDifferentCred:
           setState(() {
-            errorMessage = 'This email is already linked to a different sign-in method. '
-                           'Use your original method, then link Google in Settings.';
+            errorMessage =
+                'This email is already linked to a different sign-in method. '
+                'Use your original method, then link Google in Settings.';
             isLoading = false;
           });
           break;
 
         case AuthFlowCode.unknown:
-        setState(() {
-            errorMessage = e.message.isNotEmpty ? e.message : 'Google sign-in failed.';
+          setState(() {
+            errorMessage =
+                e.message.isNotEmpty ? e.message : 'Google sign-in failed.';
             isLoading = false;
           });
           break;
@@ -173,8 +206,64 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> loginWithApple() async {
+    if (!mounted) return;
+    setState(() {
+      errorMessage = null;
+      isLoading = true;
+    });
+    try {
+      final cred = await AuthService.instance.signInWithApple();
+      await _logInRevenueCat(cred.user);
+      if (mounted) {
+        final nav = Navigator.of(context);
+        if (nav.canPop()) {
+          nav.pop(true);
+          return;
+        }
+        setState(() => isLoading = false);
+      }
+    } on AuthFlowException catch (e) {
+      if (!mounted) return;
+      switch (e.code) {
+        case AuthFlowCode.canceled:
+          setState(() {
+            errorMessage = 'Sign-in canceled.';
+            isLoading = false;
+          });
+          break;
+        case AuthFlowCode.busy:
+          setState(() {
+            errorMessage = 'Sign-in already in progress.';
+            isLoading = false;
+          });
+          break;
+        case AuthFlowCode.network:
+          setState(() {
+            errorMessage = 'Network error. Please try again.';
+            isLoading = false;
+          });
+          break;
+        default:
+          setState(() {
+            errorMessage =
+                e.message.isNotEmpty ? e.message : 'Apple sign-in failed.';
+            isLoading = false;
+          });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          errorMessage = 'Apple sign-in failed.';
+          isLoading = false;
+        });
+      }
+    }
+  }
+
   void goToRegister() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterPage()));
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => const RegisterPage()));
   }
 
   void _showForgotPasswordDialog() {
@@ -200,7 +289,10 @@ class _LoginPageState extends State<LoginPage> {
             onPressed: () async {
               final email = resetEmailController.text.trim();
               if (email.isEmpty) {
-                if (mounted) setState(() => errorMessage = 'Please enter an email address.');
+                if (mounted) {
+                  setState(
+                      () => errorMessage = 'Please enter an email address.');
+                }
                 return;
               }
 
@@ -212,7 +304,8 @@ class _LoginPageState extends State<LoginPage> {
               }
 
               try {
-                await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                await FirebaseAuth.instance
+                    .sendPasswordResetEmail(email: email);
                 if (!dialogContext.mounted) return;
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   const SnackBar(content: Text('Password reset email sent.')),
@@ -221,7 +314,9 @@ class _LoginPageState extends State<LoginPage> {
               } on FirebaseAuthException catch (e) {
                 if (mounted) setState(() => errorMessage = e.message);
               } catch (_) {
-                if (mounted) setState(() => errorMessage = 'An error occurred.');
+                if (mounted) {
+                  setState(() => errorMessage = 'An error occurred.');
+                }
               } finally {
                 if (mounted) setState(() => isLoading = false);
               }
@@ -252,12 +347,14 @@ class _LoginPageState extends State<LoginPage> {
                 'assets/images/carboy.svg',
                 height: 100,
                 semanticsLabel: 'FermentaCraft Logo',
-                placeholderBuilder: (context) => const CircularProgressIndicator(),
+                placeholderBuilder: (context) =>
+                    const CircularProgressIndicator(),
               ),
               const SizedBox(height: 20),
               Text(
                 'Log in to start crafting!',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
@@ -321,7 +418,8 @@ class _LoginPageState extends State<LoginPage> {
                           child: SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           ),
                         )
                       : const Text('Log In'),
@@ -330,60 +428,80 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 12),
 
+              // Google button visibility (hide on iOS)
+              if (kIsWeb || _isDesktop || _isAndroid) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: SvgPicture.asset(
+                      'assets/images/google.svg',
+                      height: 24,
+                      width: 24,
+                      semanticsLabel: 'Google Logo',
+                    ),
+                    label: const Text('Sign in with Google'),
+                    onPressed: isLoading ? null : loginWithGoogle,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // Apple button visibility: iOS always, Desktop/Web also show (Android never)
+              if (_isIOS || kIsWeb || _isDesktop) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.apple),
+                    label: const Text('Log in with Apple'),
+                    onPressed: isLoading ? null : loginWithApple,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // ── Local-only entry point ────────────────────────────────────────
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  icon: SvgPicture.asset(
-                    'assets/images/google.svg',
-                    height: 24,
-                    width: 24,
-                    semanticsLabel: 'Google Logo',
-                  ),
-                  label: const Text('Sign in with Google'),
-                  onPressed: isLoading ? null : loginWithGoogle,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
+                  icon: const Icon(Icons.cloud_off),
+                  label: const Text('Continue without account'),
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          setState(() => isLoading = true);
+                          try {
+                            // Cache navigator before the await
+                            final navigator = Navigator.of(context);
+
+                            await LocalModeService.instance.enableLocalOnly();
+
+                            if (!mounted) return; // guard State after the await
+
+                            navigator.pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                  builder: (_) => const AuthGate()),
+                              (route) => false,
+                            );
+                          } finally {
+                            if (mounted) setState(() => isLoading = false);
+                          }
+                        },
                 ),
               ),
-              const SizedBox(height: 12),
-
-              // ── Local-only entry point ────────────────────────────────────────
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.cloud_off),
-                label: const Text('Continue without account'),
-onPressed: isLoading
-    ? null
-    : () async {
-        setState(() => isLoading = true);
-        try {
-          // Cache navigator before the await
-          final navigator = Navigator.of(context);
-
-          await LocalModeService.instance.enableLocalOnly();
-
-          if (!mounted) return; // guard State after the await
-
-          navigator.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const AuthGate()),
-            (route) => false,
-          );
-        } finally {
-          if (mounted) setState(() => isLoading = false);
-        }
-      },
-
-              ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text("Don't have an account? "),
-                  TextButton(onPressed: goToRegister, child: const Text('Create one')),
+                  TextButton(
+                      onPressed: goToRegister, child: const Text('Create one')),
                 ],
               ),
               TextButton(

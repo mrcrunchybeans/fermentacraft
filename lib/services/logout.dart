@@ -4,12 +4,18 @@ import 'package:hive/hive.dart';
 
 import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/utils/boxes.dart';
-import 'package:fermentacraft/pages/login_page.dart'; // <-- use your real login page
+import 'package:fermentacraft/auth_gate.dart';
+import 'package:fermentacraft/services/local_mode_service.dart';
 
 Future<void> performLogout(BuildContext context) async {
+  // Ensure Local Mode is disabled so AuthGate routes to LoginPage
+  try {
+    await LocalModeService.instance.clearLocalOnly();
+  } catch (_) {/* ignore */}
+
   // Navigate away first so widgets stop listening to Hive
   Navigator.of(context).pushAndRemoveUntil(
-    MaterialPageRoute(builder: (_) => const LoginPage()),
+    MaterialPageRoute(builder: (_) => const AuthGate()),
     (_) => false,
   );
 

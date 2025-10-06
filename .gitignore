@@ -68,3 +68,6 @@ ios/Flutter/Flutter.podspec
 
 # Archives / local zips
 *.zip
+
+# track just launch.json
+!.vscode/launch.json

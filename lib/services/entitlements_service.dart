@@ -33,8 +33,13 @@ class EntitlementsService extends ChangeNotifier with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
 
-    // RC notifies us on purchase/restore/upgrades.
-    Purchases.addCustomerInfoUpdateListener(_applyCustomerInfo);
+    // RC notifies us on purchase/restore/upgrades - only if available.
+    try {
+      Purchases.addCustomerInfoUpdateListener(_applyCustomerInfo);
+    } catch (_) {
+      // RevenueCat not configured, skip listener setup
+      debugPrint('[EntitlementsService] RevenueCat listeners not available');
+    }
 
     // Keep RC user aligned with Firebase Auth (highly recommended).
     if (attachToFirebaseAuth) {

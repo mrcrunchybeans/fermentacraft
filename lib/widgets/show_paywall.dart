@@ -3,15 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../pages/paywall_page.dart';
+import '../services/revenuecat_service.dart';
 
 Future<void> showPaywall(BuildContext context) async {
   // Ensure RevenueCat is logged into the same user as Firebase (if signed in)
   final u = FirebaseAuth.instance.currentUser;
   if (u != null) {
     try {
-      await Purchases.logIn(u.uid);
+      // Check if RevenueCat is configured before attempting login
+      if (RevenueCatService.instance.isConfigured) {
+        final appUserID = await Purchases.appUserID;
+        if (appUserID.isNotEmpty) {
+          await Purchases.logIn(u.uid);
+        }
+      }
     } catch (_) {
-      // ignore login errors; we'll still show the paywall
+      // ignore login errors; RevenueCat might not be configured
     }
   }
 

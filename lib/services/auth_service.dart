@@ -13,10 +13,10 @@ import 'package:fermentacraft/services/firestore_user.dart';
 // if not already present elsewhere
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 /// Toggle verbose logging (never enable in production builds).
-const bool kAuthDebugLogs = false;
+const bool kAuthDebugLogs = true; // enable verbose auth logs during debugging
 
 /// Timeouts/safety limits.
 const Duration _kDesktopAuthWaitTimeout = Duration(minutes: 3);
@@ -37,7 +37,8 @@ class AuthService {
       String.fromEnvironment('GOOGLE_DESKTOP_CLIENT_SECRET', defaultValue: '');
 
   // Mobile only (Android/iOS)
-  static final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: const ['email']);
+  static final GoogleSignIn _googleSignIn =
+      GoogleSignIn(scopes: const ['email']);
 
   bool get _isDesktop =>
       !kIsWeb &&
@@ -49,6 +50,11 @@ class AuthService {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  bool get _isApplePlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   /// Call once after Firebase.initializeApp(). Harmless on non-web.
   Future<void> initForWebIfNeeded() async {
@@ -79,22 +85,45 @@ class AuthService {
       }
 
       if (_isDesktop) {
-        final tokens = await _desktopGoogleOAuth();
+        final tokens = await _desktopGoogleOAuth().timeout(
+          const Duration(minutes: 3),
+          onTimeout: () {
+            throw const AuthFlowException(
+              code: AuthFlowCode.network,
+              message: 'Desktop authentication timed out. Please try again.',
+            );
+          },
+        );
+
         if (tokens == null) {
           throw const AuthFlowException(
             code: AuthFlowCode.canceled,
             message: 'Sign-in canceled.',
           );
         }
-        try {
-        final cred = GoogleAuthProvider.credential(
-          idToken: tokens.idToken,
-          accessToken: tokens.accessToken,
-        );
-        final userCred = await _auth.signInWithCredential(cred);
-        await FirestoreUser.instance.ensureUserDoc(userCred.user!);
-        return userCred;
 
+        try {
+          final cred = GoogleAuthProvider.credential(
+            idToken: tokens.idToken,
+            accessToken: tokens.accessToken,
+          );
+
+          final userCred = await _auth.signInWithCredential(cred).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              throw FirebaseAuthException(
+                code: 'timeout',
+                message: 'Firebase sign-in timed out. Please try again.',
+              );
+            },
+          );
+
+          // Ensure user document creation doesn't block login
+          FirestoreUser.instance.ensureUserDoc(userCred.user!).catchError((e) {
+            debugPrint('User document creation failed (non-blocking): $e');
+          });
+
+          return userCred;
         } on FirebaseAuthException catch (e) {
           _handleFirebaseAuthErrors(e); // will throw AuthFlowException
           rethrow;
@@ -103,29 +132,64 @@ class AuthService {
 
       if (_isMobile) {
         try {
-          final googleUser = await _googleSignIn.signIn();
+          // Add timeout to prevent hanging indefinitely
+          final googleUser = await _googleSignIn.signIn().timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw const AuthFlowException(
+                code: AuthFlowCode.network,
+                message: 'Google sign-in timed out. Please try again.',
+              );
+            },
+          );
+
           if (googleUser == null) {
             throw const AuthFlowException(
               code: AuthFlowCode.canceled,
               message: 'Sign-in canceled.',
             );
           }
-          final googleAuth = await googleUser.authentication;
+
+          final googleAuth = await googleUser.authentication.timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw const AuthFlowException(
+                code: AuthFlowCode.network,
+                message: 'Authentication timed out. Please try again.',
+              );
+            },
+          );
+
           final cred = GoogleAuthProvider.credential(
             idToken: googleAuth.idToken,
             accessToken: googleAuth.accessToken,
           );
-          final userCred = await _auth.signInWithCredential(cred);
-          await FirestoreUser.instance.ensureUserDoc(userCred.user!);
-          return userCred;
 
+          final userCred = await _auth.signInWithCredential(cred).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              throw FirebaseAuthException(
+                code: 'timeout',
+                message: 'Firebase sign-in timed out. Please try again.',
+              );
+            },
+          );
+
+          // Ensure user document creation doesn't block login
+          FirestoreUser.instance.ensureUserDoc(userCred.user!).catchError((e) {
+            debugPrint('User document creation failed (non-blocking): $e');
+          });
+
+          return userCred;
         } on FirebaseAuthException catch (e) {
           _handleFirebaseAuthErrors(e);
+          rethrow;
+        } on AuthFlowException {
           rethrow;
         } catch (e) {
           throw AuthFlowException(
             code: AuthFlowCode.unknown,
-            message: 'Google sign-in failed.',
+            message: 'Google sign-in failed. Please try again.',
             details: e.toString(),
           );
         }
@@ -134,6 +198,143 @@ class AuthService {
       throw const AuthFlowException(
         code: AuthFlowCode.unsupported,
         message: 'Unsupported platform.',
+      );
+    } finally {
+      _signInInProgress = false;
+    }
+  }
+
+  /// Starts Sign in with Apple. iOS/macOS: native dialog. Web: popup with apple.com.
+  Future<UserCredential> signInWithApple() async {
+    if (_signInInProgress) {
+      throw const AuthFlowException(
+        code: AuthFlowCode.busy,
+        message: 'Sign-in already in progress.',
+      );
+    }
+    _signInInProgress = true;
+    try {
+      // Prepare a secure nonce
+      final rawNonce = _randomUrlSafe(32);
+      // Firebase expects you to pass the SHA256 hash of the raw nonce (hex string)
+      final String hashedNonceHex = sha256.convert(utf8.encode(rawNonce)).toString();
+
+      if (kIsWeb) {
+        final provider = OAuthProvider('apple.com');
+        // On web, pass the SHA256-hex hashed nonce in the custom parameters
+        provider.setCustomParameters({'nonce': hashedNonceHex});
+        final cred = await _auth.signInWithPopup(provider);
+        await FirestoreUser.instance.ensureUserDoc(cred.user!);
+        return cred;
+      }
+
+      if (_isApplePlatform) {
+        try {
+          final credential = await SignInWithApple.getAppleIDCredential(
+            scopes: const [
+              AppleIDAuthorizationScopes.email,
+              AppleIDAuthorizationScopes.fullName,
+            ],
+            // Per plugin + Firebase docs, pass the SHA256-hex of rawNonce to Apple
+            nonce: hashedNonceHex,
+          );
+
+          if (kAuthDebugLogs) {
+            debugPrint('[AUTH][Apple] Authorization received. hasFullName: '
+                '${credential.givenName != null || credential.familyName != null}, '
+                'hasEmail: ${credential.email != null}, '
+                'idToken.len: ${credential.identityToken?.length ?? 0}');
+          }
+
+          // If Apple did not return an identity token, Firebase cannot proceed
+          final token = credential.identityToken;
+          if (token == null || token.isEmpty) {
+            throw const AuthFlowException(
+              code: AuthFlowCode.misconfigured,
+              message:
+                  'Apple did not return an identity token. Make sure you’re signed into iCloud on this device and try again. On Simulator, sign into iCloud in Settings or test on a physical device.',
+            );
+          }
+
+          final oauthCred = OAuthProvider('apple.com').credential(
+            idToken: token,
+            // Provide the ORIGINAL raw nonce to Firebase for verification
+            rawNonce: rawNonce,
+          );
+
+          final userCred = await _auth.signInWithCredential(oauthCred).timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {
+              throw FirebaseAuthException(
+                code: 'timeout',
+                message: 'Firebase sign-in timed out. Please try again.',
+              );
+            },
+          );
+
+          // Optionally update display name if available
+          final fullName = credential.givenName;
+          if (fullName != null &&
+              (userCred.user?.displayName?.isEmpty ?? true)) {
+            await userCred.user!.updateDisplayName(fullName);
+          }
+
+          FirestoreUser.instance.ensureUserDoc(userCred.user!).catchError((e) {
+            debugPrint('User doc creation failed (non-blocking): $e');
+          });
+          return userCred;
+        } on SignInWithAppleAuthorizationException catch (e) {
+          if (kAuthDebugLogs) {
+            debugPrint('[AUTH][Apple] Authorization error: ${e.code.name}: ${e.message}');
+          }
+          switch (e.code) {
+            case AuthorizationErrorCode.canceled:
+              throw const AuthFlowException(
+                code: AuthFlowCode.canceled,
+                message: 'Sign-in canceled.',
+              );
+            case AuthorizationErrorCode.failed:
+              throw AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message:
+                    'Apple sign-in failed. Ensure you’re signed into iCloud and try again.',
+                details: '${e.code.name}: ${e.message}'.trim(),
+              );
+            case AuthorizationErrorCode.invalidResponse:
+              throw AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message: 'Invalid response from Apple. Please try again.',
+                details: '${e.code.name}: ${e.message}'.trim(),
+              );
+            case AuthorizationErrorCode.notHandled:
+              throw AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message:
+                    'Apple sign-in was not handled. Try again or restart the app.',
+                details: '${e.code.name}: ${e.message}'.trim(),
+              );
+            case AuthorizationErrorCode.notInteractive:
+              throw const AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message:
+                    'Apple sign-in requires user interaction. Please try again.',
+              );
+            case AuthorizationErrorCode.unknown:
+              throw AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message: 'Apple sign-in failed. Please try again.',
+                details: '${e.code.name}: ${e.message}'.trim(),
+              );
+          }
+        } on FirebaseAuthException catch (e) {
+          _handleFirebaseAuthErrors(e);
+          rethrow;
+        }
+      }
+
+      throw const AuthFlowException(
+        code: AuthFlowCode.unsupported,
+        message: 'Sign in with Apple not supported on this platform.',
       );
     } finally {
       _signInInProgress = false;
@@ -189,7 +390,7 @@ class AuthService {
   /// Full OAuth (PKCE + localhost loopback) for Windows/macOS/Linux.
   /// Returns null if user cancels/times out.
   Future<_GoogleTokens?> _desktopGoogleOAuth() async {
-      _ensureDesktopSecret(); // fail fast if the secret wasn’t baked into this build
+    _ensureDesktopSecret(); // fail fast if the secret wasn’t baked into this build
 
     // CSRF protection
     final state = _randomUrlSafe(32);
@@ -198,7 +399,8 @@ class AuthService {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final redirectUri = 'http://127.0.0.1:${server.port}';
     if (kAuthDebugLogs) {
-      debugPrint('[AUTH] clientId=$_googleDesktopClientId redirect=$redirectUri');
+      debugPrint(
+          '[AUTH] clientId=$_googleDesktopClientId redirect=$redirectUri');
     }
 
     // 2) PKCE (verifier -> S256 challenge)
@@ -219,7 +421,8 @@ class AuthService {
     });
 
     // 4) Launch system browser
-    final launched = await launchUrl(authUri, mode: LaunchMode.externalApplication);
+    final launched =
+        await launchUrl(authUri, mode: LaunchMode.externalApplication);
     if (!launched) {
       await server.close(force: true);
       throw const AuthFlowException(
@@ -235,7 +438,8 @@ class AuthService {
       final qp = request.requestedUri.queryParameters;
 
       final html = (qp['error'] != null)
-          ? _htmlClose('Sign-in failed: ${qp['error']}. You can close this window.')
+          ? _htmlClose(
+              'Sign-in failed: ${qp['error']}. You can close this window.')
           : _htmlClose('Sign-in complete. You can close this window.');
       request.response.headers.set('Content-Type', 'text/html; charset=utf-8');
       request.response.write(html);

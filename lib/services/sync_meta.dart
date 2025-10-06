@@ -1,5 +1,3 @@
-import 'package:hive_flutter/hive_flutter.dart';
-
 class SyncMeta {
   final String key; // "$boxName:$id"
   final int lastSyncedMillis;
@@ -17,15 +15,22 @@ class SyncMeta {
       );
 }
 
+// lib/services/sync_meta.dart
+// Skip sync metadata tracking to save memory
 class SyncMetaStore {
-  static late Box _box;
+  // Skip sync metadata tracking to save memory - box tracking disabled
+  // static late Box _box;
 
   static Future<void> init() async {
+    // Skip sync metadata tracking to save memory
+    return;
+    /*
     if (!Hive.isBoxOpen('sync_meta')) {
       _box = await Hive.openBox('sync_meta');
     } else {
       _box = Hive.box('sync_meta');
     }
+    */
   }
 
   static String makeKey(String boxName, String id) => '$boxName:$id';
@@ -42,7 +47,11 @@ class SyncMetaStore {
 
   static Future<void> setLastSyncedNow(
       String boxName, String id, int millis) async {
+    // Skip sync metadata tracking to save memory
+    return;
+    /*
     final k = makeKey(boxName, id);
     await _box.put(k, millis);
+    */
   }
 }

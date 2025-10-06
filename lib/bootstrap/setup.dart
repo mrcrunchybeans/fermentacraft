@@ -1,5 +1,5 @@
 // lib/bootstrap/setup.dart
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -38,8 +38,11 @@ Future<void> setupAppServices() async {
     try {
       // DISABLED to save memory - Firebase persistence can use 100MB+
       // FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
-      FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
-      if (kDebugMode) print('[SETUP] Firebase persistence DISABLED to save memory');
+      FirebaseFirestore.instance.settings =
+          const Settings(persistenceEnabled: false);
+      if (kDebugMode) {
+        print('[SETUP] Firebase persistence DISABLED to save memory');
+      }
     } catch (_) {
       // Already applied or not supported on this platform/runtime.
     }
@@ -52,6 +55,9 @@ Future<void> setupAppServices() async {
 
   // 🚨 Re-key immediately after boxes are open so downstream migrations see canonical keys
   await DataManagementService.migrateHiveKeysToStableIds();
+
+  // Ensure boxes are still open after migrations (in case any got closed)
+  await _ensureEssentialBoxesOpen();
 
   // --- Migrations / sanitizers (idempotent via settings flags)
   final settings = Hive.box(Boxes.settings);
@@ -126,24 +132,100 @@ Future<void> _openHiveBoxes() async {
     _safeOpenBox(Boxes.settings, critical: true),
     _safeOpenBox<ShoppingListItem>(Boxes.shoppingList, critical: false),
     _safeOpenBox(Boxes.syncMeta, critical: false),
-    _safeOpenBox(Boxes.featureGate, critical: false),
+    _safeOpenBox(Boxes.featureGate, critical: true), // Essential for sync
   ]);
+}
+
+/// Ensure essential boxes are open - reopens them if they were closed
+Future<void> _ensureEssentialBoxesOpen() async {
+  final essentialBoxes = [
+    Boxes.tags,
+    Boxes.recipes,
+    Boxes.batches,
+    Boxes.inventory,
+    Boxes.settings,
+    Boxes.shoppingList,
+    Boxes.featureGate,
+  ];
+
+  debugPrint('[SETUP] Checking essential boxes...');
+
+  for (final boxName in essentialBoxes) {
+    try {
+      if (!Hive.isBoxOpen(boxName)) {
+        debugPrint('[SETUP] Reopening closed box: $boxName');
+        await _safeOpenBox(boxName, critical: true);
+        debugPrint('[SETUP] Successfully reopened: $boxName');
+      } else {
+        debugPrint('[SETUP] Box $boxName is already open');
+      }
+    } catch (e) {
+      debugPrint(
+          '[SETUP] Critical error: Could not ensure box $boxName is open: $e');
+      // For critical boxes, we must retry
+      try {
+        debugPrint('[SETUP] Retrying box $boxName...');
+        await Future.delayed(const Duration(milliseconds: 100));
+        await _safeOpenBox(boxName, critical: true);
+        debugPrint('[SETUP] Retry successful for $boxName');
+      } catch (retryError) {
+        debugPrint(
+            '[SETUP] FATAL: Cannot open essential box $boxName: $retryError');
+        throw Exception('Failed to initialize essential box: $boxName');
+      }
+    }
+  }
+
+  debugPrint('[SETUP] All essential boxes are now open');
+}
+
+/// Global function to recover essential boxes if they get closed
+Future<void> recoverEssentialBoxes() async {
+  await _ensureEssentialBoxesOpen();
 }
 
 /// Opens a box; if non-critical and corrupted, attempts recovery by deleting the box from disk.
 /// Critical boxes will throw on failure.
 Future<Box<T>> _safeOpenBox<T>(String name, {required bool critical}) async {
-  try {
-    return await Hive.openBox<T>(name);
-  } catch (e) {
-    if (critical) rethrow;
+  int retryCount = 0;
+  const maxRetries = 3;
+
+  while (retryCount < maxRetries) {
     try {
-      await Hive.deleteBoxFromDisk(name);
+      if (Hive.isBoxOpen(name)) {
+        return Hive.box<T>(name);
+      }
+
       return await Hive.openBox<T>(name);
-    } catch (_) {
-      rethrow;
+    } catch (e) {
+      retryCount++;
+      debugPrint(
+          '[Hive] Failed to open box "$name" (attempt $retryCount/$maxRetries): $e');
+
+      if (critical && retryCount >= maxRetries) {
+        rethrow;
+      }
+
+      if (!critical) {
+        try {
+          await Hive.deleteBoxFromDisk(name);
+          debugPrint('[Hive] Deleted corrupted box "$name", retrying...');
+          continue;
+        } catch (deleteError) {
+          debugPrint(
+              '[Hive] Failed to delete corrupted box "$name": $deleteError');
+          if (retryCount >= maxRetries) {
+            rethrow;
+          }
+        }
+      }
+
+      // Wait before retry
+      await Future.delayed(Duration(milliseconds: 100 * retryCount));
     }
   }
+
+  throw Exception('Failed to open Hive box "$name" after $maxRetries attempts');
 }
 
 /* ----------------------------------------------------------------------------
@@ -241,7 +323,8 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
       }
     } else {
       // Ensure canonical icon sane
-      if (!kTagIconMap.containsKey(canon.iconKey) && kTagIconMap.containsKey(normalizedIcon)) {
+      if (!kTagIconMap.containsKey(canon.iconKey) &&
+          kTagIconMap.containsKey(normalizedIcon)) {
         canon.iconKey = normalizedIcon;
         await canon.save();
       }
@@ -271,8 +354,9 @@ Future<void> _normalizeTagKeysAndRepointRecipes() async {
         }
       }
 
-      _setRefs(r, canonList);         // safe no-op if model lacks tagRefs
-      _setEmbeddedTags(r, canonList); // also try to write embedded list if supported
+      _setRefs(r, canonList); // safe no-op if model lacks tagRefs
+      _setEmbeddedTags(
+          r, canonList); // also try to write embedded list if supported
       await r.save();
     } catch (_) {
       // ignore broken rows
@@ -328,7 +412,8 @@ Future<void> _migrateRecipeEmbeddedToRefs() async {
 
       final canonList = byName.values.toList();
       _setRefs(r, canonList);
-      _setEmbeddedTags(r, canonList); // harmless no-op if fields are final/missing
+      _setEmbeddedTags(
+          r, canonList); // harmless no-op if fields are final/missing
       await r.save();
     } catch (_) {
       // ignore; earlier sanitizers will have handled most issues

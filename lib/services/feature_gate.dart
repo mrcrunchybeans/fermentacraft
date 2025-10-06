@@ -6,8 +6,14 @@
 // - Debounced writes + no‑op updates to minimize Hive churn
 
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
+    show
+        ChangeNotifier,
+        kIsWeb,
+        defaultTargetPlatform,
+        TargetPlatform,
+        debugPrint;
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'revenuecat_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../utils/boxes.dart';
@@ -24,13 +30,14 @@ class FeatureGate extends ChangeNotifier {
   // Config / constants
   // ────────────────────────────────────────────────────────────────────────────
   static const String mirrorKey = CacheKeys.featureGate; // reserved namespace
-  static const String _kPlanKey = 'plan';                 // Hive key in Boxes.featureGate
+  static const String _kPlanKey = 'plan'; // Hive key in Boxes.featureGate
 
   // Entitlement ids as constants to avoid typos
   static const String rcEntitlementPremium = 'premium';
   static const String rcEntitlementProOffline = 'pro_offline';
 
-  bool get _rcSupported => !kIsWeb &&
+  bool get _rcSupported =>
+      !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
@@ -48,23 +55,60 @@ class FeatureGate extends ChangeNotifier {
   // Persistence (Hive)
   // ────────────────────────────────────────────────────────────────────────────
   Future<void> _loadPlan() async {
-    final box = Hive.box(Boxes.featureGate);
-    final raw = box.get(_kPlanKey) as String?;
-    _plan = switch (raw) {
-      'premium' => Plan.premium,
-      'proOffline' => Plan.proOffline,
-      _ => Plan.free,
-    };
+    try {
+      if (!Hive.isBoxOpen(Boxes.featureGate)) {
+        debugPrint('[FeatureGate] Box not open, using default plan');
+        return;
+      }
+
+      final box = Hive.box(Boxes.featureGate);
+      final raw = box.get(_kPlanKey) as String?;
+      _plan = switch (raw) {
+        'premium' => Plan.premium,
+        'proOffline' => Plan.proOffline,
+        _ => Plan.free,
+      };
+    } catch (e) {
+      debugPrint('[FeatureGate] Failed to load plan: $e');
+      _plan = Plan.free;
+    }
   }
 
   Future<void> _savePlan() async {
-    final box = Hive.box(Boxes.featureGate);
-    final value = switch (_plan) {
-      Plan.premium => 'premium',
-      Plan.proOffline => 'proOffline',
-      Plan.free => 'free',
-    };
-    await box.put(_kPlanKey, value);
+    const maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (!Hive.isBoxOpen(Boxes.featureGate)) {
+          if (attempt == 1) {
+            debugPrint(
+                '[FeatureGate] Box not open, cannot save plan (attempt $attempt/$maxRetries)');
+          }
+          if (attempt < maxRetries) {
+            await Future.delayed(Duration(milliseconds: 100 * attempt));
+            continue;
+          } else {
+            debugPrint(
+                '[FeatureGate] Box still not open after $maxRetries attempts, giving up');
+            return;
+          }
+        }
+
+        final box = Hive.box(Boxes.featureGate);
+        final value = switch (_plan) {
+          Plan.premium => 'premium',
+          Plan.proOffline => 'proOffline',
+          Plan.free => 'free',
+        };
+        await box.put(_kPlanKey, value);
+        return; // Success
+      } catch (e) {
+        debugPrint(
+            '[FeatureGate] Failed to save plan (attempt $attempt/$maxRetries): $e');
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(milliseconds: 100 * attempt));
+        }
+      }
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -80,15 +124,28 @@ class FeatureGate extends ChangeNotifier {
 
     // Try to seed from RC if available, otherwise keep local plan until updates arrive
     try {
-      final info = await Purchases.getCustomerInfo();
-      _applyRC(info);
+      // Check if RevenueCat is properly configured before calling it
+      if (RevenueCatService.instance.isConfigured) {
+        final appUserID = await Purchases.appUserID;
+        if (appUserID.isNotEmpty) {
+          final info = await Purchases.getCustomerInfo();
+          _applyRC(info);
+        }
+      }
     } catch (_) {
-      // keep local
+      // keep local - RevenueCat might not be configured yet
+      debugPrint('[FeatureGate] RevenueCat not available, using local plan');
     }
 
-    // Avoid adding duplicate listeners on hot restarts
-    Purchases.removeCustomerInfoUpdateListener(_onRCUpdate);
-    Purchases.addCustomerInfoUpdateListener(_onRCUpdate);
+    // Only add listeners if RevenueCat is available
+    try {
+      // Avoid adding duplicate listeners on hot restarts
+      Purchases.removeCustomerInfoUpdateListener(_onRCUpdate);
+      Purchases.addCustomerInfoUpdateListener(_onRCUpdate);
+    } catch (_) {
+      // RevenueCat not configured, skip listener setup
+      debugPrint('[FeatureGate] RevenueCat listeners not available');
+    }
   }
 
   void _onRCUpdate(CustomerInfo info) => _applyRC(info);
@@ -134,8 +191,10 @@ class FeatureGate extends ChangeNotifier {
   // Internal setters
   // ────────────────────────────────────────────────────────────────────────────
   void _applyRC(CustomerInfo info) {
-    final hasPremium = info.entitlements.active.containsKey(rcEntitlementPremium);
-    final hasPro = info.entitlements.active.containsKey(rcEntitlementProOffline);
+    final hasPremium =
+        info.entitlements.active.containsKey(rcEntitlementPremium);
+    final hasPro =
+        info.entitlements.active.containsKey(rcEntitlementProOffline);
 
     final next = hasPremium
         ? Plan.premium
@@ -169,7 +228,8 @@ class FeatureGate extends ChangeNotifier {
   bool get hasOfflineUnlimited => _hasOfflineUnlimited;
 
   // Count checks
-  bool canAddRecipe(int current) => _hasOfflineUnlimited || current < recipeLimitFree;
+  bool canAddRecipe(int current) =>
+      _hasOfflineUnlimited || current < recipeLimitFree;
   bool canAddActiveBatch(int current) =>
       _hasOfflineUnlimited || current < activeBatchLimitFree;
   bool canAddArchivedBatch(int current) =>
@@ -178,14 +238,14 @@ class FeatureGate extends ChangeNotifier {
       _hasOfflineUnlimited || current < inventoryLimitFree;
 
   // Cloud/online features (Premium only)
-  bool get allowSync => isPremium;               // Firebase/cloud sync
-  bool get allowDevices => isPremium;            // device linking UI (cloud)
-  bool get allowDeviceStreaming => isPremium;    // live Firestore ingest
-  bool get allowDeviceExport => isPremium;       // cloud/raw export if applicable
+  bool get allowSync => isPremium; // Firebase/cloud sync
+  bool get allowDevices => isPremium; // device linking UI (cloud)
+  bool get allowDeviceStreaming => isPremium; // live Firestore ingest
+  bool get allowDeviceExport => isPremium; // cloud/raw export if applicable
 
   // Offline premium features (Premium OR Pro‑Offline)
   bool get allowShoppingList => isPremium || isProOffline;
-  bool get allowDataExport => isPremium || isProOffline;   // local export/backup
+  bool get allowDataExport => isPremium || isProOffline; // local export/backup
   bool get allowGravityAdjust => isPremium || isProOffline;
   bool get allowSO2 => isPremium || isProOffline;
   bool get allowAcidTA => isPremium || isProOffline;

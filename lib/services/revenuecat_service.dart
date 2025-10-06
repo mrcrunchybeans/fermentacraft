@@ -9,14 +9,26 @@
 // Build-time example:
 //   flutter run \
 //     --dart-define=RC_API_KEY_ANDROID=goog_xxx \
-//     --dart-define=RC_API_KEY_IOS=rc_ios_xxx
+//     --dart-define=RC_API_KEY_IOS=appl_xxx
+//
+// iOS Setup (App Store Connect + RevenueCat):
+// 1. Create in-app purchase products in App Store Connect
+// 2. Set up RevenueCat project and get iOS API key
+// 3. Configure products in RevenueCat dashboard to match App Store Connect
+// 4. Pass iOS API key via --dart-define=RC_API_KEY_IOS=your_key
+// 5. iOS will use StoreKit (Apple's native payment system)
+//
+// Android Setup (Google Play + RevenueCat):
+// 1. Create in-app products in Google Play Console
+// 2. Link Google Play to RevenueCat
+// 3. Pass Android API key via --dart-define=RC_API_KEY_ANDROID=your_key
 //
 // CI: pass the same defines in your build step (e.g., GitHub Actions).
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+    show kIsWeb, kDebugMode, defaultTargetPlatform, TargetPlatform, debugPrint;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -42,11 +54,42 @@ class RevenueCatService {
   static const String _kAndroidKeyFallback =
       ''; // e.g. 'goog_XXXXXXXX' (leave empty if you always pass via define)
 
-  static String get _iosKey =>
-      _kIosKeyFromEnv.isNotEmpty ? _kIosKeyFromEnv : _kIosKeyFallback;
-  static String get _androidKey => _kAndroidKeyFromEnv.isNotEmpty
-      ? _kAndroidKeyFromEnv
-      : _kAndroidKeyFallback;
+  static String get _iosKey {
+    final key = _kIosKeyFromEnv.isNotEmpty ? _kIosKeyFromEnv : _kIosKeyFallback;
+    if (kDebugMode && defaultTargetPlatform == TargetPlatform.iOS) {
+      if (key.isEmpty) {
+        debugPrint(
+            '[RC] No iOS API key found. RevenueCat will not be configured.');
+        debugPrint(
+            '[RC] iOS should use App Store Connect for in-app purchases.');
+        debugPrint(
+            '[RC] Expected products: pro_offline_ios, premium_monthly, premium_yearly');
+        debugPrint(
+            '[RC] To configure: pass --dart-define=RC_API_KEY_IOS=your_ios_key');
+      } else {
+        debugPrint('[RC] iOS API key found: ${key.substring(0, 8)}...');
+        debugPrint('[RC] RevenueCat will be configured for iOS with StoreKit');
+      }
+    }
+    return key;
+  }
+
+  static String get _androidKey {
+    final key = _kAndroidKeyFromEnv.isNotEmpty
+        ? _kAndroidKeyFromEnv
+        : _kAndroidKeyFallback;
+    if (kDebugMode && defaultTargetPlatform == TargetPlatform.android) {
+      if (key.isEmpty) {
+        debugPrint(
+            '[RC] No Android API key found. RevenueCat will not be configured.');
+        debugPrint(
+            '[RC] To configure: pass --dart-define=RC_API_KEY_ANDROID=your_android_key');
+      } else {
+        debugPrint('[RC] Android API key found: ${key.substring(0, 8)}...');
+      }
+    }
+    return key;
+  }
 
   static const entitlementId = 'premium';
 
@@ -71,6 +114,9 @@ class RevenueCatService {
 
   /// Exposed so UI can choose Paywall vs fallback flows.
   bool get isSupported => _rcAvailable;
+
+  /// Exposed so other services can check if RevenueCat is actually configured.
+  bool get isConfigured => _rcConfigured;
 
   // ───────────────────────────────────────────────────────────────────────────
   // Internal state
@@ -143,28 +189,42 @@ class RevenueCatService {
     _rcConfigFuture = () async {
       final apiKey = _platformKey!;
       if (apiKey.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('[RC] No API key provided, skipping configuration');
+        }
         _rcConfigured = false;
         return;
       }
 
-      // Purchases 9.x: simple constructor; no observerMode setter.
-      final configuration = PurchasesConfiguration(apiKey);
-      await Purchases.configure(configuration);
-
-      // Keep FeatureGate in sync whenever RC updates
-      Purchases.addCustomerInfoUpdateListener((customerInfo) {
-        FeatureGate.instance.refreshFromCustomerInfo(customerInfo);
-      });
-
-      // Seed FeatureGate from current RC state if possible
       try {
-        final info = await Purchases.getCustomerInfo();
-        FeatureGate.instance.refreshFromCustomerInfo(info);
-      } catch (_) {
-        // ignore; will refresh later
-      }
+        // Enable verbose logs in debug to diagnose configuration issues
+        try {
+          await Purchases.setLogLevel(LogLevel.debug);
+        } catch (_) {/* ignore if older SDK */}
 
-      _rcConfigured = true;
+        // Purchases 9.x: simple constructor; no observerMode setter.
+        final configuration = PurchasesConfiguration(apiKey);
+        await Purchases.configure(configuration);
+
+        // Keep FeatureGate in sync whenever RC updates
+        Purchases.addCustomerInfoUpdateListener((customerInfo) {
+          FeatureGate.instance.refreshFromCustomerInfo(customerInfo);
+        });
+
+        // Seed FeatureGate from current RC state if possible
+        try {
+          final info = await Purchases.getCustomerInfo();
+          FeatureGate.instance.refreshFromCustomerInfo(info);
+        } catch (_) {
+          // ignore; will refresh later
+        }
+
+        _rcConfigured = true;
+        if (kDebugMode) debugPrint('[RC] Successfully configured with API key');
+      } catch (e) {
+        if (kDebugMode) debugPrint('[RC] Configuration failed: $e');
+        _rcConfigured = false;
+      }
     }();
 
     return _rcConfigFuture!;
