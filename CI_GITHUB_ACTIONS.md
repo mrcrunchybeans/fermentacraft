@@ -6,7 +6,7 @@ This repo is wired to build iOS on GitHub-hosted macOS runners so you don’t ne
 
 - iOS CI (Simulator): `.github/workflows/ios-ci.yml`
   - Builds and tests for the iOS Simulator (no codesign). Useful for PRs.
-- iOS Release (TestFlight): `.github/workflows/ios-release.yml`
+- iOS Release (App Store/TestFlight): `.github/workflows/ios-release.yml`
   - Builds a signed Release IPA and uploads it to TestFlight using App Store Connect API.
 - Android Release (Play Console): `.github/workflows/android-release.yml`
   - Builds a signed AAB and uploads it to Google Play Console.
@@ -76,6 +76,10 @@ base64 -w 0 release.keystore
   5. Upload the IPA to TestFlight with Fastlane Pilot and your ASC API key.
 - Artifacts include the IPA, Podfile.lock, and key build files for traceability.
 
+ Notes:
+ - The workflow JSON-escapes the multiline `.p8` key into `asc_api_key.json` so you can store `APP_STORE_CONNECT_API_PRIVATE_KEY` as plain text (not base64). Newlines are preserved correctly.
+ - RevenueCat public SDK keys are injected at build time via `--dart-define` from `RC_API_KEY_IOS`/`RC_API_KEY_ANDROID`, ensuring TestFlight builds have working IAP pricing.
+
 ### Android Release (Play Console)
 - Triggered manually via the Actions tab (`workflow_dispatch`).
 - Steps:
@@ -101,15 +105,18 @@ base64 -w 0 release.keystore
 - Xcode version: set via `setup-xcode` action input.
 - Minimum iOS version: currently pinned to 15.0 in the workflow to avoid SDK mismatches.
 - RevenueCat keys: passed in via `--dart-define` from secrets.
+ - iOS platform runtime: the iOS Release workflow auto-installs the required iOS platform runtime if missing on the runner (avoids the "iOS 18.2 is not installed" error).
 
 ## Troubleshooting
 
 - Codesign: ensure the `.p12` matches the provisioning profile; the download step uses your ASC API creds and `com.fermentacraft` bundle ID.
 - Provisioning: if bundle IDs or capabilities don’t match, ASC profile download will fail. Update the App ID capabilities to include SIWA and IAP.
 - CocoaPods: transient failures happen. The workflow runs `pod repo update` then `pod install`. If issues persist, clear the cache key.
+ - CocoaPods base configuration warning: If you see "CocoaPods did not set the base configuration...", either set the Runner target Base Configuration to `Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig` in Xcode, or include that xcconfig from `ios/Flutter/Release.xcconfig`.
 - Build numbers: App Store requires monotonically increasing build numbers. Override with the input or let the workflow use the GitHub run number.
 - RevenueCat offerings (code 23): ensure an uploaded TestFlight build exists, IAPs are attached to the app version, products are localized and cleared for sale, and allow propagation time.
 - ATS/Networking: we removed `NSAllowsArbitraryLoads`; all endpoints must be HTTPS or use explicit ATS exceptions.
+ - Missing iOS platform runtime on runner: If archiving fails with "Unable to find a destination... iOS 18.2 is not installed", the workflow now runs `xcodebuild -downloadPlatform iOS` automatically. You can also add or update the Xcode version in the workflow to match available runtimes.
 
 ## What this replaces (so you can ditch a Mac)
 
@@ -137,6 +144,11 @@ To require approvals before a release deploys and to scope secrets to trusted en
 
 The workflows declare `environment: app-store` and `environment: play-store`, so they’ll automatically enforce these protections.
 
+ Scoping secrets to environments:
+ - Move `IOS_DISTRIBUTION_CERT_P12`, `IOS_CERT_PASSWORD`, `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`, and `APP_STORE_CONNECT_API_PRIVATE_KEY` into the `app-store` environment for iOS releases.
+ - Move `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` into the `play-store` environment for Android.
+ - Keep `RC_API_KEY_IOS`/`RC_API_KEY_ANDROID` at repo or environment scope based on your preference; environment scope is stricter.
+
 ## Auto-generated release notes (changelog)
 
 Both mobile release workflows generate concise release notes automatically:
@@ -151,6 +163,9 @@ Both mobile release workflows generate concise release notes automatically:
 Tips:
 - Tag your releases (e.g., `git tag v2.0.0 && git push --tags`) to make the notes reflect changes since the last release.
 - You can manually edit `CHANGELOG.txt` in a job step if you want custom content.
+
+ Where to find notes:
+ - The workflow uploads `CHANGELOG.txt` as an artifact alongside the build, and passes the same content to the store upload step.
 
 ## Enabling protections & notes – quick checklist
 

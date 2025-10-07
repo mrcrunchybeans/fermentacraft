@@ -36,6 +36,16 @@ jobs:
         with:
           xcode-version: '16.2'
 
+      - name: Install iOS platform runtime if missing
+        run: |
+          set -euxo pipefail
+          # Some runner images may not have the iOS platform runtime preinstalled for this Xcode version.
+          # The following will install it on-demand to avoid: "iOS 18.2 is not installed" export errors.
+          if ! xcodebuild -showsdks | grep -q "iphoneos"; then
+            sudo xcodebuild -downloadPlatform iOS
+          fi
+          xcodebuild -showsdks || true
+
       - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
         with:
@@ -152,16 +162,24 @@ jobs:
           echo "notes=$NOTES_ESCAPED" >> $GITHUB_OUTPUT
 
       - name: Prepare App Store Connect API key JSON
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
         run: |
           set -euxo pipefail
-          cat > asc_api_key.json <<EOF
+          # JSON-escape the multiline .p8 so newlines become \n in the JSON string
+          KEY_ESCAPED=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps(os.environ['ASC_PRIVATE_KEY']))
+          PY
+          )
+          cat > asc_api_key.json <<JSON
           {
             "key_id": "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
             "issuer_id": "${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
-            "key": "${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}",
+            "key": ${KEY_ESCAPED},
             "in_house": false
           }
-          EOF
+          JSON
 
       - name: Install Fastlane
         run: |
