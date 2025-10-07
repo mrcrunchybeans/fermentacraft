@@ -202,7 +202,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-release-artifacts
+          name: ios-release-artifacts-${{ github.event.inputs.release-channel || 'manual' }}
           path: |
             build/ios/ipa/Runner.ipa
             CHANGELOG.txt
