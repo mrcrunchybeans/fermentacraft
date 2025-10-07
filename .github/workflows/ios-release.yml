@@ -36,14 +36,12 @@ jobs:
         with:
           xcode-version: '16.2'
 
-      - name: Install iOS platform runtime if missing
+      - name: Ensure iOS platform runtime is installed
         run: |
           set -euxo pipefail
-          # Some runner images may not have the iOS platform runtime preinstalled for this Xcode version.
-          # The following will install it on-demand to avoid: "iOS 18.2 is not installed" export errors.
-          if ! xcodebuild -showsdks | grep -q "iphoneos"; then
-            sudo xcodebuild -downloadPlatform iOS
-          fi
+          # Force-install the iOS platform runtime to avoid export errors like:
+          # "iOS 18.2 is not installed". This is idempotent if already present.
+          sudo xcodebuild -downloadPlatform iOS
           xcodebuild -showsdks || true
 
       - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
