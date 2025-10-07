@@ -115,6 +115,71 @@ jobs:
           api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
 
+      - name: Select provisioning profile with Sign in with Apple
+        id: select_profile
+        env:
+          APP_IDENTIFIER: ${{ env.APP_IDENTIFIER }}
+        run: |
+          set -euo pipefail
+          # Find an App Store provisioning profile for our bundle ID that includes
+          # the Sign in with Apple entitlement (com.apple.developer.applesignin).
+          # This prevents exportArchive errors about missing features.
+          python3 - <<'PY'
+          import os, sys, glob, subprocess, plistlib
+          bundle = os.environ['APP_IDENTIFIER']
+          profiles = glob.glob(os.path.expanduser('~/Library/MobileDevice/Provisioning Profiles/*.mobileprovision'))
+          chosen = None
+          inspected = []
+          for path in profiles:
+            try:
+              xml = subprocess.check_output(['security','cms','-D','-i',path])
+              p = plistlib.loads(xml)
+              ent = p.get('Entitlements', {}) or {}
+              name = p.get('Name') or ''
+              uuid = p.get('UUID') or ''
+              team_ids = p.get('TeamIdentifier') or []
+              team_id = team_ids[0] if team_ids else ''
+              app_id = ent.get('application-identifier', '')
+              has_siwa = bool(ent.get('com.apple.developer.applesignin'))
+              # application-identifier usually looks like TEAMID.bundleid
+              matches_bundle = app_id.endswith('.'+bundle) or app_id == f"{team_id}.{bundle}"
+              inspected.append((name, uuid, matches_bundle, has_siwa, path))
+              if matches_bundle and has_siwa:
+                chosen = dict(name=name, uuid=uuid, team_id=team_id, path=path)
+                break
+            except Exception as e:
+              inspected.append((os.path.basename(path), 'UNKNOWN', False, False, path))
+              continue
+          if not chosen:
+            sys.stderr.write('ERROR: No IOS_APP_STORE provisioning profile with Sign in with Apple found for bundle id %s.\n' % bundle)
+            sys.stderr.write('Profiles inspected:\n')
+            for name, uuid, matches, siwa, path in inspected:
+              sys.stderr.write(f"- {name} ({uuid}) matches_bundle={matches} siwa={siwa} file={path}\n")
+            sys.stderr.write('\nFix: In Apple Developer portal, enable "Sign in with Apple" on the App ID and regenerate the App Store distribution profile. Then rerun this workflow.\n')
+            sys.exit(1)
+          # Write GitHub step outputs
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+            fh.write(f"profile_name={chosen['name']}\n")
+            fh.write(f"team_id={chosen['team_id']}\n")
+            fh.write(f"profile_uuid={chosen['uuid']}\n")
+          print(f"Selected profile: {chosen['name']} ({chosen['uuid']}) for team {chosen['team_id']}")
+          PY
+
+      - name: Verify local entitlements include Sign in with Apple (non-blocking)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [ -f ios/Runner/Runner.entitlements ]; then
+            echo "Found Runner.entitlements; checking for com.apple.developer.applesignin key..."
+            if /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.applesignin' ios/Runner/Runner.entitlements >/dev/null 2>&1; then
+              echo "OK: Runner.entitlements includes Sign in with Apple entitlement."
+            else
+              echo "WARN: Runner.entitlements is present but missing com.apple.developer.applesignin. Add the capability in Xcode > Runner > Signing & Capabilities." >&2
+            fi
+          else
+            echo "WARN: ios/Runner/Runner.entitlements not found. Ensure 'Sign in with Apple' capability is enabled in the Xcode project." >&2
+          fi
+
       - name: Create ExportOptions.plist (app-store)
         run: |
           set -euxo pipefail
@@ -129,6 +194,18 @@ jobs:
             <true/>
             <key>destination</key>
             <string>export</string>
+            <!-- Enforce the exact provisioning profile used for export so that required capabilities (e.g., Sign in with Apple) are present. -->
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${{ env.APP_IDENTIFIER }}</key>
+              <string>${{ steps.select_profile.outputs.profile_name }}</string>
+            </dict>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>teamID</key>
+            <string>${{ steps.select_profile.outputs.team_id }}</string>
           </dict>
           </plist>
           PLIST
