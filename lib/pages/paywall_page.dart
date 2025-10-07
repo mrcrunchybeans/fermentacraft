@@ -59,6 +59,26 @@ class _PaywallPageState extends State<PaywallPage> {
 
     final header = _HeroHeader(asDialog: widget.asDialog);
 
+    // Debug-only: quick RC diagnostics button
+    final rcDiagButton = kDebugMode
+        ? Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () async {
+                await RevenueCatService.instance.debugPrintDiagnostics();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('RC diagnostics printed to console')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.info_outline_rounded, size: 18),
+              label: const Text('RC diagnostics'),
+            ),
+          )
+        : const SizedBox.shrink();
+
     final body = SafeArea(
       bottom: false,
       child: ScrollConfiguration(
@@ -72,6 +92,7 @@ class _PaywallPageState extends State<PaywallPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 header,
+                rcDiagButton,
                 const SizedBox(height: 16),
 
                 // Dynamic status + switcher
@@ -1092,15 +1113,45 @@ class _RevenueCatPlans extends StatelessWidget {
           // Log detailed error to help diagnose env/setup issues
           debugPrint(
               '[Paywall] RevenueCat getOfferings() error: ${snap.error}');
+          if (snap.error is PlatformException) {
+            final e = snap.error as PlatformException;
+            final mapped = PurchasesErrorHelper.getErrorCode(e);
+            debugPrint('[Paywall] RC PlatformException mapped: ${mapped.name}');
+            debugPrint('[Paywall] RC PlatformException code: ${e.code}');
+            if (e.details != null) {
+              debugPrint(
+                  '[Paywall] RC PlatformException details: ${e.details}');
+            }
+          }
           if (snap.stackTrace != null) {
             debugPrint('[Paywall] Offerings stack: ${snap.stackTrace}');
           }
+
+          // Show a concise message to users; include raw error in debug only
           final msg = kDebugMode
               ? 'Couldn’t load products: ${snap.error}'
               : 'Couldn’t load products. Please try again.';
+
+          // In debug builds, add hints for the most common root causes
+          final List<Widget> children = [
+            Text(msg, style: TextStyle(color: cs.error)),
+          ];
+          if (kDebugMode) {
+            children.addAll([
+              const SizedBox(height: 6),
+              const Text(
+                'Tips: \n• Verify RC_API_KEY_IOS is passed when running.\n• Ensure a Current offering is set in RevenueCat with valid product IDs.\n• Check App Store Connect products exist for this bundle id, are Cleared for Sale, and agreements are accepted.\n• On Simulator/device, use a Sandbox Apple ID in App Store settings.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ]);
+          }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(msg, style: TextStyle(color: cs.error)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
           );
         }
         if (noProducts) {

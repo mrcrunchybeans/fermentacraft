@@ -34,6 +34,15 @@ Future<void> setupAppServices() async {
 
   // --- Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Debug: print the Firebase project/app identifiers to verify environment
+  assert(() {
+    try {
+      final opts = Firebase.app().options;
+      debugPrint(
+          '[FB] App initialized: projectId=${opts.projectId}, appId=${opts.appId}, messagingSenderId=${opts.messagingSenderId}, storageBucket=${opts.storageBucket}');
+    } catch (_) {}
+    return true;
+  }());
   if (!kIsWeb) {
     try {
       // DISABLED to save memory - Firebase persistence can use 100MB+

@@ -23,8 +23,8 @@ import 'models/tag_manager.dart';
 import 'services/presets_service.dart';
 
 // Web bridge (conditional)
-import 'web_bridge_stub.dart'
-  if (dart.library.html) 'web_bridge_web.dart' as wb;
+import 'web_bridge_stub.dart' if (dart.library.html) 'web_bridge_web.dart'
+    as wb;
 
 bool get _crashlyticsSupported =>
     !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
@@ -68,8 +68,12 @@ Future<void> _bootstrap() async {
   if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
     try {
       debugPrint('[RC] configuring…');
+      // Log which dart-defines were compiled into this build (debug only)
+      RevenueCatService.instance.debugLogBuildTimeDefines();
       await RevenueCatService.instance.init();
-      debugPrint('[RC] configured.');
+      final configured = RevenueCatService.instance.isConfigured;
+      debugPrint(
+          '[RC] ${configured ? 'configured' : 'skipped (no key / unsupported)'}');
     } catch (e, st) {
       debugPrint('[RC] init failed: $e');
       // Don't block startup; FeatureGate still loads local Pro-Offline
@@ -126,8 +130,7 @@ void main() {
     }());
   }, (error, stack) async {
     if (_crashlyticsSupported) {
-      await FirebaseCrashlytics.instance
-          .recordError(error, stack, fatal: true);
+      await FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     } else {
       // ignore: avoid_print
       print('Uncaught error: $error\n$stack');
@@ -142,11 +145,11 @@ class FermentaCraftApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     debugPrint('[UI] Building FermentaCraftApp...');
-    
+
     try {
       final providers = _buildProviders();
       debugPrint('[UI] Providers built successfully');
-      
+
       return MultiProvider(
         providers: providers,
         child: Consumer<SettingsModel>(
@@ -176,7 +179,8 @@ class FermentaCraftApp extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('Error loading app:', style: TextStyle(fontSize: 18)),
+                const Text('Error loading app:',
+                    style: TextStyle(fontSize: 18)),
                 const SizedBox(height: 10),
                 Text(e.toString(), textAlign: TextAlign.center),
               ],
@@ -190,30 +194,30 @@ class FermentaCraftApp extends StatelessWidget {
   /// Build provider list with proper organization
   List<ChangeNotifierProvider> _buildProviders() {
     debugPrint('[UI] Building providers...');
-    
+
     try {
       debugPrint('[UI] Getting FeatureGate from ServiceLocator...');
       final featureGate = ServiceLocator.get<FeatureGate>();
       debugPrint('[UI] FeatureGate obtained successfully');
-      
+
       debugPrint('[UI] Getting SettingsModel from ServiceLocator...');
       final settingsModel = ServiceLocator.get<SettingsModel>();
       debugPrint('[UI] SettingsModel obtained successfully');
-      
+
       debugPrint('[UI] Getting TagManager from ServiceLocator...');
       final tagManager = ServiceLocator.get<TagManager>();
       debugPrint('[UI] TagManager obtained successfully');
-      
+
       debugPrint('[UI] Getting PresetsService from ServiceLocator...');
       final presetsService = ServiceLocator.get<PresetsService>();
       debugPrint('[UI] PresetsService obtained successfully');
-      
+
       final providers = [
         // Core services
         ChangeNotifierProvider<FeatureGate>.value(
           value: featureGate,
         ),
-        
+
         // Data models
         ChangeNotifierProvider<SettingsModel>.value(
           value: settingsModel,
@@ -221,14 +225,15 @@ class FermentaCraftApp extends StatelessWidget {
         ChangeNotifierProvider<TagManager>.value(
           value: tagManager,
         ),
-        
+
         // Business services
         ChangeNotifierProvider<PresetsService>.value(
           value: presetsService,
         ),
       ];
-      
-      debugPrint('[UI] All providers created successfully, count: ${providers.length}');
+
+      debugPrint(
+          '[UI] All providers created successfully, count: ${providers.length}');
       return providers;
     } catch (e, stackTrace) {
       debugPrint('[UI] Error building providers: $e');

@@ -33,6 +33,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:flutter/services.dart' show PlatformException;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'local_mode_service.dart';
 import 'feature_gate.dart';
@@ -68,6 +70,10 @@ class RevenueCatService {
             '[RC] To configure: pass --dart-define=RC_API_KEY_IOS=your_ios_key');
       } else {
         debugPrint('[RC] iOS API key found: ${key.substring(0, 8)}...');
+        if (!key.startsWith('appl_')) {
+          debugPrint(
+              '[RC] WARNING: iOS key does not start with "appl_". Double-check you are using the iOS Public SDK Key (not Android/REST).');
+        }
         debugPrint('[RC] RevenueCat will be configured for iOS with StoreKit');
       }
     }
@@ -86,6 +92,10 @@ class RevenueCatService {
             '[RC] To configure: pass --dart-define=RC_API_KEY_ANDROID=your_android_key');
       } else {
         debugPrint('[RC] Android API key found: ${key.substring(0, 8)}...');
+        if (!key.startsWith('goog_')) {
+          debugPrint(
+              '[RC] WARNING: Android key does not start with "goog_". Double-check you are using the Android Public SDK Key (not iOS/REST).');
+        }
       }
     }
     return key;
@@ -176,6 +186,24 @@ class RevenueCatService {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // Debug helpers
+  // ───────────────────────────────────────────────────────────────────────────
+  /// Log the first few characters of any baked-in dart-defines for RC.
+  /// Helpful to verify that --dart-define=RC_API_KEY_* was compiled into this build.
+  void debugLogBuildTimeDefines() {
+    if (!kDebugMode) return;
+    String prefix(String s) {
+      if (s.isEmpty) return '(empty)';
+      return s.length <= 8 ? s : s.substring(0, 8);
+    }
+
+    final iosPref = prefix(_kIosKeyFromEnv);
+    final andPref = prefix(_kAndroidKeyFromEnv);
+    debugPrint(
+        '[RC] defines baked-in → RC_API_KEY_IOS=$iosPref… RC_API_KEY_ANDROID=$andPref…');
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
   // RC configuration
   // ───────────────────────────────────────────────────────────────────────────
   Future<void> _ensureRCConfigured() {
@@ -223,6 +251,18 @@ class RevenueCatService {
         if (kDebugMode) debugPrint('[RC] Successfully configured with API key');
       } catch (e) {
         if (kDebugMode) debugPrint('[RC] Configuration failed: $e');
+        try {
+          if (e is PlatformException) {
+            final mapped = PurchasesErrorHelper.getErrorCode(e);
+            debugPrint(
+                '[RC] Configure PlatformException mapped: ${mapped.name}');
+            debugPrint('[RC] Configure PlatformException code: ${e.code}');
+            if (e.details != null) {
+              debugPrint(
+                  '[RC] Configure PlatformException details: ${e.details}');
+            }
+          }
+        } catch (_) {}
         _rcConfigured = false;
       }
     }();
@@ -296,6 +336,69 @@ class RevenueCatService {
       }
     } catch (_) {
       // keep last known state
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Debug diagnostics (prints to console)
+  // ───────────────────────────────────────────────────────────────────────────
+  Future<void> debugPrintDiagnostics() async {
+    if (!kDebugMode) return;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      debugPrint('┌──────────────────── RC Diagnostics ────────────────────');
+      debugPrint('│ app: ${info.appName} ${info.version}+${info.buildNumber}');
+      debugPrint(
+          '│ package: ${info.packageName} platform: ${defaultTargetPlatform.name}');
+      debugPrint(
+          '│ rcSupported=$_platformSupportsRC rcAvailable=$_rcAvailable rcConfigured=$_rcConfigured');
+      // Print key prefix (masked)
+      final key = _platformKey ?? '';
+      final keyPref =
+          key.isEmpty ? '(empty)' : key.substring(0, key.length.clamp(0, 8));
+      debugPrint('│ apiKeyPrefix=$keyPref…');
+
+      // Ensure configured and fetch details
+      await _ensureRCConfigured();
+      if (!_rcConfigured) {
+        debugPrint(
+            '│ Purchases not configured (missing key or failed configure)');
+        debugPrint('└────────────────────────────────────────────────────────');
+        return;
+      }
+
+      try {
+        final appUserId = await Purchases.appUserID;
+        debugPrint('│ appUserID=$appUserId');
+      } catch (_) {}
+
+      try {
+        final offs = await Purchases.getOfferings();
+        final curr = offs.current;
+        if (curr == null) {
+          debugPrint('│ currentOffering=null (set a Current offering in RC)');
+        } else {
+          debugPrint(
+              '│ currentOffering=${curr.identifier} packages=${curr.availablePackages.length}');
+          for (final p in curr.availablePackages) {
+            final pid = p.storeProduct.identifier;
+            debugPrint('│  - package=${p.identifier} productId=$pid');
+          }
+        }
+      } catch (e) {
+        debugPrint('│ getOfferings threw: $e');
+        if (e is PlatformException) {
+          try {
+            final mapped = PurchasesErrorHelper.getErrorCode(e);
+            debugPrint(
+                '│ mapped=${mapped.name} code=${e.code} details=${e.details}');
+          } catch (_) {}
+        }
+      }
+
+      debugPrint('└────────────────────────────────────────────────────────');
+    } catch (e) {
+      debugPrint('[RC] Diagnostics failed: $e');
     }
   }
 

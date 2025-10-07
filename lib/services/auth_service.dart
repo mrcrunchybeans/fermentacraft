@@ -230,6 +230,45 @@ class AuthService {
       }
 
       if (_isApplePlatform) {
+        // Preferred path: Use Firebase Auth's native Apple provider (handles nonce internally)
+        try {
+          if (kAuthDebugLogs) {
+            debugPrint(
+                '[AUTH][Apple] Trying Firebase native AppleAuthProvider…');
+          }
+          final provider = AppleAuthProvider();
+          provider.addScope('email');
+          provider.addScope('name');
+          final userCred = await _auth
+              .signInWithProvider(provider)
+              .timeout(const Duration(seconds: 30), onTimeout: () {
+            throw FirebaseAuthException(
+              code: 'timeout',
+              message: 'Apple sign-in timed out. Please try again.',
+            );
+          });
+
+          if (kAuthDebugLogs) {
+            debugPrint('[AUTH][Apple] Firebase native provider succeeded');
+          }
+          // Ensure user document creation doesn't block login
+          FirestoreUser.instance.ensureUserDoc(userCred.user!).catchError(
+              (e) => debugPrint('User doc creation failed (non-blocking): $e'));
+          return userCred;
+        } on FirebaseAuthException catch (e) {
+          if (kAuthDebugLogs) {
+            debugPrint(
+                '[AUTH][Apple] Native provider error ${e.code}: ${e.message}');
+          }
+          // Fall back to manual SIWA flow only for specific errors
+          // e.g., if provider not available or invalid-credential persists
+        } catch (e) {
+          if (kAuthDebugLogs) {
+            debugPrint('[AUTH][Apple] Native provider threw: $e; falling back');
+          }
+        }
+
+        // Fallback path: Manual SIWA with nonce handling
         try {
           final credential = await SignInWithApple.getAppleIDCredential(
             scopes: const [
@@ -255,6 +294,35 @@ class AuthService {
               message:
                   'Apple did not return an identity token. Make sure you’re signed into iCloud on this device and try again. On Simulator, sign into iCloud in Settings or test on a physical device.',
             );
+          }
+
+          // Optional diagnostics: decode JWT to verify audience and nonce
+          if (kAuthDebugLogs) {
+            try {
+              final parts = token.split('.');
+              if (parts.length >= 2) {
+                String _pad(String s) => s + '=' * ((4 - s.length % 4) % 4);
+                final payloadJson =
+                    utf8.decode(base64Url.decode(_pad(parts[1])));
+                final payload =
+                    json.decode(payloadJson) as Map<String, dynamic>;
+                final aud = payload['aud'];
+                final nonceClaim = payload['nonce'];
+                final iss = payload['iss'];
+                final email = payload['email'];
+                final sub = payload['sub'];
+                final iat = payload['iat'];
+                final exp = payload['exp'];
+                final nonceMatches = nonceClaim == hashedNonceHex;
+                debugPrint(
+                    '[AUTH][Apple] idToken aud=$aud, iss=$iss, emailPresent=${email != null}');
+                debugPrint(
+                    '[AUTH][Apple] nonce claim present=${nonceClaim != null}, matchesHashedNonce=$nonceMatches');
+                debugPrint('[AUTH][Apple] sub=$sub, iat=$iat, exp=$exp');
+              }
+            } catch (e) {
+              debugPrint('[AUTH][Apple] Failed to decode idToken payload: $e');
+            }
           }
 
           final oauthCred = OAuthProvider('apple.com').credential(
@@ -545,6 +613,12 @@ class AuthService {
       debugPrint('[AUTH] FirebaseAuthException ${e.code}: ${e.message}');
     }
     switch (e.code) {
+      case 'invalid-credential':
+        throw const AuthFlowException(
+          code: AuthFlowCode.misconfigured,
+          message:
+              'Invalid credentials from identity provider. For Apple: ensure device is signed into iCloud, Apple returned an identity token, and the Firebase project has Apple provider enabled. Also confirm the nonce handling is correct (SHA256-hex to Apple, raw nonce to Firebase).',
+        );
       case 'account-exists-with-different-credential':
         throw const AuthFlowException(
           code: AuthFlowCode.accountExistsDifferentCred,

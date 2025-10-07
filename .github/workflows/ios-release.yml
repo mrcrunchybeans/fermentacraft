@@ -1,0 +1,194 @@
+name: iOS Release (App Store/TestFlight)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-channel:
+        description: "Release channel or tag (for notes/artifacts naming)"
+        required: false
+        default: "manual"
+      build-number:
+        description: "Override build number (defaults to GitHub run number)"
+        required: false
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Build IPA and upload to TestFlight
+    environment: app-store
+    runs-on: macos-15
+    env:
+      FLUTTER_VERSION: 3.35.4
+      APP_IDENTIFIER: com.fermentacraft
+      IOS_SDK: iphoneos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed to compute changelogs from tags
+
+      - name: Select Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Tool versions
+        run: |
+          set -euxo pipefail
+          flutter --version
+          dart --version
+          xcodebuild -version
+          pod --version || true
+
+      - name: Cache Flutter pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-
+
+      - name: Flutter pub get
+        run: |
+          set -euxo pipefail
+          flutter pub get
+
+      - name: Ensure iOS minimum version is 15.0
+        run: |
+          set -euxo pipefail
+          if [ -f ios/Flutter/AppFrameworkInfo.plist ]; then
+            /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 15.0" ios/Flutter/AppFrameworkInfo.plist || true
+          fi
+          if [ -f ios/Podfile ]; then
+            if ! grep -q "platform :ios, '15.0'" ios/Podfile; then
+              sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/g" ios/Podfile || true
+            fi
+          fi
+
+      - name: Restore CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+          key: ${{ runner.os }}-pods-xcode16.2-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-xcode16.2-
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: |
+          set -euxo pipefail
+          pod repo update
+          pod install
+
+      - name: Import signing certificate (.p12)
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.IOS_DISTRIBUTION_CERT_P12 }}
+          p12-password: ${{ secrets.IOS_CERT_PASSWORD }}
+
+      - name: Download App Store provisioning profile
+        uses: apple-actions/download-provisioning-profiles@v1
+        with:
+          bundle-id: ${{ env.APP_IDENTIFIER }}
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+
+      - name: Create ExportOptions.plist (app-store)
+        run: |
+          set -euxo pipefail
+          cat > exportOptions.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>destination</key>
+            <string>export</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Build iOS IPA (Release)
+        env:
+          RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
+          RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
+        run: |
+          set -euxo pipefail
+          BUILD_NUMBER_INPUT=${{ github.event.inputs.build-number }}
+          BUILD_NUMBER=${BUILD_NUMBER_INPUT:-${GITHUB_RUN_NUMBER}}
+          flutter build ipa --release \
+            --export-options-plist=exportOptions.plist \
+            --build-number=${BUILD_NUMBER} \
+            --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS} \
+            --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID}
+
+      - name: Generate release notes from git log
+        id: notes
+        run: |
+          set -euxo pipefail
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE=""; fi
+          git log --pretty=format:'- %s' $RANGE > CHANGELOG.txt || true
+          if [ ! -s CHANGELOG.txt ]; then echo "- Automated build" > CHANGELOG.txt; fi
+          # Escape newlines for CLI args
+          NOTES_ESCAPED=$(perl -pe 's/\n/\\n/g' CHANGELOG.txt)
+          echo "notes=$NOTES_ESCAPED" >> $GITHUB_OUTPUT
+
+      - name: Prepare App Store Connect API key JSON
+        run: |
+          set -euxo pipefail
+          cat > asc_api_key.json <<EOF
+          {
+            "key_id": "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
+            "issuer_id": "${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
+            "key": "${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}",
+            "in_house": false
+          }
+          EOF
+
+      - name: Install Fastlane
+        run: |
+          set -euxo pipefail
+          sudo gem install fastlane -N
+
+      - name: Upload to TestFlight (Pilot)
+        env:
+          PILOT_API_KEY_PATH: ${{ github.workspace }}/asc_api_key.json
+        run: |
+          set -euxo pipefail
+          IPA_PATH="build/ios/ipa/Runner.ipa"
+          test -f "$IPA_PATH"
+          fastlane pilot upload --ipa "$IPA_PATH" \
+            --api_key_path "$PILOT_API_KEY_PATH" \
+            --skip_waiting_for_build_processing true \
+            --changelog "${{ steps.notes.outputs.notes }}"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-artifacts
+          path: |
+            build/ios/ipa/Runner.ipa
+            CHANGELOG.txt
+            exportOptions.plist
+            ios/Podfile.lock
+            ios/Runner.xcodeproj/project.pbxproj
+            ios/Runner/Info.plist

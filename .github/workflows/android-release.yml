@@ -1,0 +1,154 @@
+name: Android Release (Play Console)
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play track (internal, alpha, beta, production)"
+        required: false
+        default: "internal"
+      build-number:
+        description: "Override versionCode (defaults to GitHub run number)"
+        required: false
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    name: Build AAB and upload to Play
+    environment: play-store
+    runs-on: ubuntu-22.04
+    env:
+      FLUTTER_VERSION: 3.35.4
+      JAVA_VERSION: '17'
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Tool versions
+        run: |
+          set -euxo pipefail
+          flutter --version
+          dart --version
+          java -version
+
+      - name: Cache Flutter pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-
+
+      - name: Flutter pub get
+        run: |
+          set -euxo pipefail
+          flutter pub get
+
+      - name: Configure keystore (release)
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euxo pipefail
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          cat > key.properties <<EOF
+          storeFile=app/release.keystore
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Set versionCode from input or run number
+        run: |
+          set -euxo pipefail
+          BUILD_NUMBER_INPUT='${{ github.event.inputs.build-number }}'
+          BUILD_NUMBER=${BUILD_NUMBER_INPUT:-${GITHUB_RUN_NUMBER}}
+          # Update local.properties so app/build.gradle.kts picks it up
+          if [ -f android/local.properties ]; then
+            if grep -q '^flutter.versionCode=' android/local.properties; then
+              sed -i "s/^flutter.versionCode=.*/flutter.versionCode=${BUILD_NUMBER}/" android/local.properties
+            else
+              echo "flutter.versionCode=${BUILD_NUMBER}" >> android/local.properties
+            fi
+          else
+            echo "flutter.versionCode=${BUILD_NUMBER}" > android/local.properties
+          fi
+
+      - name: Build Android App Bundle (AAB)
+        env:
+          RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
+          RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
+        run: |
+          set -euxo pipefail
+          flutter build appbundle --release \
+            --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS} \
+            --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID}
+
+      - name: Generate release notes from git log
+        id: notes
+        run: |
+          set -euxo pipefail
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE=""; fi
+          git log --pretty=format:'- %s' $RANGE > CHANGELOG.txt || true
+          if [ ! -s CHANGELOG.txt ]; then echo "- Automated build" > CHANGELOG.txt; fi
+
+      - name: Prepare Play API JSON
+        run: |
+          set -euxo pipefail
+          echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' > play_api_key.json
+
+      - name: Install Fastlane
+        run: |
+          set -euxo pipefail
+          sudo gem install fastlane -N
+
+      - name: Upload to Play Console (supply)
+        env:
+          SUPPLY_JSON_KEY: ${{ github.workspace }}/play_api_key.json
+          PLAY_TRACK: ${{ github.event.inputs.track || 'internal' }}
+        run: |
+          set -euxo pipefail
+          AAB_PATH="build/app/outputs/bundle/release/app-release.aab"
+          test -f "$AAB_PATH"
+          fastlane supply --aab "$AAB_PATH" \
+            --json_key "$SUPPLY_JSON_KEY" \
+            --track "$PLAY_TRACK" \
+            --skip_upload_images true \
+            --skip_upload_screenshots true \
+            --release_notes "en-US:$(tr -d '\n' < CHANGELOG.txt)"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-artifacts
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            CHANGELOG.txt
+            android/app/build.gradle.kts
+            android/local.properties
+            android/key.properties
