@@ -270,17 +270,31 @@ jobs:
           </plist>
           PLIST
 
-      - name: Verify iOS SDK availability before build
+      - name: Preflight iOS destination (generic/platform=iOS)
         run: |
           set -euxo pipefail
-          if ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
-            echo "ERROR: iPhoneOS SDK not available after attempted install. Xcode platform download might have failed (network or permissions)." >&2
-            echo "Diagnostics:" >&2
-            echo "DEVELOPER_DIR=$(xcode-select -p)" >&2
-            xcodebuild -showsdks || true
-            ls -al "$(xcode-select -p)/Platforms" || true
-            exit 1
-          fi
+          # Validate that Xcode can target a generic iOS device destination. If it fails,
+          # force-install the iOS platform runtime and retry once.
+          WORKSPACE="ios/Runner.xcworkspace"
+          SCHEME="Runner"
+          attempt=1
+          while true; do
+            if xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -destination 'generic/platform=iOS' -showBuildSettings >/dev/null; then
+              echo "Preflight OK: destination generic/platform=iOS is available."
+              break
+            fi
+            if [ $attempt -ge 2 ]; then
+              echo "ERROR: Destination preflight failed even after installing iOS platform runtime." >&2
+              echo "Diagnostics:" >&2
+              echo "DEVELOPER_DIR=$(xcode-select -p)" >&2
+              xcodebuild -showsdks || true
+              ls -al "$(xcode-select -p)/Platforms" || true
+              exit 1
+            fi
+            echo "Destination preflight failed. Attempting to (re)install iOS platform runtime..." >&2
+            sudo xcodebuild -downloadPlatform iOS || true
+            attempt=$((attempt+1))
+          done
 
       - name: Build iOS IPA (Release)
         env:
@@ -338,11 +352,16 @@ jobs:
           PILOT_API_KEY_PATH: ${{ github.workspace }}/asc_api_key.json
         run: |
           set -euxo pipefail
-          IPA_PATH="build/ios/ipa/Runner.ipa"
-          if [ ! -f "$IPA_PATH" ]; then
-            echo "IPA not found at $IPA_PATH. The export step likely failed above. See the 'Build iOS IPA (Release)' logs for the exact exportArchive error." >&2
+          IPA_DIR="build/ios/ipa"
+          # Find the newest .ipa in the export directory (Flutter may name it after the product/version)
+          IPA_PATH=$(ls -1t "$IPA_DIR"/*.ipa 2>/dev/null | head -n 1 || true)
+          if [ -z "${IPA_PATH:-}" ] || [ ! -f "$IPA_PATH" ]; then
+            echo "IPA not found in $IPA_DIR. The export step may have failed or produced a differently named file." >&2
+            echo "Contents of $IPA_DIR (if any):" >&2
+            ls -al "$IPA_DIR" || true
             exit 1
           fi
+          echo "Uploading IPA: $IPA_PATH"
           fastlane pilot upload --ipa "$IPA_PATH" \
             --api_key_path "$PILOT_API_KEY_PATH" \
             --skip_waiting_for_build_processing true \
@@ -354,7 +373,7 @@ jobs:
         with:
           name: ios-release-artifacts-${{ github.event.inputs.release-channel || 'manual' }}
           path: |
-            build/ios/ipa/Runner.ipa
+            build/ios/ipa/*.ipa
             CHANGELOG.txt
             exportOptions.plist
             ios/Podfile.lock
