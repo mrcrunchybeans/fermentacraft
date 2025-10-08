@@ -1,3 +1,49 @@
+# ===============================================================
+# iOS Release Workflow — Read me before editing
+# ===============================================================
+# This workflow is tuned for Flutter + Xcode 16.x on macOS-15 runners,
+# TestFlight uploads via Fastlane Pilot, and App Store–compatible signing.
+#
+# Required secrets (environment: app-store):
+# - IOS_DISTRIBUTION_CERT_P12 (base64 .p12)
+# - IOS_CERT_PASSWORD            (password for .p12)
+# - APP_STORE_CONNECT_API_KEY_ID
+# - APP_STORE_CONNECT_API_ISSUER_ID
+# - APP_STORE_CONNECT_API_PRIVATE_KEY (.p8 contents)
+# - RC_API_KEY_IOS / RC_API_KEY_ANDROID (RevenueCat)
+#
+# Versioning contract:
+# - Marketing version (X.Y.Z) is derived from pubspec.yaml (X.Y) + PATCH.
+# - PATCH and build-number are monotonic: runNumber*100 + attempt.
+#   Do NOT change this unless you maintain strict monotonicity.
+#
+# Do NOT remove or modify these guard steps:
+# - "Ensure iOS platform SDK is installed" and destination preflights —
+#   fix the common "iOS 18.x is not installed" archive/destination failures.
+# - "Select provisioning profile with Sign in with Apple" — ensures export
+#   uses a profile with SIWA entitlement to prevent ExportArchive errors.
+# - ExportOptions.plist teamID injection — ensures correct team at export.
+# - Upload step that auto-discovers latest IPA — filenames may vary.
+#
+# Safe edit guidelines:
+# - Keep Xcode 16.x; if you bump Xcode, verify SDK versions still exist on
+#   the macos-15 runners and that pods resolve.
+# - If you alter the build-name logic, ensure it remains X.Y.Z with Z
+#   strictly increasing between submissions/re-runs and aligned with
+#   build-number.
+# - Do not hardcode Runner.ipa; the upload step must search for *.ipa.
+# - Simulator build step is non-blocking and should remain guarded by the
+#   iphonesimulator SDK probe to avoid 8GB runtime downloads.
+# - If you change signing style from automatic, ensure provisioningProfiles
+#   mapping is complete and includes SIWA-enabled profile for bundle id.
+#
+# Troubleshooting quick notes:
+# - Destination errors: confirm "Preflight iOS destination" passes; it will
+#   auto-install the iOS platform runtime once if needed.
+# - ExportArchive entitlement error for SIWA: re-generate App Store profile
+#   for com.fermentacraft with Sign in with Apple enabled; re-run.
+# - Upload fails: check artifact dir build/ios/ipa contents printed by step.
+# ===============================================================
 name: iOS Release (App Store/TestFlight)
 
 on:
