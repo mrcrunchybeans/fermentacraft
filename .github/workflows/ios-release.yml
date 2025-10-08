@@ -36,6 +36,11 @@ jobs:
         with:
           xcode-version: '16.2'
 
+      - name: Export DEVELOPER_DIR for this job
+        run: |
+          set -euxo pipefail
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+
       - name: Ensure iOS platform SDK is installed (for device builds)
         run: |
           set -euxo pipefail
@@ -45,16 +50,9 @@ jobs:
           PLATFORM_DIR_IOS="$DEV_DIR/Platforms/iOS.platform"
           PLATFORM_DIR_IPHONEOS="$DEV_DIR/Platforms/iPhoneOS.platform"
           SDK_PATH=""
-          set +e
-          xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1
-          XCRUN_OK=$?
-          set -e
-          if [ $XCRUN_OK -ne 0 ] && [ ! -d "$PLATFORM_DIR_IOS" ] && [ ! -d "$PLATFORM_DIR_IPHONEOS" ]; then
-            echo "iOS device platform not found. Downloading iOS platform for Xcode..."
-            sudo xcodebuild -downloadPlatform iOS
-          else
-            echo "iOS device platform appears to be present."
-          fi
+          # Proactively ensure the iOS platform is installed; this is idempotent and quick if already present.
+          echo "Ensuring iOS platform components are installed (idempotent)..."
+          sudo xcodebuild -downloadPlatform iOS || true
           # Re-check and print diagnostics
           set +e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
@@ -64,6 +62,18 @@ jobs:
           ls -al "$DEV_DIR/Platforms" || true
           echo "Available SDKs:"
           xcodebuild -showsdks || true
+
+      - name: Probe iOS destinations (preflight)
+        working-directory: ios
+        run: |
+          set -euxo pipefail
+          # After pods are installed, verify Xcode can resolve a generic iOS device destination for Runner.
+          # This will surface any remaining 'iOS 18.2 is not installed' issues early.
+          if [ -d Runner.xcworkspace ]; then
+            xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos -showdestinations | sed -n '1,120p'
+          else
+            echo "Runner.xcworkspace not found yet; skipping destination probe."
+          fi
 
 
       - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
@@ -140,6 +150,21 @@ jobs:
           if [ $attempts -ge 3 ]; then
             echo "pod install failed after 3 attempts" >&2
             exit 1
+          fi
+
+      - name: Build iOS Simulator app (non-blocking)
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          # Build for iOS Simulator so QA has something to run locally.
+          # This does not require device SDK or signing.
+          flutter build ios --simulator --release --no-codesign
+          SIM_APP_DIR="build/ios/iphonesimulator/Runner.app"
+          if [ -d "$SIM_APP_DIR" ]; then
+            mkdir -p build/ios/simulator
+            ditto -c -k --keepParent "$SIM_APP_DIR" build/ios/simulator/Runner-simulator.zip
+          else
+            echo "Simulator app not found at $SIM_APP_DIR (build may have failed)." >&2
           fi
 
       - name: Import signing certificate (.p12)
@@ -335,3 +360,12 @@ jobs:
             ios/Podfile.lock
             ios/Runner.xcodeproj/project.pbxproj
             ios/Runner/Info.plist
+
+      - name: Upload simulator app artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-app-${{ github.event.inputs.release-channel || 'manual' }}
+          path: |
+            build/ios/simulator/Runner-simulator.zip
+          if-no-files-found: warn
