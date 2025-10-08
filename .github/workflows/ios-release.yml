@@ -321,11 +321,16 @@ jobs:
           PILOT_API_KEY_PATH: ${{ github.workspace }}/asc_api_key.json
         run: |
           set -euxo pipefail
-          IPA_PATH="build/ios/ipa/Runner.ipa"
-          if [ ! -f "$IPA_PATH" ]; then
-            echo "IPA not found at $IPA_PATH. The export step likely failed above. See the 'Build iOS IPA (Release)' logs for the exact exportArchive error." >&2
+          IPA_DIR="build/ios/ipa"
+          # Find the newest .ipa in the export directory (Flutter may name it after the product/version)
+          IPA_PATH=$(ls -1t "$IPA_DIR"/*.ipa 2>/dev/null | head -n 1 || true)
+          if [ -z "${IPA_PATH:-}" ] || [ ! -f "$IPA_PATH" ]; then
+            echo "IPA not found in $IPA_DIR. The export step may have failed or produced a differently named file." >&2
+            echo "Contents of $IPA_DIR (if any):" >&2
+            ls -al "$IPA_DIR" || true
             exit 1
           fi
+          echo "Uploading IPA: $IPA_PATH"
           fastlane pilot upload --ipa "$IPA_PATH" \
             --api_key_path "$PILOT_API_KEY_PATH" \
             --skip_waiting_for_build_processing true \
@@ -337,7 +342,7 @@ jobs:
         with:
           name: ios-release-artifacts-${{ github.event.inputs.release-channel || 'manual' }}
           path: |
-            build/ios/ipa/Runner.ipa
+            build/ios/ipa/*.ipa
             CHANGELOG.txt
             exportOptions.plist
             ios/Podfile.lock
