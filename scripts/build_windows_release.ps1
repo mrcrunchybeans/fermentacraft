@@ -1,4 +1,11 @@
 # scripts/build_windows_release.ps1
+# Fail fast on errors
+$ErrorActionPreference = 'Stop'
+
+# Ensure we run from repo root for all subsequent commands
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+Set-Location $repoRoot
+
 $envFile = Join-Path $PSScriptRoot '..\.secrets\.env'
 if (Test-Path $envFile) {
   foreach ($line in Get-Content $envFile) {
@@ -47,7 +54,13 @@ if ($pubspecContent -match 'version:\s*(\d+)\.(\d+)\.(\d+)\+(\d+)') {
 
 # Build WITH the secret
 flutter build windows --release `
-  --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=$env:GOOGLE_DESKTOP_CLIENT_SECRET
+  --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=$env:GOOGLE_DESKTOP_CLIENT_SECRET `
+  --dart-define=GA_MEASUREMENT_ID=$env:GA_MEASUREMENT_ID `
+  --dart-define=GA_API_SECRET=$env:GA_API_SECRET
+
+if (-not (Test-Path "build/windows/x64/runner/Release/fermentacraft.exe")) {
+  throw "Windows build failed; aborting packaging."
+}
 
 Write-Host "FermentaCraft Windows Release Generated"
 
@@ -56,8 +69,17 @@ dart run msix:create --build-windows=false --store
 
 Write-Host "FermentaCraft MSIX Release Generated"
 
-# Build Web with WebAssembly
-flutter build web --release --base-href / --wasm
+# Build Web
+# Default to JS (no Wasm) because some transitive deps import dart:js which is unsupported on Wasm.
+# Opt back into Wasm by setting FORCE_WEB_WASM=true in .secrets/.env or environment.
+$useWasm = ($env:FORCE_WEB_WASM -and $env:FORCE_WEB_WASM.ToString().ToLower() -eq 'true')
+if ($useWasm) {
+  Write-Host "Building Web with Wasm as FORCE_WEB_WASM=true"
+  flutter build web --release --base-href / --wasm
+} else {
+  Write-Host "Building Web with JS (no Wasm)"
+  flutter build web --release --base-href /
+}
 
 Write-Host "FermentaCraft Web Release Generated"
 

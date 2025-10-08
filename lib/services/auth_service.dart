@@ -389,7 +389,22 @@ class AuthService {
                 message:
                     'Apple sign-in requires user interaction. Please try again.',
               );
+            case AuthorizationErrorCode.credentialExport:
+              // New in sign_in_with_apple_platform_interface 2.x
+              throw AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message:
+                    'Apple sign-in reported a credential export issue. Please try again.',
+                details: '${e.code.name}: ${e.message}'.trim(),
+              );
             case AuthorizationErrorCode.unknown:
+              throw AuthFlowException(
+                code: AuthFlowCode.unknown,
+                message: 'Apple sign-in failed. Please try again.',
+                details: '${e.code.name}: ${e.message}'.trim(),
+              );
+            default:
+              // Fallback for any future codes to keep switch exhaustive.
               throw AuthFlowException(
                 code: AuthFlowCode.unknown,
                 message: 'Apple sign-in failed. Please try again.',

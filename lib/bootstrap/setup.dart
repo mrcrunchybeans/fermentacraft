@@ -1,10 +1,11 @@
 // lib/bootstrap/setup.dart
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint, defaultTargetPlatform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:hive_flutter/hive_flutter.dart';
 import '../firebase_options.dart';
+import 'package:fermentacraft/services/analytics_service.dart';
 
 import '../utils/boxes.dart';
 import '../utils/data_management.dart';
@@ -56,6 +57,12 @@ Future<void> setupAppServices() async {
       // Already applied or not supported on this platform/runtime.
     }
   }
+
+  // --- Analytics (anonymous)
+  await AnalyticsService.instance.init();
+  await AnalyticsService.instance.logEvent('app_launch', {
+    'app_variant': kIsWeb ? 'web' : (defaultTargetPlatform.name),
+  });
 
   // --- Hive
   await Hive.initFlutter();

@@ -13,6 +13,8 @@
 migrate_working_dir/
 # Local secrets (never commit)
 .secrets/
+service-account.json
+**/service-account.json
 android/app/src/main/java/io/flutter/plugins/
 
 # IntelliJ related
