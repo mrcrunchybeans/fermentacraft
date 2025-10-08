@@ -70,7 +70,12 @@ class AnalyticsService {
   Future<void> logEvent(String name, [Map<String, Object?> params = const {}]) async {
     try {
       if (_fa != null) {
-        await _fa!.logEvent(name: name, parameters: params);
+        // FirebaseAnalytics requires Map<String, Object> (no nullable values)
+        final cleaned = <String, Object>{};
+        params.forEach((k, v) {
+          if (v != null) cleaned[k] = v;
+        });
+        await _fa!.logEvent(name: name, parameters: cleaned.isEmpty ? null : cleaned);
       } else if (Platform.isWindows) {
         await _sendGaEvent(name, params);
       }
@@ -86,13 +91,19 @@ class AnalyticsService {
       'api_secret': _gaApiSecret,
     });
 
+    // Drop nulls for GA payload as well
+    final pruned = <String, Object?>{};
+    params.forEach((k, v) {
+      if (v != null) pruned[k] = v;
+    });
+
     final body = {
       'client_id': _anonymousCid(),
       'events': [
         {
           'name': name,
           'params': {
-            ...params,
+            ...pruned,
             'app_variant': _variant,
           }
         }

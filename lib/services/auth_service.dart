@@ -301,9 +301,9 @@ class AuthService {
             try {
               final parts = token.split('.');
               if (parts.length >= 2) {
-                String _pad(String s) => s + '=' * ((4 - s.length % 4) % 4);
+                String pad(String s) => s + '=' * ((4 - s.length % 4) % 4);
                 final payloadJson =
-                    utf8.decode(base64Url.decode(_pad(parts[1])));
+                    utf8.decode(base64Url.decode(pad(parts[1])));
                 final payload =
                     json.decode(payloadJson) as Map<String, dynamic>;
                 final aud = payload['aud'];
