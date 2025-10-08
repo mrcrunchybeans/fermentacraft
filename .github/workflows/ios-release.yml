@@ -40,14 +40,29 @@ jobs:
         run: |
           set -euxo pipefail
           DEV_DIR="$(xcode-select -p)"
-          IOS_SDK_DIR="$DEV_DIR/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
-          if [ ! -d "$IOS_SDK_DIR" ]; then
-            echo "iPhoneOS device SDK not found at $IOS_SDK_DIR. Downloading iOS platform for Xcode..."
+          echo "Using DEVELOPER_DIR=$DEV_DIR"
+          # Xcode 16 can use either iOS.platform or iPhoneOS.platform. Check both.
+          PLATFORM_DIR_IOS="$DEV_DIR/Platforms/iOS.platform"
+          PLATFORM_DIR_IPHONEOS="$DEV_DIR/Platforms/iPhoneOS.platform"
+          SDK_PATH=""
+          set +e
+          xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1
+          XCRUN_OK=$?
+          set -e
+          if [ $XCRUN_OK -ne 0 ] && [ ! -d "$PLATFORM_DIR_IOS" ] && [ ! -d "$PLATFORM_DIR_IPHONEOS" ]; then
+            echo "iOS device platform not found. Downloading iOS platform for Xcode..."
             sudo xcodebuild -downloadPlatform iOS
           else
-            echo "Found iPhoneOS device SDK at $IOS_SDK_DIR"
+            echo "iOS device platform appears to be present."
           fi
-          # Show available SDKs for diagnostics
+          # Re-check and print diagnostics
+          set +e
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
+          set -e
+          echo "iphoneos SDK path: ${SDK_PATH:-'(not found)'}"
+          echo "Listing Platforms directory:"
+          ls -al "$DEV_DIR/Platforms" || true
+          echo "Available SDKs:"
           xcodebuild -showsdks || true
 
 
@@ -229,6 +244,18 @@ jobs:
           </dict>
           </plist>
           PLIST
+
+      - name: Verify iOS SDK availability before build
+        run: |
+          set -euxo pipefail
+          if ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
+            echo "ERROR: iPhoneOS SDK not available after attempted install. Xcode platform download might have failed (network or permissions)." >&2
+            echo "Diagnostics:" >&2
+            echo "DEVELOPER_DIR=$(xcode-select -p)" >&2
+            xcodebuild -showsdks || true
+            ls -al "$(xcode-select -p)/Platforms" || true
+            exit 1
+          fi
 
       - name: Build iOS IPA (Release)
         env:
