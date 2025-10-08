@@ -45,16 +45,10 @@ jobs:
           PLATFORM_DIR_IOS="$DEV_DIR/Platforms/iOS.platform"
           PLATFORM_DIR_IPHONEOS="$DEV_DIR/Platforms/iPhoneOS.platform"
           SDK_PATH=""
-          set +e
-          xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1
-          XCRUN_OK=$?
-          set -e
-          if [ $XCRUN_OK -ne 0 ] && [ ! -d "$PLATFORM_DIR_IOS" ] && [ ! -d "$PLATFORM_DIR_IPHONEOS" ]; then
-            echo "iOS device platform not found. Downloading iOS platform for Xcode..."
-            sudo xcodebuild -downloadPlatform iOS
-          else
-            echo "iOS device platform appears to be present."
-          fi
+          # Always attempt to download the iOS platform runtime. This is idempotent on hosted runners
+          # and fixes cases where the SDK is present but the device runtime is missing.
+          echo "Ensuring iOS platform runtime is installed (this may be a no-op)..."
+          sudo xcodebuild -downloadPlatform iOS || true
           # Re-check and print diagnostics
           set +e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
@@ -245,17 +239,31 @@ jobs:
           </plist>
           PLIST
 
-      - name: Verify iOS SDK availability before build
+      - name: Preflight iOS destination (generic/platform=iOS)
         run: |
           set -euxo pipefail
-          if ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
-            echo "ERROR: iPhoneOS SDK not available after attempted install. Xcode platform download might have failed (network or permissions)." >&2
-            echo "Diagnostics:" >&2
-            echo "DEVELOPER_DIR=$(xcode-select -p)" >&2
-            xcodebuild -showsdks || true
-            ls -al "$(xcode-select -p)/Platforms" || true
-            exit 1
-          fi
+          # Validate that Xcode can target a generic iOS device destination. If it fails,
+          # force-install the iOS platform runtime and retry once.
+          WORKSPACE="ios/Runner.xcworkspace"
+          SCHEME="Runner"
+          attempt=1
+          while true; do
+            if xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -destination 'generic/platform=iOS' -showBuildSettings >/dev/null; then
+              echo "Preflight OK: destination generic/platform=iOS is available."
+              break
+            fi
+            if [ $attempt -ge 2 ]; then
+              echo "ERROR: Destination preflight failed even after installing iOS platform runtime." >&2
+              echo "Diagnostics:" >&2
+              echo "DEVELOPER_DIR=$(xcode-select -p)" >&2
+              xcodebuild -showsdks || true
+              ls -al "$(xcode-select -p)/Platforms" || true
+              exit 1
+            fi
+            echo "Destination preflight failed. Attempting to (re)install iOS platform runtime..." >&2
+            sudo xcodebuild -downloadPlatform iOS || true
+            attempt=$((attempt+1))
+          done
 
       - name: Build iOS IPA (Release)
         env:
