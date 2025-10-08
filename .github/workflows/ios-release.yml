@@ -310,7 +310,12 @@ jobs:
         run: |
           set -euxo pipefail
           BUILD_NUMBER_INPUT=${{ github.event.inputs.build-number }}
-          BUILD_NUMBER=${BUILD_NUMBER_INPUT:-${GITHUB_RUN_NUMBER}}
+          # Monotonic build numbering to avoid repeated versions on re-runs:
+          # Use a single integer derived from the workflow run number and attempt.
+          # This guarantees each re-run produces a strictly increasing build number.
+          ATTEMPT=${GITHUB_RUN_ATTEMPT:-1}
+          AUTO_BUILD_NUMBER=$(( GITHUB_RUN_NUMBER * 100 + ATTEMPT ))
+          BUILD_NUMBER=${BUILD_NUMBER_INPUT:-${AUTO_BUILD_NUMBER}}
           # Derive a monotonically increasing marketing version to avoid closed train errors.
           # Parse pubspec.yaml version safely on macOS (BSD sed) and extract major.minor only.
           VERSION_RAW=$(grep -E '^[[:space:]]*version:[[:space:]]*' pubspec.yaml | head -n1 | sed -E 's/^[[:space:]]*version:[[:space:]]*([^[:space:]]+).*/\1/')
@@ -323,8 +328,11 @@ jobs:
           else
             BASE_VERSION="$MAJOR.$MINOR"
           fi
-          BUILD_NAME="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
-          echo "Derived VERSION_RAW=$VERSION_RAW VERSION_BASE=$VERSION_BASE BASE_VERSION=$BASE_VERSION BUILD_NAME=$BUILD_NAME BUILD_NUMBER=$BUILD_NUMBER"
+          # Keep marketing version within the 3-segment X.Y.Z format by encoding attempt into Z
+          # as a single integer: Z = runNumber*100 + attempt (matches BUILD_NUMBER by default).
+          PATCH=$(( GITHUB_RUN_NUMBER * 100 + ATTEMPT ))
+          BUILD_NAME="${BASE_VERSION}.${PATCH}"
+          echo "Derived VERSION_RAW=$VERSION_RAW VERSION_BASE=$VERSION_BASE BASE_VERSION=$BASE_VERSION PATCH=$PATCH BUILD_NAME=$BUILD_NAME BUILD_NUMBER=$BUILD_NUMBER"
           flutter build ipa --release \
             --export-options-plist=exportOptions.plist \
             --build-number="${BUILD_NUMBER}" \
