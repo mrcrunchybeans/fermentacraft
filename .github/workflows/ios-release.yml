@@ -159,7 +159,13 @@ jobs:
           # Build for iOS Simulator so QA has something to run locally.
           # This does not require device SDK or signing.
           # NOTE: Release mode isn't supported for simulators; build debug.
-          flutter build ios --simulator --no-codesign
+          # Only attempt if the iOS Simulator SDK is available on this runner
+          if xcrun --sdk iphonesimulator --show-sdk-path >/dev/null 2>&1; then
+            flutter build ios --simulator --no-codesign
+          else
+            echo "Skipping simulator build: iphonesimulator SDK not available on this runner." >&2
+            exit 0
+          fi
           SIM_APP_DIR="build/ios/iphonesimulator/Runner.app"
           if [ -d "$SIM_APP_DIR" ]; then
             mkdir -p build/ios/simulator
@@ -306,16 +312,25 @@ jobs:
           BUILD_NUMBER_INPUT=${{ github.event.inputs.build-number }}
           BUILD_NUMBER=${BUILD_NUMBER_INPUT:-${GITHUB_RUN_NUMBER}}
           # Derive a monotonically increasing marketing version to avoid closed train errors.
-          # Use pubspec.yaml version as base (major.minor) and append run number as patch.
-          BASE_VERSION=$(grep -E '^version:' pubspec.yaml | head -n1 | sed -E 's/version:\s*([0-9]+\.[0-9]+).*/\1/')
-          if [ -z "${BASE_VERSION}" ]; then BASE_VERSION="2.0"; fi
+          # Parse pubspec.yaml version safely on macOS (BSD sed) and extract major.minor only.
+          VERSION_RAW=$(grep -E '^[[:space:]]*version:[[:space:]]*' pubspec.yaml | head -n1 | sed -E 's/^[[:space:]]*version:[[:space:]]*([^[:space:]]+).*/\1/')
+          VERSION_BASE=${VERSION_RAW%%+*}     # strip +build metadata if present
+          VERSION_BASE=${VERSION_BASE%%-*}     # strip -pre-release if present
+          MAJOR=$(echo "$VERSION_BASE" | cut -d. -f1)
+          MINOR=$(echo "$VERSION_BASE" | cut -d. -f2)
+          if [ -z "${MAJOR:-}" ] || [ -z "${MINOR:-}" ]; then
+            BASE_VERSION="2.0"
+          else
+            BASE_VERSION="$MAJOR.$MINOR"
+          fi
           BUILD_NAME="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
+          echo "Derived VERSION_RAW=$VERSION_RAW VERSION_BASE=$VERSION_BASE BASE_VERSION=$BASE_VERSION BUILD_NAME=$BUILD_NAME BUILD_NUMBER=$BUILD_NUMBER"
           flutter build ipa --release \
             --export-options-plist=exportOptions.plist \
-            --build-number=${BUILD_NUMBER} \
-            --build-name=${BUILD_NAME} \
-            --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS} \
-            --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID}
+            --build-number="${BUILD_NUMBER}" \
+            --build-name="${BUILD_NAME}" \
+            --dart-define=RC_API_KEY_IOS="${RC_API_KEY_IOS}" \
+            --dart-define=RC_API_KEY_ANDROID="${RC_API_KEY_ANDROID}"
 
       - name: Generate release notes from git log
         id: notes
