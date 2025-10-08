@@ -36,6 +36,20 @@ jobs:
         with:
           xcode-version: '16.2'
 
+      - name: Ensure iOS platform SDK is installed (for device builds)
+        run: |
+          set -euxo pipefail
+          DEV_DIR="$(xcode-select -p)"
+          IOS_SDK_DIR="$DEV_DIR/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"
+          if [ ! -d "$IOS_SDK_DIR" ]; then
+            echo "iPhoneOS device SDK not found at $IOS_SDK_DIR. Downloading iOS platform for Xcode..."
+            sudo xcodebuild -downloadPlatform iOS
+          else
+            echo "Found iPhoneOS device SDK at $IOS_SDK_DIR"
+          fi
+          # Show available SDKs for diagnostics
+          xcodebuild -showsdks || true
+
 
       - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
         uses: subosito/flutter-action@v2
