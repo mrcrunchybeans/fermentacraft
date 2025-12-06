@@ -141,6 +141,7 @@ jobs:
           AAB_PATH="build/app/outputs/bundle/release/app-release.aab"
           test -f "$AAB_PATH"
           fastlane supply --aab "$AAB_PATH" \
+            --package_name "com.fermentacraft" \
             --json_key "$SUPPLY_JSON_KEY" \
             --track "$PLAY_TRACK" \
             --skip_upload_images true \
