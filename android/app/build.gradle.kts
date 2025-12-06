@@ -58,7 +58,7 @@ android {
         create("release") {
             val storeFilePath = keystoreProps.getProperty("storeFile") ?: ""
             if (storeFilePath.isNotBlank()) {
-                storeFile = file(storeFilePath)
+                storeFile = rootProject.file(storeFilePath)
             }
             storePassword = keystoreProps.getProperty("storePassword")
             keyAlias = keystoreProps.getProperty("keyAlias")
