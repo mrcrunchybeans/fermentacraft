@@ -73,9 +73,9 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euxo pipefail
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
           cat > key.properties <<EOF
-          storeFile=app/release.keystore
+          storeFile=release.keystore
           storePassword=$ANDROID_KEYSTORE_PASSWORD
           keyAlias=$ANDROID_KEY_ALIAS
           keyPassword=$ANDROID_KEY_PASSWORD
