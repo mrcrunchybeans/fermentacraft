@@ -126,6 +126,12 @@ jobs:
           set -euxo pipefail
           sudo gem install fastlane -N
 
+      - name: Prepare Fastlane metadata for release notes
+        run: |
+          set -euxo pipefail
+          mkdir -p android/fastlane/metadata/android/en-US
+          cp CHANGELOG.txt android/fastlane/metadata/android/en-US/changelogs/default.txt
+
       - name: Upload to Play Console (supply)
         env:
           SUPPLY_JSON_KEY: ${{ github.workspace }}/play_api_key.json
@@ -138,8 +144,7 @@ jobs:
             --json_key "$SUPPLY_JSON_KEY" \
             --track "$PLAY_TRACK" \
             --skip_upload_images true \
-            --skip_upload_screenshots true \
-            --release_notes "en-US:$(tr -d '\n' < CHANGELOG.txt)"
+            --skip_upload_screenshots true
 
       - name: Upload artifacts
         if: always()
