@@ -129,7 +129,7 @@ jobs:
       - name: Prepare Fastlane metadata for release notes
         run: |
           set -euxo pipefail
-          mkdir -p android/fastlane/metadata/android/en-US
+          mkdir -p android/fastlane/metadata/android/en-US/changelogs
           cp CHANGELOG.txt android/fastlane/metadata/android/en-US/changelogs/default.txt
 
       - name: Upload to Play Console (supply)
