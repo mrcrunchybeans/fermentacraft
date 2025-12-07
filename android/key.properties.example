@@ -1,0 +1,6 @@
+# Copy this to key.properties (do NOT commit key.properties)
+# Path can be relative to the repo root
+storeFile=android/fermentacraft.keystore
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=fermentacraft
+keyPassword=YOUR_KEY_PASSWORD

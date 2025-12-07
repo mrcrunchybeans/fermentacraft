@@ -57,6 +57,10 @@ class _UnitConverterCategoryTabState extends State<UnitConverterCategoryTab> {
     'quart': 946.353,
     'gal': 3785.41,
     '12 oz bottle': 355.0,
+    '16 oz bottle': 473.176,
+    '375 mL bottle': 375.0,
+    '500 mL bottle': 500.0,
+    '750 mL bottle': 750.0,
   };
 
   final Map<String, double> massUnits = {
@@ -198,6 +202,7 @@ double convertGravity(double val, String from, String to) {
 
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [

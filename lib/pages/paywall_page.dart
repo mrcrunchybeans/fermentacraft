@@ -38,6 +38,25 @@ class _PaywallPageState extends State<PaywallPage> {
   // Anchor for the plans section
   final GlobalKey _plansKey = GlobalKey();
 
+  // Hidden promo code button visibility (requires 5 taps on logo to reveal)
+  bool _showPromoButton = false;
+  int _logoTapCount = 0;
+
+  void _onLogoTap() {
+    setState(() {
+      _logoTapCount++;
+      if (_logoTapCount >= 5) {
+        _showPromoButton = true;
+        _logoTapCount = 0;
+      }
+    });
+
+    // Reset counter after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _logoTapCount = 0);
+    });
+  }
+
   // Smooth scroll to the plans section
   Future<void> _scrollToPlans() async {
     final ctx = _plansKey.currentContext;
@@ -57,7 +76,7 @@ class _PaywallPageState extends State<PaywallPage> {
     final mq = MediaQuery.of(context);
     final isShort = mq.size.height < 700;
 
-    final header = _HeroHeader(asDialog: widget.asDialog);
+    final header = _HeroHeader(asDialog: widget.asDialog, onLogoTap: _onLogoTap);
 
     // Debug-only: quick RC diagnostics button
     final rcDiagButton = kDebugMode
@@ -79,6 +98,18 @@ class _PaywallPageState extends State<PaywallPage> {
           )
         : const SizedBox.shrink();
 
+    // Promo code redemption (hidden by default, revealed by 5 taps on logo)
+    final promoButton = _showPromoButton
+        ? Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _redeemPromoCode(context),
+              icon: const Icon(Icons.card_giftcard, size: 18),
+              label: const Text('Redeem promo code'),
+            ),
+          )
+        : const SizedBox.shrink();
+
     final body = SafeArea(
       bottom: false,
       child: ScrollConfiguration(
@@ -93,6 +124,7 @@ class _PaywallPageState extends State<PaywallPage> {
               children: [
                 header,
                 rcDiagButton,
+                promoButton,
                 const SizedBox(height: 16),
 
                 // Dynamic status + switcher
@@ -714,8 +746,9 @@ class _PlanComparison extends StatelessWidget {
    ============================ */
 
 class _HeroHeader extends StatelessWidget {
-  const _HeroHeader({required this.asDialog});
+  const _HeroHeader({required this.asDialog, this.onLogoTap});
   final bool asDialog;
+  final VoidCallback? onLogoTap;
 
   @override
   Widget build(BuildContext context) {
@@ -740,13 +773,16 @@ class _HeroHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: cs.surface.withOpacity(.85),
-              borderRadius: BorderRadius.circular(14),
+          GestureDetector(
+            onTap: onLogoTap,
+            child: Container(
+              decoration: BoxDecoration(
+                color: cs.surface.withOpacity(.85),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Icon(Icons.workspace_premium, color: cs.primary, size: 28),
             ),
-            padding: const EdgeInsets.all(10),
-            child: Icon(Icons.workspace_premium, color: cs.primary, size: 28),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -2247,6 +2283,99 @@ class _LegalFooter extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+// Redeem promo code helper for sideload users
+Future<void> _redeemPromoCode(BuildContext context) async {
+  final codeCtrl = TextEditingController();
+  final messenger = ScaffoldMessenger.of(context);
+
+  final code = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Redeem Promo Code'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'For sideload users: Enter your promo code to unlock Premium or Pro-Offline.',
+            style: TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'If you can use the App Store or Google Play, please purchase there instead.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: codeCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Promo Code',
+              hintText: 'Enter code here',
+            ),
+            textCapitalization: TextCapitalization.characters,
+            autocorrect: false,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, codeCtrl.text.trim()),
+          child: const Text('Redeem'),
+        ),
+      ],
+    ),
+  );
+
+  if (code == null || code.isEmpty) return;
+
+  try {
+    messenger.showSnackBar(const SnackBar(content: Text('Validating code...')));
+
+    final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
+        .httpsCallable('redeemPromoCode');
+    final result = await fn.call({'code': code});
+
+    final data = result.data as Map<String, dynamic>?;
+    final grantType = data?['grantType'] as String?;
+
+    // Refresh from Firestore to apply the grant
+    if (grantType == 'premium') {
+      await refreshPremiumStatusUnified();
+    } else {
+      await FeatureGate.instance.activateProOffline();
+    }
+
+    final message = data?['message'] as String? ?? 'Success!';
+    messenger.showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
+    if (context.mounted) Navigator.of(context).maybePop(true);
+  } on FirebaseFunctionsException catch (e) {
+    String errorMsg = 'Redemption failed';
+    switch (e.code) {
+      case 'not-found':
+        errorMsg = 'Invalid promo code';
+        break;
+      case 'already-exists':
+        errorMsg = 'You have already used this code';
+        break;
+      case 'resource-exhausted':
+        errorMsg = e.message ?? 'Usage limit reached';
+        break;
+      case 'failed-precondition':
+        errorMsg = e.message ?? 'Code expired or invalid';
+        break;
+      case 'unauthenticated':
+        errorMsg = 'Please sign in first';
+        break;
+      default:
+        errorMsg = e.message ?? errorMsg;
+    }
+    messenger.showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red));
   }
 }
 

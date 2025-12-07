@@ -638,6 +638,125 @@ export const ensureTesterPremium = onCall({ secrets: [RC_SECRET_KEY] }, async (r
 });
 
 /* ──────────────────────────────────────────────────────────────────────────
+ * Promo code redemption (sideload/regional fallback)
+ * Secured with:
+ * - Firestore-stored codes (not hardcoded)
+ * - Single-use tracking
+ * - Rate limiting (3 attempts per user per hour)
+ * - Audit logging
+ * ────────────────────────────────────────────────────────────────────────── */
+export const redeemPromoCode = onCall({ secrets: [] }, async (req) => {
+  const uid = assertAuthed(req.auth?.uid);
+  const code = (req.data?.code as string | undefined)?.trim().toUpperCase();
+
+  if (!code) {
+    throw new HttpsError("invalid-argument", "Promo code is required.");
+  }
+
+  try {
+    // Rate limiting: check recent attempts
+    const attemptsRef = db.collection("promo_attempts").doc(uid);
+    const attemptsSnap = await attemptsRef.get();
+    const attemptsData = attemptsSnap.data();
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    const recentAttempts = (attemptsData?.attempts as number[] | undefined)
+      ?.filter((t: number) => t > oneHourAgo) || [];
+
+    if (recentAttempts.length >= 3) {
+      logger.warn("redeemPromoCode: rate limit exceeded", { uid, code });
+      throw new HttpsError("resource-exhausted", "Too many attempts. Try again later.");
+    }
+
+    // Log this attempt
+    await attemptsRef.set(
+      { attempts: admin.firestore.FieldValue.arrayUnion(now), lastAttempt: now },
+      { merge: true }
+    );
+
+    // Check if code exists and is valid
+    const codeRef = db.collection("promo_codes").doc(code);
+    const codeSnap = await codeRef.get();
+
+    if (!codeSnap.exists) {
+      logger.warn("redeemPromoCode: invalid code", { uid, code });
+      throw new HttpsError("not-found", "Invalid promo code.");
+    }
+
+    const codeData = codeSnap.data()!;
+    const grantType = codeData.type as "premium" | "proOffline" | undefined;
+    const maxUses = (codeData.maxUses as number | undefined) || 1;
+    const usedBy = (codeData.usedBy as string[] | undefined) || [];
+    const expiresAt = codeData.expiresAt
+      ? (codeData.expiresAt as admin.firestore.Timestamp).toMillis()
+      : null;
+
+    // Check expiration
+    if (expiresAt && now > expiresAt) {
+      logger.warn("redeemPromoCode: expired code", { uid, code, expiresAt });
+      throw new HttpsError("failed-precondition", "This promo code has expired.");
+    }
+
+    // Check if already used by this user
+    if (usedBy.includes(uid)) {
+      logger.warn("redeemPromoCode: already used by user", { uid, code });
+      throw new HttpsError("already-exists", "You have already used this promo code.");
+    }
+
+    // Check max uses
+    if (usedBy.length >= maxUses) {
+      logger.warn("redeemPromoCode: max uses exceeded", { uid, code, maxUses, usedCount: usedBy.length });
+      throw new HttpsError("resource-exhausted", "This promo code has reached its usage limit.");
+    }
+
+    // Grant the entitlement
+    if (grantType === "premium") {
+      await setPremium(uid, true, { source: "promo", code, grantedAt: serverNow() });
+      // Optionally grant RC entitlement as well
+      try {
+        const expires = new Date();
+        expires.setFullYear(expires.getFullYear() + 100);
+        await rcGrantPromo(uid, ENTITLEMENT_ID, { end_time: expires });
+      } catch (rcErr) {
+        logger.warn("redeemPromoCode: RC grant failed (not critical)", { uid, code, rcErr });
+      }
+    } else if (grantType === "proOffline") {
+      await setPremiumStatusDoc(uid, { proOffline: true, source: "promo", code, grantedAt: serverNow() });
+    } else {
+      logger.error("redeemPromoCode: unknown grant type", { uid, code, grantType });
+      throw new HttpsError("internal", "Invalid promo code configuration.");
+    }
+
+    // Mark code as used by this user
+    await codeRef.update({
+      usedBy: admin.firestore.FieldValue.arrayUnion(uid),
+      lastUsedAt: serverNow(),
+    });
+
+    // Audit log
+    await db.collection("promo_redemptions").add({
+      uid,
+      code,
+      grantType,
+      redeemedAt: serverNow(),
+      email: req.auth?.token.email || null,
+    });
+
+    logger.info("redeemPromoCode: success", { uid, code, grantType });
+    return {
+      success: true,
+      message: grantType === "premium" ? "Premium activated!" : "Pro-Offline activated!",
+      grantType,
+    };
+  } catch (err: any) {
+    if (err instanceof HttpsError) throw err;
+    logger.error("redeemPromoCode: unexpected error", { uid, code, message: err?.message, raw: err });
+    throw new HttpsError("internal", "An error occurred while redeeming the code.");
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────────────
  * Scheduled purge of soft-deleted user docs (every 3 days)
  * ────────────────────────────────────────────────────────────────────────── */
 async function sweepUserCollection(

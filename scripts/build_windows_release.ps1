@@ -43,6 +43,14 @@ if (-not [string]::IsNullOrWhiteSpace($env:GOOGLE_DESKTOP_CLIENT_SECRET)) {
   $env:GOOGLE_DESKTOP_CLIENT_SECRET = $secret
 }
 
+# Warn if RevenueCat keys are missing (not critical for Windows, but needed for Android/iOS)
+if ([string]::IsNullOrWhiteSpace($env:RC_API_KEY_IOS)) {
+  Write-Warning "RC_API_KEY_IOS not set. iOS builds won't have RevenueCat configured."
+}
+if ([string]::IsNullOrWhiteSpace($env:RC_API_KEY_ANDROID)) {
+  Write-Warning "RC_API_KEY_ANDROID not set. Android builds won't have RevenueCat configured."
+}
+
 flutter clean
 flutter pub get
 
@@ -131,12 +139,19 @@ if ($useWasm) {
 Write-Host "FermentaCraft Web Release Generated"
 
 # Build App Bundle for Play Store
-flutter build appbundle
+$androidDefines = @()
+if (-not [string]::IsNullOrWhiteSpace($env:RC_API_KEY_IOS)) {
+  $androidDefines += "--dart-define=RC_API_KEY_IOS=$env:RC_API_KEY_IOS"
+}
+if (-not [string]::IsNullOrWhiteSpace($env:RC_API_KEY_ANDROID)) {
+  $androidDefines += "--dart-define=RC_API_KEY_ANDROID=$env:RC_API_KEY_ANDROID"
+}
+flutter build appbundle $androidDefines
 
 Write-Host "FermentaCraft AppBundle Generated"
 
 # Build APKS for Github Release
-flutter build apk --release --split-per-abi
+flutter build apk --release --split-per-abi $androidDefines
 
 Write-Host "FermentaCraft APK Release Files Generated"
 Write-Host "Export Completed!"

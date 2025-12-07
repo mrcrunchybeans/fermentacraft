@@ -132,6 +132,12 @@ class BatchModel extends HiveObject {
   @HiveField(34)
   String? category;
 
+  // ---------------- Mixed packaging breakdown ----------------
+  /// Optional list of packaging entries for batches split across multiple container types.
+  /// Each entry: {method: 'Bottled'|'Kegged', quantity: double, unit: 'gal'|'L'|'12oz bottle'|etc., notes: string?}
+  @HiveField(35)
+  List<Map<dynamic, dynamic>>? packagingBreakdown;
+
 // Back-compat API
 List<Tag> get tags => tagsLegacy ?? const <Tag>[];
 set tags(List<Tag> v) => tagsLegacy = v;
@@ -166,6 +172,9 @@ set tags(List<Tag> v) => tagsLegacy = v;
 
   List<Map<String, dynamic>> get safeYeast =>
       yeast.map(_toStringKeyedMap).toList(growable: true);
+
+  List<Map<String, dynamic>> get safePackagingBreakdown =>
+      (packagingBreakdown ?? []).map(_toStringKeyedMap).toList(growable: true);
 
   // ---------------- Constructor ----------------
   BatchModel({
@@ -203,6 +212,7 @@ set tags(List<Tag> v) => tagsLegacy = v;
     this.finalYieldUnit,
     this.isArchived = false,
     this.category,
+    this.packagingBreakdown,
 
   List<Tag>? tags,            // <-- back-compat param
   List<Tag>? tagsLegacy,      // <-- keep for adapter/init
@@ -280,6 +290,7 @@ Map<String, dynamic> toJson() {
     'finalYieldUnit': finalYieldUnit,
     'isArchived': isArchived,
     'category': category,
+    'packagingBreakdown': packagingBreakdown?.map(safeOut).toList(),
     // (legacy tags intentionally omitted as in your code)
   };
 
@@ -368,6 +379,9 @@ Map<String, dynamic> toJson() {
       isArchived: (json['isArchived'] as bool?) ?? false,
       // new schema
       category: (json['category'] as String?)?.trim(),
+      packagingBreakdown: (json['packagingBreakdown'] is List)
+          ? List<Map<dynamic, dynamic>>.from(json['packagingBreakdown'])
+          : null,
       // legacy (best-effort)
       tagsLegacy: parseTags(json['tags']),
     );
@@ -410,6 +424,7 @@ Map<String, dynamic> toJson() {
     bool? isArchived,
     String? category,
     List<Tag>? tagsLegacy,
+    List<Map<dynamic, dynamic>>? packagingBreakdown,
   }) {
     final b = BatchModel(
       id: id ?? this.id,
@@ -447,6 +462,7 @@ Map<String, dynamic> toJson() {
       isArchived: isArchived ?? this.isArchived,
       category: category ?? this.category,
       tagsLegacy: tagsLegacy ?? this.tagsLegacy,
+      packagingBreakdown: packagingBreakdown ?? this.packagingBreakdown,
     );
     return b;
   }

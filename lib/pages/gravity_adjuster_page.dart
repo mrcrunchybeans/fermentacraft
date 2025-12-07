@@ -237,6 +237,7 @@ class _PreFermentationAdjustTabState extends State<PreFermentationAdjustTab> {
     return Theme(
       data: theme.copyWith(inputDecorationTheme: idt),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,6 +491,7 @@ class _BacksweetenAdjustTabState extends State<BacksweetenAdjustTab> {
     return Theme(
       data: theme.copyWith(inputDecorationTheme: idt),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

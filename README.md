@@ -264,6 +264,25 @@ When preparing a new release for the **public FermentaCraft repo**:
    * Upload the `.aab` to the Google Play Console.
    * Ensure version codes match and rollout completes.
 
+### Android Play upload (signed)
+
+If you’re shipping to Play, you must have the upload keystore and `key.properties` locally:
+
+1) Copy `android/key.properties.example` to `android/key.properties` (do **not** commit) and fill in your keystore info. The `storeFile` path is relative to the repo root.
+2) Place your upload keystore at the path referenced by `storeFile`.
+3) Ensure `play_api_key.json` (Play service account with Release Manager/Admin) is in the repo root for fastlane uploads.
+4) Build (and optionally upload) from Windows PowerShell:
+
+```pwsh
+pwsh scripts/build_android_release.ps1             # builds signed AAB
+pwsh scripts/build_android_release.ps1 -UploadToPlay -Track internal  # build + upload (requires fastlane + play_api_key.json)
+```
+
+Common blockers:
+- Missing/incorrect keystore → Play rejects because the signature differs from previous uploads.
+- Service account lacks permission → “caller does not have permission”; grant Release Manager/Admin in Play Console.
+- Version code clash → bump `version`/build number in `pubspec.yaml` before rebuilding.
+
 ---
 
 ## 👥 Contributing

@@ -1,0 +1,310 @@
+## DEPRECATED: This Codemagic config is no longer used. We build only with GitHub Actions.
+## Keep for historical reference; do not update. Use .github/workflows/ios-ci.yml instead.
+workflows:
+  ios-sim-fast:
+    name: iOS Simulator — Fast Boot
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        RECORD: "0"   # set to "1" to always record a video
+    scripts:
+      - name: Env info
+        script: |
+          set -euo pipefail
+          flutter --version
+          dart --version
+          xcodebuild -version
+          pod --version
+
+      - name: Static checks (warnings only)
+        script: |
+          # Don't use set -e here so script continues even if commands fail
+          set -uo pipefail
+          flutter pub get || true
+          # Only report errors, continue regardless of outcome
+          flutter analyze --no-fatal-infos || echo "⚠️ Analysis completed with warnings - continuing build"
+          echo "✅ Analysis step completed - proceeding with build"
+          # Always exit with success
+          exit 0
+
+      - name: Verify Firebase plist & bundle id
+        script: |
+          set -euo pipefail
+          PLIST="ios/Runner/GoogleService-Info.plist"
+          [ -f "$PLIST" ] || { echo "GoogleService-Info.plist missing at $PLIST"; exit 1; }
+          P_BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print:BUNDLE_ID' "$PLIST")
+          X_BUNDLE=$(
+            xcodebuild -showBuildSettings -project ios/Runner.xcodeproj -scheme Runner -configuration Debug 2>/dev/null \
+            | awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER/{print $2}' | tail -1
+          )
+          echo "Firebase plist bundle: $P_BUNDLE"
+          echo "Resolved Xcode bundle: $X_BUNDLE"
+          [ "$P_BUNDLE" = "$X_BUNDLE" ] || { echo "ERROR: Bundle IDs do not match."; exit 2; }
+
+      - name: Pod install (incremental)
+        script: |
+          set -euo pipefail
+          (cd ios && pod install)
+          
+      - name: Fix Firebase dependencies
+        script: |
+          # Don't use set -e so we can capture and report all issues
+          set -uo pipefail
+          
+          # Create a log file for diagnostic information
+          mkdir -p build_logs
+          PATCH_LOG="build_logs/firebase_patch_$(date +%s).log"
+          echo "Firebase patch log - $(date)" > "$PATCH_LOG"
+          
+          echo "Starting Firebase dependency fixes..."
+          
+          # Function to log messages to both console and log file
+          log_message() {
+            echo "$1" | tee -a "$PATCH_LOG"
+          }
+          
+          # Execute Firebase imports fix script
+          if [ -f "scripts/firebase_imports_fix.sh" ]; then
+            log_message "� Running Firebase imports fix script..."
+            chmod +x scripts/firebase_imports_fix.sh
+            if ./scripts/firebase_imports_fix.sh; then
+              log_message "✅ Firebase imports fix script completed successfully"
+            else
+              log_message "⚠️ Firebase imports fix script reported issues"
+              # Continue anyway as it might have fixed enough to work
+            fi
+            
+            # Copy the generated log file for reference
+            if [ -f "scripts/firebase_imports.txt" ]; then
+              cp scripts/firebase_imports.txt "build_logs/firebase_imports.txt"
+              log_message "Import details saved to build_logs/firebase_imports.txt"
+            fi
+            
+            # Copy any patch logs
+            find scripts -name "firebase_patch_*.log" -type f -exec cp {} build_logs/ \;
+          else
+            log_message "⚠️ Firebase imports fix script not found at scripts/firebase_imports_fix.sh"
+            log_message "⚠️ Will attempt to proceed without fixes, build may fail"
+            
+            # Create a simple report
+            echo "⚠️ Firebase imports fix script not found" > "build_logs/firebase_imports.txt"
+            echo "Build attempted without fixes at $(date)" >> "build_logs/firebase_imports.txt"
+          fi
+          
+          log_message "✅ Firebase dependency fix process completed"
+          echo "Patch log saved to $PATCH_LOG"
+
+      - name: Build app (same experience as Android)
+        script: |
+          # Don't use set -e so we can capture diagnostics on failure
+          set -uo pipefail
+          
+          # Ensure iOS minimum version is set to 15.0
+          if [ -f "ios/Flutter/AppFrameworkInfo.plist" ]; then
+            /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion 15.0" ios/Flutter/AppFrameworkInfo.plist
+            echo "Updated AppFrameworkInfo.plist minimum OS version to 15.0"
+          fi
+          
+          if [ -f "ios/Podfile" ]; then
+            if ! grep -q "platform :ios, '15.0'" ios/Podfile; then
+              sed -i '' "s/platform :ios, '.*'/platform :ios, '15.0'/g" ios/Podfile
+              echo "Updated Podfile platform to iOS 15.0"
+              (cd ios && pod install)
+            fi
+          fi
+          
+          # Check patch results before building
+          echo "Verifying Firebase patches..."
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift" ]; then
+            echo "Auth.swift imports:"
+            grep "import Google" ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift || echo "No Google imports found"
+          fi
+          
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift" ]; then
+            echo "AuthBackend.swift imports:"
+            grep "import GTM" ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift || echo "No GTM imports found"
+          fi
+          
+          if [ -f "ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift" ]; then
+            echo "AuthAPNSTokenManager.swift imports:"
+            grep "import Google" ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift || echo "No Google imports found"
+          fi
+          
+          echo "Building iOS simulator app..."
+          flutter build ios --simulator --debug -t lib/main.dart \
+            --dart-define=RC_API_KEY_IOS=${RC_API_KEY_IOS:-} \
+            --dart-define=RC_API_KEY_ANDROID=${RC_API_KEY_ANDROID:-}
+          
+          BUILD_RESULT=$?
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "Build failed with exit code $BUILD_RESULT"
+            echo "Collecting diagnostic information..."
+            
+            # Capture diagnostics about the environment
+            flutter doctor -v > build_diagnostic_report.txt
+            
+            # Add Pod environment information
+            echo -e "\n\n===== Pod Environment =====" >> build_diagnostic_report.txt
+            (cd ios && pod env) >> build_diagnostic_report.txt 2>&1 || true
+            
+            # Try to save any useful information about the failed build
+            mkdir -p build_diagnostics
+            cp build_diagnostic_report.txt build_diagnostics/
+            
+            # Exit with the original error code
+            echo "Diagnostic information saved to build_diagnostics/"
+            exit $BUILD_RESULT
+          fi
+          
+          echo "Build completed successfully!"
+
+      - name: Run on Simulator and record
+        script: |
+          set -euo pipefail
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          [ -d "$APP_PATH" ] || { echo "Runner.app not found"; exit 1; }
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
+
+          # Newest available iOS runtime (single-line Python)
+          RUNTIME_ID=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable",True) and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS")]; rs.sort(key=lambda x:(x.get("version") or "", x["identifier"])); print(rs[-1]["identifier"])')
+          echo "Runtime: $RUNTIME_ID"
+
+          # Reuse a Shutdown iPhone under that runtime if present
+          UUID=$(xcrun simctl list devices -j | RUNTIME_ID="$RUNTIME_ID" python3 -c 'import json,sys,os; rt=os.environ["RUNTIME_ID"]; ds=json.load(sys.stdin)["devices"].get(rt,[]); print(next((d["udid"] for d in ds if d.get("isAvailable",True) and d.get("state")=="Shutdown" and d.get("name","").startswith("iPhone")), ""))') || true
+
+          CREATED=0
+          if [[ -z "${UUID:-}" ]]; then
+            # Pick newest iPhone device type by name (single-line Python)
+            DEVICE_NAME=$(xcrun simctl list devicetypes -j | python3 -c 'import json,re,sys; dt=json.load(sys.stdin)["devicetypes"]; iph=[d["name"] for d in dt if d["name"].startswith("iPhone ")]; num=lambda n:(int(re.search(r"(\\d+)",n).group(1)) if re.search(r"(\\d+)",n) else 0); iph.sort(key=num, reverse=True); print(iph[0] if iph else dt[-1]["name"])')
+            echo "Creating device: $DEVICE_NAME"
+            set +e
+            UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME" "$RUNTIME_ID" 2>/dev/null)
+            [[ -n "$UUID" ]] || UUID=$(xcrun simctl create "CM_RUN_$$" "$DEVICE_NAME")
+            set -e
+            CREATED=1
+          fi
+
+          [[ -n "$UUID" ]] || { echo "Failed to obtain/create a simulator device"; exit 1; }
+          echo "Using simulator: $UUID"
+
+          xcrun simctl boot "$UUID" || true
+          xcrun simctl bootstatus "$UUID" -b || true
+          sleep 2
+
+          mkdir -p preview sim_logs
+          LOGFILE="sim_logs/run_$(date +%s).log"
+          xcrun simctl spawn "$UUID" log stream --level=debug --style compact --predicate "process == \"Runner\"" > "$LOGFILE" 2>&1 &
+          LOGPID=$!
+
+          if [[ "${RECORD:-0}" == "1" ]]; then
+            xcrun simctl io "$UUID" recordVideo "preview/run.mp4" &
+            VIDPID=$!
+            sleep 1
+          fi
+
+          set +e
+          xcrun simctl install "$UUID" "$APP_PATH"
+          sleep 1
+          xcrun simctl launch "$UUID" "$BUNDLE_ID"
+          EXIT=$?
+          set -e
+
+          if [[ $EXIT -ne 0 && "${RECORD:-0}" != "1" ]]; then
+            echo "Launch failed; capturing 6s video for diagnostics…"
+            xcrun simctl io "$UUID" recordVideo "preview/run_failed.mp4" &
+            VIDPID=$!
+            sleep 6
+          fi
+
+          [[ -n "${VIDPID:-}" ]] && kill "$VIDPID" || true
+          [[ -n "${LOGPID:-}" ]] && kill "$LOGPID" || true
+          xcrun simctl shutdown "$UUID" || true
+          # Only delete if we created a temp device (avoids Python here)
+          if [[ "$CREATED" == "1" ]]; then xcrun simctl delete "$UUID" || true; fi
+
+          # Capture build logs for diagnostics
+          mkdir -p build_logs
+          if [[ -f ios/Pods/Pods.xcodeproj/project.pbxproj ]]; then
+            cp ios/Pods/Pods.xcodeproj/project.pbxproj build_logs/pods_project.pbxproj || true
+          fi
+          
+          if [[ $EXIT -ne 0 ]]; then
+            echo "Build or run failed, collecting diagnostic info..."
+            # Log Flutter doctor info
+            flutter doctor -v > build_logs/flutter_doctor.log
+            # Log pod environment
+            (cd ios && pod env) > build_logs/pod_env.log 2>&1 || true
+            # Check for common issues in the log file
+            grep -i "error" "$LOGFILE" > build_logs/error_summary.log || true
+          fi
+
+          exit $EXIT
+
+      - name: Capture build diagnostics
+        script: |
+          # Always runs, even if previous steps failed
+          mkdir -p build_diagnostics
+          
+          echo "Capturing build diagnostics..."
+          
+          # Check for important errors in the build logs
+          if [ -d "ios" ]; then
+            echo "===== Firebase Related Files =====" > build_diagnostics/file_paths.txt
+            find ios -name "Auth.swift" -o -name "AuthBackend.swift" -o -name "Functions.swift" -o -name "AuthAPNSTokenManager.swift" -o -name "AuthBackendRPCIssuer.swift" | sort >> build_diagnostics/file_paths.txt
+            
+            # List import statements from key files to verify patches
+            echo "===== Firebase Import Statements =====" > build_diagnostics/imports.txt
+            FUNCTIONS_FILE="ios/Pods/FirebaseFunctions/FirebaseFunctions/Sources/Functions.swift"
+            AUTH_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Auth/Auth.swift"
+            AUTH_BACKEND_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackend.swift"
+            AUTH_APNS_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/SystemService/AuthAPNSTokenManager.swift"
+            AUTH_BACKEND_RPC_FILE="ios/Pods/FirebaseAuth/FirebaseAuth/Sources/Swift/Backend/AuthBackendRPCIssuer.swift"
+            
+            for FILE in "$FUNCTIONS_FILE" "$AUTH_FILE" "$AUTH_BACKEND_FILE" "$AUTH_APNS_FILE" "$AUTH_BACKEND_RPC_FILE"; do
+              if [ -f "$FILE" ]; then
+                echo -e "\n--- $FILE ---" >> build_diagnostics/imports.txt
+                grep "import " "$FILE" >> build_diagnostics/imports.txt 2>/dev/null || echo "No imports found" >> build_diagnostics/imports.txt
+              fi
+            done
+          fi
+          
+          # Collect Flutter and Xcode versions for reference
+          echo "===== Environment Info =====" > build_diagnostics/environment.txt
+          flutter --version >> build_diagnostics/environment.txt 2>&1
+          xcodebuild -version >> build_diagnostics/environment.txt 2>&1
+          pod --version >> build_diagnostics/environment.txt 2>&1
+          
+          # Check if any Podfile.lock exists and include it
+          if [ -f "ios/Podfile.lock" ]; then
+            cp ios/Podfile.lock build_diagnostics/Podfile.lock
+          fi
+          
+          # Capture last build errors from Xcode logs if available
+          DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
+          if [ -d "$DERIVED_DATA" ]; then
+            echo "===== Recent Xcode Errors =====" > build_diagnostics/xcode_errors.txt
+            find "$DERIVED_DATA" -name "*.log" -type f -mtime -1 -exec grep -l "error:" {} \; | 
+              xargs grep -l "error:" 2>/dev/null | 
+              xargs tail -n 50 2>/dev/null >> build_diagnostics/xcode_errors.txt || 
+              echo "No recent error logs found" >> build_diagnostics/xcode_errors.txt
+          fi
+          
+          echo "Diagnostics captured in build_diagnostics/"
+          
+          # Always succeed to prevent failing the workflow
+          exit 0
+          
+    artifacts:
+      - build/ios/iphonesimulator/*.app
+      - preview/*.mp4
+      - sim_logs/*.log
+      - build_logs/*
+      - build_diagnostics/*
+      - build_diagnostic_report.txt
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - ios/Pods

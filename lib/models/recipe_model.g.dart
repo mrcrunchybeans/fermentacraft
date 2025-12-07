@@ -25,14 +25,14 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       abv: fields[6] as double?,
       additives: (fields[7] as List?)
           ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
-          .toList(),
+          ?.toList(),
       ingredients: (fields[8] as List?)
           ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
-          .toList(),
+          ?.toList(),
       fermentationStages: (fields[9] as List?)?.cast<FermentationStage>(),
       yeast: (fields[10] as List?)
           ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
-          .toList(),
+          ?.toList(),
       notes: fields[11] as String,
       lastOpened: fields[12] as DateTime?,
       batchVolume: fields[13] as double?,
