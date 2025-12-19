@@ -43,11 +43,6 @@ import 'package:fermentacraft/utils/gravity_utils.dart';
 import 'package:fermentacraft/pages/measurement_log_page.dart';
 import 'package:fermentacraft/widgets/fermentation_chart_simple.dart';
 
-
-
-
-
-
 // Import the unique ID generator
 import '../utils/id.dart';
 
@@ -56,19 +51,18 @@ Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
   final ts = (m['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
 
   // ----- Gravity -----
-  double? sg = (m['sg'] as num?)?.toDouble()
-            ?? (m['corrSG'] as num?)?.toDouble()
-            ?? (m['corr_gravity'] as num?)?.toDouble()
-            ?? (m['corr-gravity'] as num?)?.toDouble();
+  double? sg = (m['sg'] as num?)?.toDouble() ??
+      (m['corrSG'] as num?)?.toDouble() ??
+      (m['corr_gravity'] as num?)?.toDouble() ??
+      (m['corr-gravity'] as num?)?.toDouble();
 
   double? brix = (m['brix'] as num?)?.toDouble();
-
-  
 
   if (sg == null && m['gravity'] != null) {
     final gVal = (m['gravity'] as num).toDouble();
     final gUnit = (m['gravity_unit'] ?? m['gravity-unit'] ?? m['gravityUnit'])
-        ?.toString().toLowerCase(); // ← no generic "unit" here
+        ?.toString()
+        .toLowerCase(); // ← no generic "unit" here
     if (gUnit == 'brix' || gUnit == '°brix' || gUnit == 'bx') {
       brix = gVal;
       sg = brixToSg(gVal);
@@ -87,14 +81,17 @@ Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
   } else {
     final rawTemp = (m['temperature'] ?? m['temp']) as num?;
     final tUnit = (m['temperature_unit'] ?? m['temp_units'] ?? m['tempUnit'])
-        ?.toString().toUpperCase(); // ← no generic "unit" here either
+        ?.toString()
+        .toUpperCase(); // ← no generic "unit" here either
     if (rawTemp != null) {
       final t = rawTemp.toDouble();
       tempC = (tUnit != null && tUnit.contains('F')) ? ((t - 32) * 5 / 9) : t;
     }
   }
 
-  final deviceLabel = (m['deviceName'] ?? m['device_name'] ?? m['source'] ?? m['deviceId'])?.toString();
+  final deviceLabel =
+      (m['deviceName'] ?? m['device_name'] ?? m['source'] ?? m['deviceId'])
+          ?.toString();
 
   return Measurement(
     id: docId ?? 'device_${ts.millisecondsSinceEpoch}',
@@ -103,7 +100,8 @@ Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
     brix: brix,
     temperature: tempC,
     fromDevice: true,
-    notes: (deviceLabel == null || deviceLabel.isEmpty) ? 'device' : deviceLabel,
+    notes:
+        (deviceLabel == null || deviceLabel.isEmpty) ? 'device' : deviceLabel,
   );
 }
 
@@ -119,7 +117,7 @@ class _PremiumHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color  = Theme.of(context).colorScheme.onSurface.withOpacity(.65);
+    final color = Theme.of(context).colorScheme.onSurface.withOpacity(.65);
     final border = Theme.of(context).dividerColor.withOpacity(.25);
 
     return Container(
@@ -134,7 +132,8 @@ class _PremiumHint extends StatelessWidget {
           Icon(Icons.lock_outline, size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(_kCopy, style: TextStyle(fontSize: 12, color: color, height: 1.25)),
+            child: Text(_kCopy,
+                style: TextStyle(fontSize: 12, color: color, height: 1.25)),
           ),
           TextButton(onPressed: onUpgrade, child: const Text('Upgrade')),
           IconButton(
@@ -148,7 +147,6 @@ class _PremiumHint extends StatelessWidget {
     );
   }
 }
-
 
 enum _OverflowAction { archiveToggle, attachDevice, exportCsv, rename }
 
@@ -205,18 +203,17 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   int _tastingRating = 0;
   // NEW: The selected chart range, defaults to 7 days
   ChartRange _currentChartRange = ChartRange.d7;
-DateTime? _inferPitchTime(BatchModel b) {
-  // Prefer an explicit startDate if you use it as “pitched”
+  DateTime? _inferPitchTime(BatchModel b) {
+    // Prefer an explicit startDate if you use it as “pitched”
 
-  // Otherwise fall back to the earliest measurement time (if any)
-  if (b.safeMeasurements.isNotEmpty) {
+    // Otherwise fall back to the earliest measurement time (if any)
+    if (b.safeMeasurements.isNotEmpty) {}
+
+    // If you track fermentation stages with dates, you could also consider:
+    // final d3 = b.safeFermentationStages.isNotEmpty ? b.safeFermentationStages.first.startDate : null;
+
+    return b.startDate;
   }
-
-  // If you track fermentation stages with dates, you could also consider:
-  // final d3 = b.safeFermentationStages.isNotEmpty ? b.safeFermentationStages.first.startDate : null;
-
-return b.startDate;
-}
 
   @override
   void dispose() {
@@ -243,244 +240,254 @@ return b.startDate;
     _batch = box.get(_hiveKey);
 
     final initialTabIndex = _initialTabIndexFor(_batch?.status);
-    _tabController = TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
+    _tabController =
+        TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
 
     _initControllersFrom(_batch);
   }
 
-/// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
-Widget ifSignedIn(Widget Function(String uid) builder) {
-  final uid = _uid;
-  if (uid == null) return const SizedBox.shrink();
-  return builder(uid);
-}
-
-double _computeTotalIngredientCost(BatchModel batch) {
-  final invBox = Hive.box<InventoryItem>(Boxes.inventory);
-  double sum = 0.0;
-
-  // Local helper: accept dynamic list -> iterable of maps
-  Iterable<Map<dynamic, dynamic>> asMaps(dynamic list) {
-    if (list is Iterable) return list.cast<Map<dynamic, dynamic>>();
-    return const <Map<dynamic, dynamic>>[];
+  /// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
+  Widget ifSignedIn(Widget Function(String uid) builder) {
+    final uid = _uid;
+    if (uid == null) return const SizedBox.shrink();
+    return builder(uid);
   }
 
-  void add(Map<dynamic, dynamic> line) {
-    final name   = (line['name'] as String?)?.trim() ?? '';
-    final unit   = (line['unit'] as String?)?.trim() ?? '';
-    final amount = (line['amount'] as num?)?.toDouble() ?? 0.0;
-    final deduct = (line['deductFromInventory'] as bool?) ?? false;
+  double _computeTotalIngredientCost(BatchModel batch) {
+    final invBox = Hive.box<InventoryItem>(Boxes.inventory);
+    double sum = 0.0;
 
-    if (!deduct || name.isEmpty || unit.isEmpty || amount <= 0) return;
+    // Local helper: accept dynamic list -> iterable of maps
+    Iterable<Map<dynamic, dynamic>> asMaps(dynamic list) {
+      if (list is Iterable) return list.cast<Map<dynamic, dynamic>>();
+      return const <Map<dynamic, dynamic>>[];
+    }
 
-    // Make result nullable by casting the values to InventoryItem?
-    final InventoryItem? inv = invBox.values
-        .cast<InventoryItem?>()
-        .firstWhere(
-          (i) => i?.name.toLowerCase() == name.toLowerCase(),
-          orElse: () => null,
+    void add(Map<dynamic, dynamic> line) {
+      final name = (line['name'] as String?)?.trim() ?? '';
+      final unit = (line['unit'] as String?)?.trim() ?? '';
+      final amount = (line['amount'] as num?)?.toDouble() ?? 0.0;
+      final deduct = (line['deductFromInventory'] as bool?) ?? false;
+
+      if (!deduct || name.isEmpty || unit.isEmpty || amount <= 0) return;
+
+      // Make result nullable by casting the values to InventoryItem?
+      final InventoryItem? inv =
+          invBox.values.cast<InventoryItem?>().firstWhere(
+                (i) => i?.name.toLowerCase() == name.toLowerCase(),
+                orElse: () => null,
+              );
+
+      if (inv == null) return;
+
+      // Require unit match (no silent conversion)
+      if ((inv.unit).trim().toLowerCase() != unit.toLowerCase()) return;
+
+      // Prefer moving average if present, fallback to static costPerUnit
+      final perUnit = (inv.averageCostPerUnit > 0)
+          ? inv.averageCostPerUnit
+          : (inv.costPerUnit);
+
+      if (perUnit > 0) {
+        sum += amount * perUnit;
+      }
+    }
+
+    // Use braces to satisfy lints
+    for (final m in asMaps(batch.ingredients)) {
+      add(m);
+    }
+    for (final a in asMaps(batch.additives)) {
+      add(a);
+    }
+    for (final y in asMaps(batch.yeast)) {
+      add(y);
+    }
+
+    return sum;
+  }
+
+  Widget _buildCostSummary({
+    required double totalCost,
+    required double finalYield,
+    required String finalYieldUnit,
+    required int n12,
+    required int n16,
+    required int n25,
+    required double kegsAsDouble,
+  }) {
+    if (totalCost <= 0 || finalYield <= 0) return const SizedBox.shrink();
+
+    final f = NumberFormat.simpleCurrency();
+
+    // Per-volume (only when yield unit itself is a volume unit)
+    Widget perVolumeTile() {
+      if (finalYieldUnit == 'gal' || finalYieldUnit == 'L') {
+        return ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.calculate),
+          title: Text('Cost per $finalYieldUnit'),
+          subtitle: Text(f.format(totalCost / finalYield)),
         );
-
-    if (inv == null) return;
-
-    // Require unit match (no silent conversion)
-    if ((inv.unit).trim().toLowerCase() != unit.toLowerCase()) return;
-
-    // Prefer moving average if present, fallback to static costPerUnit
-    final perUnit = (inv.averageCostPerUnit > 0)
-        ? inv.averageCostPerUnit
-        : (inv.costPerUnit);
-
-    if (perUnit > 0) {
-      sum += amount * perUnit;
+      }
+      return const SizedBox.shrink();
     }
-  }
 
-  // Use braces to satisfy lints
-  for (final m in asMaps(batch.ingredients)) { add(m); }
-  for (final a in asMaps(batch.additives))  { add(a); }
-  for (final y in asMaps(batch.yeast))      { add(y); }
+    // Per-package
+    int? packages;
+    if (finalYieldUnit == '12oz bottle') packages = n12;
+    if (finalYieldUnit == '16oz bottle') packages = n16;
+    if (finalYieldUnit == '32oz growler') packages = n25;
+    if (finalYieldUnit == '5gal keg') packages = kegsAsDouble.floor();
 
-  return sum;
-}
-
-Widget _buildCostSummary({
-  required double totalCost,
-  required double finalYield,
-  required String finalYieldUnit,
-  required int n12,
-  required int n16,
-  required int n25,
-  required double kegsAsDouble,
-}) {
-  if (totalCost <= 0 || finalYield <= 0) return const SizedBox.shrink();
-
-  final f = NumberFormat.simpleCurrency();
-
-  // Per-volume (only when yield unit itself is a volume unit)
-  Widget perVolumeTile() {
-    if (finalYieldUnit == 'gal' || finalYieldUnit == 'L') {
-      return ListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.calculate),
-        title: Text('Cost per $finalYieldUnit'),
-        subtitle: Text(f.format(totalCost / finalYield)),
-      );
-    }
-    return const SizedBox.shrink();
-  }
-
-  // Per-package
-  int? packages;
-  if (finalYieldUnit == '12oz bottle') packages = n12;
-  if (finalYieldUnit == '16oz bottle') packages = n16;
-  if (finalYieldUnit == '32oz growler') packages = n25;
-  if (finalYieldUnit == '5gal keg')     packages = kegsAsDouble.floor();
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Divider(),
-      ListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.attach_money),
-        title: const Text('Total Ingredient Cost'),
-        subtitle: Text(f.format(totalCost)),
-      ),
-      perVolumeTile(),
-      if (packages != null && packages > 0)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
         ListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.local_drink),
-          title: const Text('Cost per package'),
-          subtitle: Text(f.format(totalCost / packages)),
+          leading: const Icon(Icons.attach_money),
+          title: const Text('Total Ingredient Cost'),
+          subtitle: Text(f.format(totalCost)),
         ),
-    ],
-  );
-}
-
-/// Recalculate batch.plannedOg from ingredients + target volume.
-Future<void> recalcPlannedOg(BatchModel batch) async {
-  final v = (batch.batchVolume ?? 0);
-  if (v <= 0) return;
-
-  final items = batch.safeIngredients;
-  final liquidOg = _blendedOgFromLiquids(items);
-  final liquidGU = (liquidOg == null ? 0.0 : (liquidOg - 1.0) * 1000.0) * v;
-  final massGU   = _sumMassFermentablesGU(items);
-
-  final totalGU  = liquidGU + massGU;
-  final newOg    = 1.0 + (totalGU / v) / 1000.0;
-
-  batch.plannedOg = double.parse(newOg.toStringAsFixed(3));
-  await batch.save();
-  if (mounted) setState(() {}); // reflect in UI immediately
-}
-
-Future<String?> _currentDeviceIdForBatch(String uid, String batchId) async {
-  final snap = await FirestorePaths
-      .devicesColl(uid)
-      .where('linkedBatchId', isEqualTo: batchId)
-      .limit(1)
-      .get();
-
-  if (snap.docs.isEmpty) return null;
-  return snap.docs.first.id;
-}
-
-Future<List<DevicePickItem>> _fetchDevicePickItems({
-  required String uid,
-  required String batchId,
-}) async {
-  final qs = await FirestorePaths.devicesColl(uid).get();
-  final now = DateTime.now();
-  final batchBox = Hive.box<BatchModel>(Boxes.batches);
-
-  String? nameForBatchId(String? id) {
-    if (id == null || id.isEmpty) return null;
-    final local = batchBox.get(id);
-    if (local != null) return local.name;
-    return 'Batch $id';
-  }
-
-  return qs.docs.map((doc) {
-    final data = doc.data();
-    final name = (data['name'] as String?) ?? 'Device';
-    final linkedBatchId = data['linkedBatchId'] as String?;
-    final lastSeenTs = data['lastSeen'];
-    DateTime? lastSeen;
-    if (lastSeenTs is Timestamp) lastSeen = lastSeenTs.toDate();
-
-    final online = lastSeen != null && now.difference(lastSeen) <= _onlineGrace;
-    final assignedElsewhere =
-        linkedBatchId != null && linkedBatchId.isNotEmpty && linkedBatchId != batchId;
-
-    return DevicePickItem(
-      id: doc.id,
-      name: name,
-      online: online,
-      assignedElsewhere: assignedElsewhere,
-      assignedBatchName: assignedElsewhere
-          ? (nameForBatchId(linkedBatchId) ?? 'Another batch')
-          : (linkedBatchId == batchId ? 'This batch' : null),
+        perVolumeTile(),
+        if (packages != null && packages > 0)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.local_drink),
+            title: const Text('Cost per package'),
+            subtitle: Text(f.format(totalCost / packages)),
+          ),
+      ],
     );
-  }).toList();
-}
-
-Future<void> _attachDeviceToBatch({
-  required String uid,
-  required String batchId,
-  required String? deviceId, // null = detach
-}) async {
-  // Detach any currently linked device first
-  final currentId = await _currentDeviceIdForBatch(uid, batchId);
-  if (currentId != null) {
-    await FirestorePaths.deviceDoc(uid, currentId).update({'linkedBatchId': FieldValue.delete()});
   }
 
-  // Attach the chosen one (unless we're just detaching)
-  if (deviceId != null) {
-    await FirestorePaths.deviceDoc(uid, deviceId).update({'linkedBatchId': batchId});
+  /// Recalculate batch.plannedOg from ingredients + target volume.
+  Future<void> recalcPlannedOg(BatchModel batch) async {
+    final v = (batch.batchVolume ?? 0);
+    if (v <= 0) return;
+
+    final items = batch.safeIngredients;
+    final liquidOg = _blendedOgFromLiquids(items);
+    final liquidGU = (liquidOg == null ? 0.0 : (liquidOg - 1.0) * 1000.0) * v;
+    final massGU = _sumMassFermentablesGU(items);
+
+    final totalGU = liquidGU + massGU;
+    final newOg = 1.0 + (totalGU / v) / 1000.0;
+
+    batch.plannedOg = double.parse(newOg.toStringAsFixed(3));
+    await batch.save();
+    if (mounted) setState(() {}); // reflect in UI immediately
   }
-}
+
+  Future<String?> _currentDeviceIdForBatch(String uid, String batchId) async {
+    final snap = await FirestorePaths.devicesColl(uid)
+        .where('linkedBatchId', isEqualTo: batchId)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isEmpty) return null;
+    return snap.docs.first.id;
+  }
+
+  Future<List<DevicePickItem>> _fetchDevicePickItems({
+    required String uid,
+    required String batchId,
+  }) async {
+    final qs = await FirestorePaths.devicesColl(uid).get();
+    final now = DateTime.now();
+    final batchBox = Hive.box<BatchModel>(Boxes.batches);
+
+    String? nameForBatchId(String? id) {
+      if (id == null || id.isEmpty) return null;
+      final local = batchBox.get(id);
+      if (local != null) return local.name;
+      return 'Batch $id';
+    }
+
+    return qs.docs.map((doc) {
+      final data = doc.data();
+      final name = (data['name'] as String?) ?? 'Device';
+      final linkedBatchId = data['linkedBatchId'] as String?;
+      final lastSeenTs = data['lastSeen'];
+      DateTime? lastSeen;
+      if (lastSeenTs is Timestamp) lastSeen = lastSeenTs.toDate();
+
+      final online =
+          lastSeen != null && now.difference(lastSeen) <= _onlineGrace;
+      final assignedElsewhere = linkedBatchId != null &&
+          linkedBatchId.isNotEmpty &&
+          linkedBatchId != batchId;
+
+      return DevicePickItem(
+        id: doc.id,
+        name: name,
+        online: online,
+        assignedElsewhere: assignedElsewhere,
+        assignedBatchName: assignedElsewhere
+            ? (nameForBatchId(linkedBatchId) ?? 'Another batch')
+            : (linkedBatchId == batchId ? 'This batch' : null),
+      );
+    }).toList();
+  }
+
+  Future<void> _attachDeviceToBatch({
+    required String uid,
+    required String batchId,
+    required String? deviceId, // null = detach
+  }) async {
+    // Detach any currently linked device first
+    final currentId = await _currentDeviceIdForBatch(uid, batchId);
+    if (currentId != null) {
+      await FirestorePaths.deviceDoc(uid, currentId)
+          .update({'linkedBatchId': FieldValue.delete()});
+    }
+
+    // Attach the chosen one (unless we're just detaching)
+    if (deviceId != null) {
+      await FirestorePaths.deviceDoc(uid, deviceId)
+          .update({'linkedBatchId': batchId});
+    }
+  }
 
   /// The page reads UID itself when needed. If the constructor-provided UID exists,
-/// it wins; otherwise we fall back to FirebaseAuth.
-String? get _uid => widget.firebaseUid ?? FirebaseAuth.instance.currentUser?.uid;
+  /// it wins; otherwise we fall back to FirebaseAuth.
+  String? get _uid =>
+      widget.firebaseUid ?? FirebaseAuth.instance.currentUser?.uid;
 
-IconData _batteryIconForPercent(double? pct) {
-  final p = (pct ?? -1).toDouble();
-  if (p < 0) return Icons.battery_unknown;
-  if (p >= 0.95) return Icons.battery_full;
-  if (p >= 0.75) return Icons.battery_5_bar;
-  if (p >= 0.55) return Icons.battery_4_bar;
-  if (p >= 0.35) return Icons.battery_3_bar;
-  if (p >= 0.15) return Icons.battery_2_bar;
-  return Icons.battery_alert;
-}
+  IconData _batteryIconForPercent(double? pct) {
+    final p = (pct ?? -1).toDouble();
+    if (p < 0) return Icons.battery_unknown;
+    if (p >= 0.95) return Icons.battery_full;
+    if (p >= 0.75) return Icons.battery_5_bar;
+    if (p >= 0.55) return Icons.battery_4_bar;
+    if (p >= 0.35) return Icons.battery_3_bar;
+    if (p >= 0.15) return Icons.battery_2_bar;
+    return Icons.battery_alert;
+  }
 
-String _timeAgoShort(DateTime t) {
-  final d = DateTime.now().difference(t);
-  if (d.inSeconds < 60) return '${d.inSeconds}s ago';
-  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-  if (d.inHours < 24) return '${d.inHours}h ago';
-  return '${d.inDays}d ago';
-}
+  String _timeAgoShort(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inSeconds < 60) return '${d.inSeconds}s ago';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
+  }
 
   // ---------------- helpers ----------------
 
   Box<BatchModel> get _batchBox => Hive.box<BatchModel>(Boxes.batches);
 
-Future<void> _mutateBatch(void Function(BatchModel b) update) async {
-  final b = _batchBox.get(_hiveKey);
-  if (b == null) return;            // batch might have been deleted elsewhere
-  update(b);                        // mutate the *attached* instance
-  await b.save();                   // safe: b.isInBox == true
-  if (mounted) setState(() {});     // refresh UI
-}
+  Future<void> _mutateBatch(void Function(BatchModel b) update) async {
+    final b = _batchBox.get(_hiveKey);
+    if (b == null) return; // batch might have been deleted elsewhere
+    update(b); // mutate the *attached* instance
+    await b.save(); // safe: b.isInBox == true
+    if (mounted) setState(() {}); // refresh UI
+  }
 
   int _initialTabIndexFor(String? status) {
     switch (status) {
@@ -529,7 +536,7 @@ Future<void> _mutateBatch(void Function(BatchModel b) update) async {
 
     // Check if we have actual measurements
     final bool hasActualMeasurements = batch.safeMeasurements.isNotEmpty;
-    
+
     // Current ABV: based on actual measurements if available
     double? currentAbv;
     if (hasActualMeasurements) {
@@ -553,12 +560,12 @@ Future<void> _mutateBatch(void Function(BatchModel b) update) async {
   /// Get estimated final gravity for planning purposes (not based on measurements)
   double _getEstimatedFinalGravity(BatchModel batch) {
     final og = batch.og ?? batch.plannedOg ?? 1.050;
-    
+
     // Estimate FG based on OG - typical dry fermentation
     if (og <= 1.030) {
       return 0.998; // Very light must
     } else if (og <= 1.050) {
-      return 0.996; // Light must  
+      return 0.996; // Light must
     } else if (og <= 1.070) {
       return 0.995; // Medium must
     } else if (og <= 1.100) {
@@ -579,7 +586,7 @@ Future<void> _mutateBatch(void Function(BatchModel b) update) async {
       useMeasured: useMeasured,
       measuredOg: measuredOg,
     );
-    
+
     // Return current ABV if available, otherwise estimated final ABV
     return abvInfo.currentAbv ?? abvInfo.estimatedFinalAbv;
   }
@@ -605,44 +612,50 @@ Future<void> _mutateBatch(void Function(BatchModel b) update) async {
 
   // ---------------- archive toggle ----------------
 
-Future<void> _onArchiveToggle(BatchModel batch) async {
-  final wantArchive = !batch.isArchived;
+  Future<void> _onArchiveToggle(BatchModel batch) async {
+    final wantArchive = !batch.isArchived;
 
-  final fg = context.read<FeatureGate>();
-  if (wantArchive) {
-    final archived = CountsService.instance.archivedBatchCount();
-    if (!fg.canAddArchivedBatch(archived)) {
-      // show paywall...
-      showPaywall(context);
-      return;
+    final fg = context.read<FeatureGate>();
+    if (wantArchive) {
+      final archived = CountsService.instance.archivedBatchCount();
+      if (!fg.canAddArchivedBatch(archived)) {
+        // show paywall...
+        showPaywall(context);
+        return;
+      }
     }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(wantArchive ? 'Archive Batch?' : 'Unarchive Batch?'),
+        content: Text(
+            'Are you sure you want to ${wantArchive ? 'archive' : 'unarchive'} "${batch.name}"?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(wantArchive ? 'Archive' : 'Unarchive')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final box = Hive.box<BatchModel>(Boxes.batches);
+    batch.isArchived = wantArchive;
+    await box.put(_hiveKey, batch);
+
+    if (!mounted) return;
+    setState(() => _batch = batch);
+    snacks.show(
+      SnackBar(
+          content: Text(wantArchive
+              ? 'Archived "${batch.name}"'
+              : 'Unarchived "${batch.name}"')),
+    );
   }
-
-  
-
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: Text(wantArchive ? 'Archive Batch?' : 'Unarchive Batch?'),
-      content: Text('Are you sure you want to ${wantArchive ? 'archive' : 'unarchive'} "${batch.name}"?'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text(wantArchive ? 'Archive' : 'Unarchive')),
-      ],
-    ),
-  );
-  if (confirmed != true) return;
-
-  final box = Hive.box<BatchModel>(Boxes.batches);
-  batch.isArchived = wantArchive;
-  await box.put(_hiveKey, batch);
-
-  if (!mounted) return;
-  setState(() => _batch = batch);
-  snacks.show(
-    SnackBar(content: Text(wantArchive ? 'Archived "${batch.name}"' : 'Unarchived "${batch.name}"')),
-  );
-}
 
   Future<void> _editIngredientDialog(BatchModel batch, int index) async {
     final existing = batch.ingredients[index];
@@ -666,7 +679,6 @@ Future<void> _onArchiveToggle(BatchModel batch) async {
           batch.ingredients[index] = updated;
           await batch.save();
           await recalcPlannedOg(batch); // ← add
-
         },
       ),
     );
@@ -703,20 +715,23 @@ Future<void> _onArchiveToggle(BatchModel batch) async {
   }
 
   bool _guardActiveBatchLimit(BuildContext context) {
-  final fg = context.read<FeatureGate>(); // or Provider.of<FeatureGate>(context, listen: false)
-  if (fg.isPremium) return true;
+    final fg = context.read<
+        FeatureGate>(); // or Provider.of<FeatureGate>(context, listen: false)
+    if (fg.isPremium) return true;
 
-  final activeCount = CountsService.instance.activeBatchCount();
-  if (activeCount >= fg.activeBatchLimitFree) {
-    snacks.show(
-      SnackBar(content: Text('Free allows ${fg.activeBatchLimitFree} active batches')),
-    );
-showPaywall(context);
+    final activeCount = CountsService.instance.activeBatchCount();
+    if (activeCount >= fg.activeBatchLimitFree) {
+      snacks.show(
+        SnackBar(
+            content:
+                Text('Free allows ${fg.activeBatchLimitFree} active batches')),
+      );
+      showPaywall(context);
 
-    return false;
+      return false;
+    }
+    return true;
   }
-  return true;
-}
 
   void _toggleBrewMode() {
     setState(() {
@@ -741,49 +756,78 @@ showPaywall(context);
     });
   }
 
-void _updateBatchStatus(BatchModel batch, String newStatus) {
-  // Detect FIRST EVER "Completed" (exclude the current batch)
-  bool shouldFireFirstCompleted = false;
-  if (newStatus == 'Completed') {
-    try {
-      final box = Hive.box<BatchModel>(Boxes.batches);
-      final anyCompletedBefore = box.values.any(
-        (b) => b.id != batch.id && (b.status == 'Completed'),
-      );
-      // If none were completed before, this is the user's first completion.
-      if (!anyCompletedBefore) {
-        shouldFireFirstCompleted = true;
+  void _updateBatchStatus(BatchModel batch, String newStatus) async {
+    // Detect FIRST EVER "Completed" (exclude the current batch)
+    bool shouldFireFirstCompleted = false;
+    if (newStatus == 'Completed') {
+      try {
+        final box = Hive.box<BatchModel>(Boxes.batches);
+        final anyCompletedBefore = box.values.any(
+          (b) => b.id != batch.id && (b.status == 'Completed'),
+        );
+        // If none were completed before, this is the user's first completion.
+        if (!anyCompletedBefore) {
+          shouldFireFirstCompleted = true;
+        }
+      } catch (_) {
+        // If box not open yet or any error, fail safe: don't trigger.
       }
-    } catch (_) {
-      // If box not open yet or any error, fail safe: don't trigger.
+
+      // Sync measured OG to batch.og if set
+      try {
+        final extras = await BatchExtrasRepo().getOrCreate(batch.id);
+        if (extras.measuredOg != null && extras.measuredOg! > 1.0) {
+          batch.og = extras.measuredOg;
+        }
+      } catch (e) {
+        // If extras not available, continue without syncing
+      }
+
+      // Sync latest measurement gravity to batch.fg if measurements exist
+      if (batch.safeMeasurements.isNotEmpty) {
+        final sortedMeasurements = [...batch.safeMeasurements]
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        final latestMeasurement = sortedMeasurements.last;
+        if (latestMeasurement.gravity != null &&
+            latestMeasurement.gravity! > 0.9) {
+          batch.fg = latestMeasurement.gravity?.toDouble();
+        }
+      }
+
+      // Recalculate ABV if we have both OG and FG
+      if (batch.og != null &&
+          batch.fg != null &&
+          batch.og! > 1.0 &&
+          batch.fg! > 0.9) {
+        batch.abv = GravityService.abv(og: batch.og!, fg: batch.fg!);
+      }
+    }
+
+    _mutateBatch((b) {
+      b.status = newStatus;
+    });
+
+    int tabIndex = 0;
+    switch (newStatus) {
+      case 'Preparation':
+        tabIndex = 1;
+        break;
+      case 'Fermenting':
+        tabIndex = 2;
+        break;
+      case 'Completed':
+        tabIndex = 3;
+        break;
+    }
+    _tabController.animateTo(tabIndex);
+
+    // After UI settles, fire the review event if applicable.
+    if (shouldFireFirstCompleted && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ReviewPrompter.instance.fireFirstBatchCompleted(context);
+      });
     }
   }
-
-  _mutateBatch((b) {
-    b.status = newStatus;
-  });
-
-  int tabIndex = 0;
-  switch (newStatus) {
-    case 'Preparation':
-      tabIndex = 1;
-      break;
-    case 'Fermenting':
-      tabIndex = 2;
-      break;
-    case 'Completed':
-      tabIndex = 3;
-      break;
-  }
-  _tabController.animateTo(tabIndex);
-
-  // After UI settles, fire the review event if applicable.
-  if (shouldFireFirstCompleted && mounted) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ReviewPrompter.instance.fireFirstBatchCompleted(context);
-    });
-  }
-}
 
   Future<void> _showChangeStatusDialog(BatchModel batch) async {
     String currentStatus = batch.status;
@@ -841,8 +885,9 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
       return;
     }
 
-    final TextEditingController nameController = TextEditingController(text: batch.name);
-    
+    final TextEditingController nameController =
+        TextEditingController(text: batch.name);
+
     final newName = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
@@ -885,16 +930,16 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
 
   Future<void> _renameBatch(BatchModel batch, String newName) async {
     final oldName = batch.name;
-    
+
     try {
       batch.name = newName;
       await batch.save();
-      
+
       if (!mounted) return;
       setState(() {
         _batch = batch;
       });
-      
+
       snacks.show(
         SnackBar(
           content: Text('Renamed batch to "$newName"'),
@@ -962,136 +1007,149 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
   }
 
   Widget _buildPlanningTab(BatchModel batch) {
-  final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
-  
-  return SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _recipeSummaryCard(batch),
-        const SizedBox(height: 16),
+    final extrasFuture = BatchExtrasRepo().getOrCreate(batch.id);
 
-        FutureBuilder(
-          future: extrasFuture,
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Row(
-                    children: [CircularProgressIndicator(), SizedBox(width: 12), Text('Loading…')],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _recipeSummaryCard(batch),
+          const SizedBox(height: 16),
+          FutureBuilder(
+            future: extrasFuture,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(width: 12),
+                        Text('Loading…')
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final extras = snapshot.data!;
+              final abvFromThisCard = _computeAbv(
+                batch: batch,
+                useMeasured: extras.useMeasuredOg == true,
+                measuredOg: extras.measuredOg,
+              );
+
+              return Theme(
+                // hide the ExpansionTile divider for a cleaner look
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceVariant
+                        .withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Theme.of(context).dividerColor.withOpacity(.20),
+                    ),
+                  ),
+                  child: ExpansionTile(
+                    initiallyExpanded:
+                        false, // collapsed by default = less visual weight
+                    tilePadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    childrenPadding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    leading: Icon(
+                      Icons.show_chart,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.6),
+                    ),
+                    title: Text(
+                      'Measured OG',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    subtitle: Builder(builder: (_) {
+                      final ogLabel = (extras.measuredOg != null &&
+                              extras.measuredOg! > 1.0)
+                          ? extras.measuredOg!.toStringAsFixed(3)
+                          : 'Not set';
+                      final using = extras.useMeasuredOg == true ? 'On' : 'Off';
+                      final abvStr = (abvFromThisCard != null)
+                          ? ' • ABV ${abvFromThisCard.toStringAsFixed(1)}%'
+                          : '';
+                      return Text(
+                        'OG: $ogLabel • Use for ABV: $using$abvStr',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(.7),
+                            ),
+                      );
+                    }),
+                    children: [
+                      // Input
+                      TextFormField(
+                        key: ValueKey(extras.measuredOg),
+                        initialValue: (extras.measuredOg != null &&
+                                extras.measuredOg! > 1.0)
+                            ? extras.measuredOg!.toStringAsFixed(3)
+                            : '',
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Measured OG (e.g., 1.072)',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onChanged: (val) async {
+                          final parsed = double.tryParse(val);
+                          final newValue =
+                              (parsed != null && parsed > 1.0) ? parsed : null;
+                          if (newValue != extras.measuredOg) {
+                            await BatchExtrasRepo()
+                                .setMeasuredOg(batch.id, newValue);
+                            if (mounted) setState(() {});
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Toggle
+                      SwitchListTile.adaptive(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Use measured OG for ABV'),
+                        value: (extras.useMeasuredOg == true),
+                        onChanged: (v) async {
+                          await BatchExtrasRepo().setUseMeasuredOg(batch.id, v);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+
+                      // ABV preview (small)
+                      if (abvFromThisCard != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'ABV (with current setting): ${abvFromThisCard.toStringAsFixed(2)}%',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               );
-            }
-
-            final extras = snapshot.data!;
-            final abvFromThisCard = _computeAbv(
-              batch: batch,
-              useMeasured: extras.useMeasuredOg == true,
-              measuredOg: extras.measuredOg,
-            );
-
-            return Theme(
-  // hide the ExpansionTile divider for a cleaner look
-  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-  child: Container(
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.18),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(
-        color: Theme.of(context).dividerColor.withOpacity(.20),
-      ),
-    ),
-    child: ExpansionTile(
-      initiallyExpanded: false, // collapsed by default = less visual weight
-      tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      childrenPadding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      leading: Icon(
-        Icons.show_chart,
-        color: Theme.of(context).colorScheme.onSurface.withOpacity(.6),
-      ),
-      title: Text(
-        'Measured OG',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      subtitle: Builder(builder: (_) {
-        final ogLabel = (extras.measuredOg != null && extras.measuredOg! > 1.0)
-            ? extras.measuredOg!.toStringAsFixed(3)
-            : 'Not set';
-        final using = extras.useMeasuredOg == true ? 'On' : 'Off';
-        final abvStr = (abvFromThisCard != null)
-            ? ' • ABV ${abvFromThisCard.toStringAsFixed(1)}%'
-            : '';
-        return Text(
-          'OG: $ogLabel • Use for ABV: $using$abvStr',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withOpacity(.7),
-              ),
-        );
-      }),
-      children: [
-        // Input
-        TextFormField(
-          key: ValueKey(extras.measuredOg),
-          initialValue: (extras.measuredOg != null && extras.measuredOg! > 1.0)
-              ? extras.measuredOg!.toStringAsFixed(3)
-              : '',
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Measured OG (e.g., 1.072)',
-            border: OutlineInputBorder(),
-            isDense: true,
+            },
           ),
-          onChanged: (val) async {
-            final parsed = double.tryParse(val);
-            final newValue = (parsed != null && parsed > 1.0) ? parsed : null;
-            if (newValue != extras.measuredOg) {
-              await BatchExtrasRepo().setMeasuredOg(batch.id, newValue);
-              if (mounted) setState(() {});
-            }
-          },
-        ),
-        const SizedBox(height: 8),
-
-        // Toggle
-        SwitchListTile.adaptive(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Use measured OG for ABV'),
-          value: (extras.useMeasuredOg == true),
-          onChanged: (v) async {
-            await BatchExtrasRepo().setUseMeasuredOg(batch.id, v);
-            if (mounted) setState(() {});
-          },
-        ),
-
-        // ABV preview (small)
-        if (abvFromThisCard != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'ABV (with current setting): ${abvFromThisCard.toStringAsFixed(2)}%',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-      ],
-    ),
-  ),
-);
-
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-
+          const SizedBox(height: 16),
           ElevatedButton.icon(
             icon: const Icon(Icons.sync),
             label: const Text('Sync From Recipe'),
@@ -1118,7 +1176,6 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
                 ),
               );
             },
-
           ),
           const SizedBox(height: 16),
           _sectionTitle('Yeast'),
@@ -1169,7 +1226,7 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
             label: const Text('Manage Stages'),
             onPressed: () => _manageStages(batch),
           ),
-          const SizedBox(height: 16),          
+          const SizedBox(height: 16),
           _buildStatusProgressionButton(
             batch: batch,
             currentStatus: 'Planning',
@@ -1181,117 +1238,119 @@ void _updateBatchStatus(BatchModel batch, String newStatus) {
     );
   }
 
-Future<bool> _confirmDelete({
-  required String title,
-  required String message,
-}) async {
-  return await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-}
+  Future<bool> _confirmDelete({
+    required String title,
+    required String message,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
 
-void _showUndoSnackBar({
-  required String label,
-  required VoidCallback onUndo,
-}) {
-  snacks.show(
-    SnackBar(
-      content: Text(label),
-      action: SnackBarAction(label: 'Undo', onPressed: onUndo),
-      duration: const Duration(seconds: 4),
-    ),
-  );
-}
+  void _showUndoSnackBar({
+    required String label,
+    required VoidCallback onUndo,
+  }) {
+    snacks.show(
+      SnackBar(
+        content: Text(label),
+        action: SnackBarAction(label: 'Undo', onPressed: onUndo),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
 
 // Delete + Undo for Ingredients
-Future<void> _deleteIngredient(BatchModel batch, int index) async {
-  final map = Map<String, dynamic>.from(batch.ingredients[index]);
-  final name = (map['name'] as String?) ?? 'ingredient';
-  final confirmed = await _confirmDelete(
-    title: 'Remove Ingredient',
-    message: 'Remove "$name" from this batch?',
-  );
-  if (!confirmed) return;
+  Future<void> _deleteIngredient(BatchModel batch, int index) async {
+    final map = Map<String, dynamic>.from(batch.ingredients[index]);
+    final name = (map['name'] as String?) ?? 'ingredient';
+    final confirmed = await _confirmDelete(
+      title: 'Remove Ingredient',
+      message: 'Remove "$name" from this batch?',
+    );
+    if (!confirmed) return;
 
-  final removed = batch.ingredients.removeAt(index);
-  await batch.save();
-  await recalcPlannedOg(batch); // ← add
-  if (!mounted) return;
+    final removed = batch.ingredients.removeAt(index);
+    await batch.save();
+    await recalcPlannedOg(batch); // ← add
+    if (!mounted) return;
 
-  _showUndoSnackBar(
-    label: 'Removed $name',
-    onUndo: () async {
-      batch.ingredients.insert(index, removed);
-      await batch.save();
-      await recalcPlannedOg(batch); // ← add
-      if (mounted) setState(() {});
-    },
-  );
-  setState(() {});
-}
+    _showUndoSnackBar(
+      label: 'Removed $name',
+      onUndo: () async {
+        batch.ingredients.insert(index, removed);
+        await batch.save();
+        await recalcPlannedOg(batch); // ← add
+        if (mounted) setState(() {});
+      },
+    );
+    setState(() {});
+  }
 
 // Delete + Undo for Yeast
-Future<void> _deleteYeast(BatchModel batch, int index) async {
-  final map = Map<String, dynamic>.from(batch.yeast[index]);
-  final name = (map['name'] as String?) ?? 'yeast';
-  final confirmed = await _confirmDelete(
-    title: 'Remove Yeast',
-    message: 'Remove "$name" from this batch?',
-  );
-  if (!confirmed) return;
+  Future<void> _deleteYeast(BatchModel batch, int index) async {
+    final map = Map<String, dynamic>.from(batch.yeast[index]);
+    final name = (map['name'] as String?) ?? 'yeast';
+    final confirmed = await _confirmDelete(
+      title: 'Remove Yeast',
+      message: 'Remove "$name" from this batch?',
+    );
+    if (!confirmed) return;
 
-  final removed = batch.yeast.removeAt(index);
-  await batch.save();
-  if (!mounted) return;
+    final removed = batch.yeast.removeAt(index);
+    await batch.save();
+    if (!mounted) return;
 
-  _showUndoSnackBar(
-    label: 'Removed $name',
-    onUndo: () async {
-      batch.yeast.insert(index, removed);
-      await batch.save();
-      if (mounted) setState(() {});
-    },
-  );
-  setState(() {});
-}
+    _showUndoSnackBar(
+      label: 'Removed $name',
+      onUndo: () async {
+        batch.yeast.insert(index, removed);
+        await batch.save();
+        if (mounted) setState(() {});
+      },
+    );
+    setState(() {});
+  }
 
 // Delete + Undo for Additives
-Future<void> _deleteAdditive(BatchModel batch, int index) async {
-  final map = Map<String, dynamic>.from(batch.additives[index]);
-  final name = (map['name'] as String?) ?? 'additive';
-  final confirmed = await _confirmDelete(
-    title: 'Remove Additive',
-    message: 'Remove "$name" from this batch?',
-  );
-  if (!confirmed) return;
+  Future<void> _deleteAdditive(BatchModel batch, int index) async {
+    final map = Map<String, dynamic>.from(batch.additives[index]);
+    final name = (map['name'] as String?) ?? 'additive';
+    final confirmed = await _confirmDelete(
+      title: 'Remove Additive',
+      message: 'Remove "$name" from this batch?',
+    );
+    if (!confirmed) return;
 
-  final removed = batch.additives.removeAt(index);
-  await batch.save();
-  if (!mounted) return;
+    final removed = batch.additives.removeAt(index);
+    await batch.save();
+    if (!mounted) return;
 
-  _showUndoSnackBar(
-    label: 'Removed $name',
-    onUndo: () async {
-      batch.additives.insert(index, removed);
-      await batch.save();
-      if (mounted) setState(() {});
-    },
-  );
-  setState(() {});
-}
+    _showUndoSnackBar(
+      label: 'Removed $name',
+      onUndo: () async {
+        batch.additives.insert(index, removed);
+        await batch.save();
+        if (mounted) setState(() {});
+      },
+    );
+    setState(() {});
+  }
 
   // --- PLANNING TAB LIST WIDGETS ---
 
@@ -1321,45 +1380,45 @@ Future<void> _deleteAdditive(BatchModel batch, int index) async {
         final inStock = inventoryItem.amountInStock;
         final sufficient = inStock >= amount;
 
-return InkWell(
-  onLongPress: () => _editIngredientDialog(batch, index),
-  child: ListTile(
-    leading: const Icon(Icons.liquor_outlined),
-    title: Text('$amount $unit $name'),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (note.isNotEmpty) Text(note),
-        if (inventoryItem.name.isNotEmpty)
-          Text(
-            'In stock: ${inStock.toStringAsFixed(2)} $unit',
-            style: TextStyle(
-              color: sufficient ? Colors.green : Colors.red,
-              fontWeight: FontWeight.w500,
+        return InkWell(
+          onLongPress: () => _editIngredientDialog(batch, index),
+          child: ListTile(
+            leading: const Icon(Icons.liquor_outlined),
+            title: Text('$amount $unit $name'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (note.isNotEmpty) Text(note),
+                if (inventoryItem.name.isNotEmpty)
+                  Text(
+                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                    style: TextStyle(
+                      color: sufficient ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                else
+                  const Text('Not in inventory',
+                      style: TextStyle(color: Colors.grey)),
+              ],
             ),
-          )
-        else
-          const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
-      ],
-    ),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          tooltip: 'Edit',
-          icon: const Icon(Icons.edit),
-          onPressed: () => _editIngredientDialog(batch, index),
-        ),
-        IconButton(
-          tooltip: 'Delete',
-          icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: () => _deleteIngredient(batch, index),
-        ),
-      ],
-    ),
-  ),
-);
-
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Edit',
+                  icon: const Icon(Icons.edit),
+                  onPressed: () => _editIngredientDialog(batch, index),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _deleteIngredient(batch, index),
+                ),
+              ],
+            ),
+          ),
+        );
       }).toList(),
     );
   }
@@ -1391,44 +1450,44 @@ return InkWell(
         final sufficient = inStock >= amount;
 
         return InkWell(
-  onLongPress: () => _editAdditiveDialog(batch, index),
-  child: ListTile(
-    leading: const Icon(Icons.science),
-    title: Text('$amount $unit $name'),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (note.isNotEmpty) Text(note),
-        if (inventoryItem.name.isNotEmpty)
-          Text(
-            'In stock: ${inStock.toStringAsFixed(2)} $unit',
-            style: TextStyle(
-              color: sufficient ? Colors.green : Colors.red,
-              fontWeight: FontWeight.w500,
+          onLongPress: () => _editAdditiveDialog(batch, index),
+          child: ListTile(
+            leading: const Icon(Icons.science),
+            title: Text('$amount $unit $name'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (note.isNotEmpty) Text(note),
+                if (inventoryItem.name.isNotEmpty)
+                  Text(
+                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                    style: TextStyle(
+                      color: sufficient ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                else
+                  const Text('Not in inventory',
+                      style: TextStyle(color: Colors.grey)),
+              ],
             ),
-          )
-        else
-          const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
-      ],
-    ),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          tooltip: 'Edit',
-          icon: const Icon(Icons.edit),
-          onPressed: () => _editAdditiveDialog(batch, index),
-        ),
-        IconButton(
-          tooltip: 'Delete',
-          icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: () => _deleteAdditive(batch, index),
-        ),
-      ],
-    ),
-  ),
-);
-
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Edit',
+                  icon: const Icon(Icons.edit),
+                  onPressed: () => _editAdditiveDialog(batch, index),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _deleteAdditive(batch, index),
+                ),
+              ],
+            ),
+          ),
+        );
       }).toList(),
     );
   }
@@ -1459,37 +1518,37 @@ return InkWell(
         final sufficient = inStock >= amount;
 
         return InkWell(
-  onLongPress: () => _editYeastDialog(batch, index),
-  child: ListTile(
-    leading: const Icon(Icons.bubble_chart),
-    title: Text('$amount $unit $name'),
-    subtitle: inventoryItem.name.isNotEmpty
-        ? Text(
-            'In stock: ${inStock.toStringAsFixed(2)} $unit',
-            style: TextStyle(
-              color: sufficient ? Colors.green : Colors.red,
-              fontWeight: FontWeight.w500,
+          onLongPress: () => _editYeastDialog(batch, index),
+          child: ListTile(
+            leading: const Icon(Icons.bubble_chart),
+            title: Text('$amount $unit $name'),
+            subtitle: inventoryItem.name.isNotEmpty
+                ? Text(
+                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                    style: TextStyle(
+                      color: sufficient ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                : const Text('Not in inventory',
+                    style: TextStyle(color: Colors.grey)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Edit',
+                  icon: const Icon(Icons.edit),
+                  onPressed: () => _editYeastDialog(batch, index),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: () => _deleteYeast(batch, index),
+                ),
+              ],
             ),
-          )
-        : const Text('Not in inventory', style: TextStyle(color: Colors.grey)),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          tooltip: 'Edit',
-          icon: const Icon(Icons.edit),
-          onPressed: () => _editYeastDialog(batch, index),
-        ),
-        IconButton(
-          tooltip: 'Delete',
-          icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: () => _deleteYeast(batch, index),
-        ),
-      ],
-    ),
-  ),
-);
-
+          ),
+        );
       }).toList(),
     );
   }
@@ -1510,7 +1569,8 @@ return InkWell(
             ),
             Row(
               children: [
-                Text('Status: ', style: Theme.of(context).textTheme.titleMedium),
+                Text('Status: ',
+                    style: Theme.of(context).textTheme.titleMedium),
                 Text(batch.status,
                     style: Theme.of(context)
                         .textTheme
@@ -1524,7 +1584,6 @@ return InkWell(
               ],
             ),
             const Divider(),
-
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1533,35 +1592,49 @@ return InkWell(
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
+                    Text(
+                        'Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
                     const SizedBox(height: 4),
-                    Text('Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
+                    Text(
+                        'Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
                     const SizedBox(height: 4),
                     FutureBuilder<AbvInfo>(
                       future: _abvInfoForBatch(batch),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const Text('Estimated ABV: —');
+                        if (!snapshot.hasData)
+                          return const Text('Estimated ABV: —');
                         final abvInfo = snapshot.data!;
-                        
+
                         // Build ABV display based on what data is available
-                        if (abvInfo.hasActualMeasurements && abvInfo.currentAbv != null) {
+                        if (abvInfo.hasActualMeasurements &&
+                            abvInfo.currentAbv != null) {
                           // Show both current and estimated when we have measurements
-                          final currentText = 'Current ABV: ${abvInfo.currentAbv!.toStringAsFixed(1)}%';
-                          final estimatedText = 'Est. Final ABV: ${abvInfo.estimatedFinalAbv?.toStringAsFixed(1) ?? '—'}%';
+                          final currentText =
+                              'Current ABV: ${abvInfo.currentAbv!.toStringAsFixed(1)}%';
+                          final estimatedText =
+                              'Est. Final ABV: ${abvInfo.estimatedFinalAbv?.toStringAsFixed(1) ?? '—'}%';
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(currentText, style: const TextStyle(fontWeight: FontWeight.w500)),
+                              Text(currentText,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w500)),
                               const SizedBox(height: 2),
-                              Text(estimatedText, style: TextStyle(
-                                fontSize: 13,
-                                color: Theme.of(context).textTheme.bodySmall?.color,
-                              )),
+                              Text(estimatedText,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.color,
+                                  )),
                             ],
                           );
                         } else {
                           // Show only estimated when no measurements yet
-                          final s = (abvInfo.estimatedFinalAbv == null) ? '—' : abvInfo.estimatedFinalAbv!.toStringAsFixed(1);
+                          final s = (abvInfo.estimatedFinalAbv == null)
+                              ? '—'
+                              : abvInfo.estimatedFinalAbv!.toStringAsFixed(1);
                           return Text('Estimated ABV: $s%');
                         }
                       },
@@ -1577,9 +1650,6 @@ return InkWell(
                 ),
               ],
             )
-
-
-
           ],
         ),
       ),
@@ -1593,14 +1663,15 @@ return InkWell(
     return Column(
       children: batch.safeFermentationStages.map((stage) {
         final name = stage.name;
-final settings = context.read<SettingsModel>();
-final tempLabel = stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? '—';
+        final settings = context.read<SettingsModel>();
+        final tempLabel =
+            stage.targetTempC?.toDisplay(targetUnit: settings.unit) ?? '—';
 
         final duration = stage.durationDays.toString();
         return ListTile(
           leading: const Icon(Icons.thermostat),
           title: Text(name),
-subtitle: Text('Temp: $tempLabel, Duration: $duration days'),
+          subtitle: Text('Temp: $tempLabel, Duration: $duration days'),
         );
       }).toList(),
     );
@@ -1677,39 +1748,38 @@ subtitle: Text('Temp: $tempLabel, Duration: $duration days'),
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
-ElevatedButton(
-  onPressed: () async {
-    // capture what you need from context BEFORE any awaits
-    final nav = Navigator.of(context);
+          ElevatedButton(
+            onPressed: () async {
+              // capture what you need from context BEFORE any awaits
+              final nav = Navigator.of(context);
 
-    // snapshot current values for change detection
-    final prevVol = batch.batchVolume;
-    final ogWasBlank = ogController.text.trim().isEmpty;
+              // snapshot current values for change detection
+              final prevVol = batch.batchVolume;
+              final ogWasBlank = ogController.text.trim().isEmpty;
 
-    // parse once
-    final newVol = double.tryParse(volumeController.text);
-    final newOg  = double.tryParse(ogController.text);
-    final newAbv = double.tryParse(abvController.text);
+              // parse once
+              final newVol = double.tryParse(volumeController.text);
+              final newOg = double.tryParse(ogController.text);
+              final newAbv = double.tryParse(abvController.text);
 
-    // apply + persist
-    batch.batchVolume = newVol;
-    batch.plannedOg   = newOg;
-    batch.plannedAbv  = newAbv;
-    await batch.save();
+              // apply + persist
+              batch.batchVolume = newVol;
+              batch.plannedOg = newOg;
+              batch.plannedAbv = newAbv;
+              await batch.save();
 
-    // decide if we should recompute planned OG
-    final volChanged = (prevVol ?? -1) != (newVol ?? -1);
-    if ((newVol ?? 0) > 0 && (ogWasBlank || volChanged)) {
-      await recalcPlannedOg(batch);
-    }
+              // decide if we should recompute planned OG
+              final volChanged = (prevVol ?? -1) != (newVol ?? -1);
+              if ((newVol ?? 0) > 0 && (ogWasBlank || volChanged)) {
+                await recalcPlannedOg(batch);
+              }
 
-    if (!mounted) return;
-    setState(() {}); // refresh UI
-    nav.pop();
-  },
-  child: const Text('Save'),
-),
-
+              if (!mounted) return;
+              setState(() {}); // refresh UI
+              nav.pop();
+            },
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -1721,10 +1791,8 @@ ElevatedButton(
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Confirm Deletion'),
-          content: Text(
-            'Are you sure you want to delete the measurement from '
-            '${DateFormat.yMMMd().add_jm().format(measurement.timestamp.toLocal())}?'
-          ),
+          content: Text('Are you sure you want to delete the measurement from '
+              '${DateFormat.yMMMd().add_jm().format(measurement.timestamp.toLocal())}?'),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
@@ -1732,7 +1800,8 @@ ElevatedButton(
             ),
             TextButton(
               child: const Text('Delete'),
-              onPressed: () async { // CHANGE
+              onPressed: () async {
+                // CHANGE
                 Navigator.of(context).pop();
                 await _mutateBatch((b) =>
                     b.measurements.removeWhere((x) => x.id == measurement.id));
@@ -1744,57 +1813,58 @@ ElevatedButton(
     );
   }
 
-Future<void> _openMeasurementEditor(BatchModel batch, Measurement target) async {
-  // Pause realtime updates while editing to prevent focus/IME drops.
-  if (mounted) setState(() => _pauseRealtime = true);
+  Future<void> _openMeasurementEditor(
+      BatchModel batch, Measurement target) async {
+    // Pause realtime updates while editing to prevent focus/IME drops.
+    if (mounted) setState(() => _pauseRealtime = true);
 
-  try {
-    // Build a sorted snapshot to compute "first" (for Day chip) and "prev" (for FSU).
-    final sorted = [...batch.measurements]
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final firstDate = sorted.isNotEmpty ? sorted.first.timestamp : null;
+    try {
+      // Build a sorted snapshot to compute "first" (for Day chip) and "prev" (for FSU).
+      final sorted = [...batch.measurements]
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      final firstDate = sorted.isNotEmpty ? sorted.first.timestamp : null;
 
-    // Previous measurement relative to the target (by id).
-    final idx = sorted.indexWhere((m) => m.id == target.id);
-    final prev = (idx > 0) ? sorted[idx - 1] : null;
+      // Previous measurement relative to the target (by id).
+      final idx = sorted.indexWhere((m) => m.id == target.id);
+      final prev = (idx > 0) ? sorted[idx - 1] : null;
 
-    // Open editor (isolated from subtree rebuilds).
-    final updated = await showDialog<Measurement>(
-      context: context,
-      useRootNavigator: true,
-      builder: (_) => AddMeasurementDialog(
-        existingMeasurement: target,
-        previousMeasurement: prev,
-        firstMeasurementDate: firstDate,
-      ),
-    );
+      // Open editor (isolated from subtree rebuilds).
+      final updated = await showDialog<Measurement>(
+        context: context,
+        useRootNavigator: true,
+        builder: (_) => AddMeasurementDialog(
+          existingMeasurement: target,
+          previousMeasurement: prev,
+          firstMeasurementDate: firstDate,
+        ),
+      );
 
-    if (updated == null) return; // user canceled
+      if (updated == null) return; // user canceled
 
-    // Replace the existing item in-place, preserving id.
-    await _mutateBatch((bch) {
-      final i = bch.measurements.indexWhere((x) => x.id == target.id);
-      if (i != -1) {
-        bch.measurements[i] = Measurement(
-          id: target.id,
-          timestamp: updated.timestamp,
-          gravityUnit: updated.gravityUnit,
-          gravity: updated.gravity,
-          brix: updated.brix,
-          temperature: updated.temperature,
-          notes: updated.notes,
-          fsuspeed: updated.fsuspeed,
-          ta: updated.ta,
-          sgCorrected: updated.sgCorrected,
-          interventions: updated.interventions,
-          fromDevice: false, // edits are local/manual
-        );
-      }
-    });
-  } finally {
-    if (mounted) setState(() => _pauseRealtime = false);
+      // Replace the existing item in-place, preserving id.
+      await _mutateBatch((bch) {
+        final i = bch.measurements.indexWhere((x) => x.id == target.id);
+        if (i != -1) {
+          bch.measurements[i] = Measurement(
+            id: target.id,
+            timestamp: updated.timestamp,
+            gravityUnit: updated.gravityUnit,
+            gravity: updated.gravity,
+            brix: updated.brix,
+            temperature: updated.temperature,
+            notes: updated.notes,
+            fsuspeed: updated.fsuspeed,
+            ta: updated.ta,
+            sgCorrected: updated.sgCorrected,
+            interventions: updated.interventions,
+            fromDevice: false, // edits are local/manual
+          );
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _pauseRealtime = false);
+    }
   }
-}
 
   void _showSyncFromRecipeDialog(BatchModel batch) async {
     bool syncYeast = true;
@@ -1829,14 +1899,14 @@ Future<void> _openMeasurementEditor(BatchModel batch, Measurement target) async 
                       child: Text(recipe.name),
                     );
                   }).toList(),
-onChanged: (RecipeModel? newValue) {
-  if (newValue != null) {
-    setState(() {
-      selectedRecipe = newValue; // local only; don't mutate batch yet
-    });
-  }
-},
-
+                  onChanged: (RecipeModel? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        selectedRecipe =
+                            newValue; // local only; don't mutate batch yet
+                      });
+                    }
+                  },
                 ),
                 if (selectedRecipe != null)
                   Align(
@@ -1844,12 +1914,12 @@ onChanged: (RecipeModel? newValue) {
                     child: TextButton.icon(
                       icon: const Icon(Icons.clear, size: 16),
                       label: const Text('Clear'),
-onPressed: () {
-  setState(() {
-    selectedRecipe = null; // local only; don't touch the batch here
-  });
-},
-
+                      onPressed: () {
+                        setState(() {
+                          selectedRecipe =
+                              null; // local only; don't touch the batch here
+                        });
+                      },
                     ),
                   ),
                 const SizedBox(height: 12),
@@ -1891,23 +1961,23 @@ onPressed: () {
                   final scaffoldMessenger = snacks;
                   final navigator = Navigator.of(dialogContext);
                   final newRecipe = RecipeModel(
-id: generateId(),
-name: batch.name,
-createdAt: DateTime.now(),
+                    id: generateId(),
+                    name: batch.name,
+                    createdAt: DateTime.now(),
 // If your RecipeModel now has category:
-category: batch.category ?? 'Uncategorized',
-og: batch.og,
-fg: batch.fg,
-abv: batch.abv,
-additives: batch.additives,
-ingredients: batch.ingredients,
-fermentationStages: batch.safeFermentationStages.toList(),
-yeast: batch.yeast,
-notes: batch.notes ?? '',
-batchVolume: batch.batchVolume,
-plannedOg: batch.plannedOg,
-plannedAbv: batch.plannedAbv,
-);
+                    category: batch.category ?? 'Uncategorized',
+                    og: batch.og,
+                    fg: batch.fg,
+                    abv: batch.abv,
+                    additives: batch.additives,
+                    ingredients: batch.ingredients,
+                    fermentationStages: batch.safeFermentationStages.toList(),
+                    yeast: batch.yeast,
+                    notes: batch.notes ?? '',
+                    batchVolume: batch.batchVolume,
+                    plannedOg: batch.plannedOg,
+                    plannedAbv: batch.plannedAbv,
+                  );
 
                   await recipeBox.put(newRecipe.id, newRecipe);
 
@@ -1939,44 +2009,49 @@ plannedAbv: batch.plannedAbv,
 
     if (confirmed != true || !mounted) return;
     final recipe = selectedRecipe;
-    if (recipe == null) return;   
+    if (recipe == null) return;
     if (syncYeast) {
-  batch.yeast = recipe.yeast
-      .map<Map<String, dynamic>>((y) => recipeYeastToBatch(y as Map<String, dynamic>))
-      .toList();
-}
+      batch.yeast = recipe.yeast
+          .map<Map<String, dynamic>>(
+              (y) => recipeYeastToBatch(y as Map<String, dynamic>))
+          .toList();
+    }
     batch.recipeId = recipe.id;
 
+    if (syncYeast) {
+      final mappedYeast = recipe.yeast
+          .map<Map<String, dynamic>>(
+              (y) => recipeYeastToBatch(y as Map<String, dynamic>))
+          .toList();
+      // preserve currently selected yeast by name if present
+      if (batch.yeast.isNotEmpty) {
+        final selectedName = (batch.yeast.first['name'] ?? '').toString();
+        final preserved = mappedYeast.firstWhere(
+          (y) => (y['name'] ?? '') == selectedName,
+          orElse: () =>
+              mappedYeast.isNotEmpty ? mappedYeast.first : <String, dynamic>{},
+        );
+        batch.yeast = [preserved];
+      } else {
+        batch.yeast = mappedYeast.isNotEmpty
+            ? [mappedYeast.first]
+            : <Map<String, dynamic>>[];
+      }
+    }
 
-    
-if (syncYeast) {
-  final mappedYeast = recipe.yeast
-      .map<Map<String, dynamic>>((y) => recipeYeastToBatch(y as Map<String, dynamic>))
-      .toList();
-  // preserve currently selected yeast by name if present
-  if (batch.yeast.isNotEmpty) {
-    final selectedName = (batch.yeast.first['name'] ?? '').toString();
-    final preserved = mappedYeast.firstWhere(
-      (y) => (y['name'] ?? '') == selectedName,
-      orElse: () => mappedYeast.isNotEmpty ? mappedYeast.first : <String, dynamic>{},
-    );
-    batch.yeast = [preserved];
-  } else {
-    batch.yeast = mappedYeast.isNotEmpty ? [mappedYeast.first] : <Map<String, dynamic>>[];
-  }
-}
+    if (syncIngredients) {
+      batch.ingredients = recipe.ingredients
+          .map<Map<String, dynamic>>(
+              (ing) => recipeIngredientToBatch(ing as Map<String, dynamic>))
+          .toList();
+    }
 
-if (syncIngredients) {
-  batch.ingredients = recipe.ingredients
-      .map<Map<String, dynamic>>((ing) => recipeIngredientToBatch(ing as Map<String, dynamic>))
-      .toList();
-}
-
-if (syncAdditives) {
-  batch.additives = recipe.additives
-      .map<Map<String, dynamic>>((a) => recipeAdditiveToBatch(a as Map<String, dynamic>))
-      .toList();
-}
+    if (syncAdditives) {
+      batch.additives = recipe.additives
+          .map<Map<String, dynamic>>(
+              (a) => recipeAdditiveToBatch(a as Map<String, dynamic>))
+          .toList();
+    }
     if (syncStages) {
       batch.fermentationStages =
           List<FermentationStage>.from(recipe.fermentationStages);
@@ -2014,25 +2089,25 @@ if (syncAdditives) {
   }
 
   // ADD: safely add to the linked recipe (if any) using an ATTACHED Hive object
-Future<void> _addIngredientToLinkedRecipeIfAny(
-  BatchModel batch,
-  Map<String, dynamic> ingredient,
-) async {
-  if (batch.recipeId.isEmpty) return; // no link, nothing to do
+  Future<void> _addIngredientToLinkedRecipeIfAny(
+    BatchModel batch,
+    Map<String, dynamic> ingredient,
+  ) async {
+    if (batch.recipeId.isEmpty) return; // no link, nothing to do
 
-  final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
-  final recipe = recipeBox.get(batch.recipeId);
-  if (recipe == null) return; // stale link
+    final recipeBox = Hive.box<RecipeModel>(Boxes.recipes);
+    final recipe = recipeBox.get(batch.recipeId);
+    if (recipe == null) return; // stale link
 
-  // mutate the ATTACHED instance and save
-  recipe.ingredients = [...recipe.ingredients, ingredient];
-  await recipe.save();
+    // mutate the ATTACHED instance and save
+    recipe.ingredients = [...recipe.ingredients, ingredient];
+    await recipe.save();
 
-  if (!mounted) return;
-  snacks.show(
-    const SnackBar(content: Text('Also added to linked recipe')),
-  );
-}
+    if (!mounted) return;
+    snacks.show(
+      const SnackBar(content: Text('Also added to linked recipe')),
+    );
+  }
 
   void _manageStages(BatchModel batch) async {
     final updatedStages = await showModalBottomSheet<List<FermentationStage>>(
@@ -2044,9 +2119,9 @@ Future<void> _addIngredientToLinkedRecipeIfAny(
       ),
     );
 
-if (updatedStages != null) {
-  await _mutateBatch((b) => b.fermentationStages = updatedStages);
-}
+    if (updatedStages != null) {
+      await _mutateBatch((b) => b.fermentationStages = updatedStages);
+    }
   }
 
   Widget _buildPreparationTab(BatchModel batch) {
@@ -2112,8 +2187,8 @@ if (updatedStages != null) {
       Card(
         margin: const EdgeInsets.symmetric(vertical: 4.0),
         child: ExpansionTile(
-          title:
-              const Text("Yeast", style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text("Yeast",
+              style: TextStyle(fontWeight: FontWeight.bold)),
           initiallyExpanded: true,
           children: batch.yeast.isEmpty
               ? [const ListTile(title: Text('No yeast added.'))]
@@ -2166,142 +2241,146 @@ if (updatedStages != null) {
     ];
   }
 
-Widget _buildChecklistItem({
-  required BatchModel batch,
-  required Map<String, dynamic> itemData,
-  required Box<InventoryItem> inventoryBox,
-  required Future<void> Function(bool) onChanged,
-}) {
-  final name = itemData['name'] ?? 'Unnamed';
-  final amount = (itemData['amount'] as num?)?.toDouble() ?? 0;
-  final unit = itemData['unit'] ?? '';
-  final note = itemData['note'] ?? '';
-  final shouldDeduct = itemData['deductFromInventory'] ?? false;
+  Widget _buildChecklistItem({
+    required BatchModel batch,
+    required Map<String, dynamic> itemData,
+    required Box<InventoryItem> inventoryBox,
+    required Future<void> Function(bool) onChanged,
+  }) {
+    final name = itemData['name'] ?? 'Unnamed';
+    final amount = (itemData['amount'] as num?)?.toDouble() ?? 0;
+    final unit = itemData['unit'] ?? '';
+    final note = itemData['note'] ?? '';
+    final shouldDeduct = itemData['deductFromInventory'] ?? false;
 
-  final inventoryItem = inventoryBox.values
-      .cast<InventoryItem?>()
-      .firstWhere(
-        (item) => item?.name.toLowerCase() == name.toLowerCase(),
-        orElse: () => null,
-      );
+    final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
+          (item) => item?.name.toLowerCase() == name.toLowerCase(),
+          orElse: () => null,
+        );
 
-  final inStock = inventoryItem?.amountInStock ?? 0;
-  final sufficient = inStock >= amount;
-  
+    final inStock = inventoryItem?.amountInStock ?? 0;
+    final sufficient = inStock >= amount;
 
-  // Show the checkbox only if:
-  //  - the item exists in inventory, and
-  //  - user already deducted (so they can undo), OR there’s enough to deduct now
-  final showCheckbox = inventoryItem != null && (shouldDeduct || sufficient);
+    // Show the checkbox only if:
+    //  - the item exists in inventory, and
+    //  - user already deducted (so they can undo), OR there’s enough to deduct now
+    final showCheckbox = inventoryItem != null && (shouldDeduct || sufficient);
 
-  return Column(
-    children: [
-      ListTile(
-        enabled: !shouldDeduct,
-        title: Text(
-          '$amount $unit $name',
-          style: TextStyle(
-            decoration:
-                shouldDeduct ? TextDecoration.lineThrough : TextDecoration.none,
-            color: shouldDeduct ? Colors.grey : null,
+    return Column(
+      children: [
+        ListTile(
+          enabled: !shouldDeduct,
+          title: Text(
+            '$amount $unit $name',
+            style: TextStyle(
+              decoration: shouldDeduct
+                  ? TextDecoration.lineThrough
+                  : TextDecoration.none,
+              color: shouldDeduct ? Colors.grey : null,
+            ),
           ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (note.isNotEmpty) Text(note),
+              if (inventoryItem != null)
+                Row(
+                  children: [
+                    Text(
+                      'In stock: ${inStock.toStringAsFixed(2)} $unit',
+                      style: TextStyle(
+                        color: sufficient ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline, size: 20),
+                      onPressed: () => _showQuickAddDialog(inventoryItem, unit),
+                      tooltip: 'Quick-add to inventory',
+                    ),
+                    if (!sufficient && !shouldDeduct)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child: Icon(Icons.warning, color: Colors.red, size: 18),
+                      ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Text(
+                      'Not in Inventory',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.add_box_outlined, size: 20),
+                      label: const Text('Create'),
+                      onPressed: () =>
+                          _showCreateInventoryItemDialog(name, unit),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          trailing: (!sufficient && !shouldDeduct)
+              ? ElevatedButton(
+                  onPressed: () {
+                    if (!FeatureGate.instance.allowShoppingList) {
+                      snacks.show(const SnackBar(
+                          content: Text(
+                              'Shopping List is a Premium/Pro-Offline feature')));
+                      showPaywall(context);
+                      return;
+                    }
+                    final shoppingBox =
+                        Hive.box<ShoppingListItem>(Boxes.shoppingList);
+                    final amountNeeded = amount - inStock;
+                    if (amountNeeded > 0) {
+                      final newItem = ShoppingListItem(
+                        id: generateId(),
+                        name: name,
+                        amount: amountNeeded,
+                        unit: unit,
+                        recipeName: batch.name,
+                      );
+                      shoppingBox.put(newItem.id, newItem);
+                      snacks.show(const SnackBar(
+                        content: Text('Added item to shopping list!'),
+                        duration: Duration(seconds: 2),
+                      ));
+                    }
+                  },
+                  child: const Icon(Icons.add_shopping_cart),
+                )
+              : null,
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (note.isNotEmpty) Text(note),
-            if (inventoryItem != null)
-              Row(
-                children: [
-                  Text(
-                    'In stock: ${inStock.toStringAsFixed(2)} $unit',
-                    style: TextStyle(
-                      color: sufficient ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 20),
-                    onPressed: () => _showQuickAddDialog(inventoryItem, unit),
-                    tooltip: 'Quick-add to inventory',
-                  ),
-                  if (!sufficient && !shouldDeduct)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 6),
-                      child: Icon(Icons.warning, color: Colors.red, size: 18),
-                    ),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  Text(
-                    'Not in Inventory',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    icon: const Icon(Icons.add_box_outlined, size: 20),
-                    label: const Text('Create'),
-                    onPressed: () => _showCreateInventoryItemDialog(name, unit),
-                  ),
-                ],
-              ),
-          ],
-        ),
- trailing: (!sufficient && !shouldDeduct)
-            ? ElevatedButton(
-                onPressed: () {
-  if (!FeatureGate.instance.allowShoppingList) {
-    snacks.show(const SnackBar(content: Text('Shopping List is a Premium/Pro-Offline feature')));
-    showPaywall(context);
-    return;
+        if (showCheckbox)
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: CheckboxListTile(
+              value: shouldDeduct,
+              title: const Text('Deduct from Inventory'),
+              onChanged: (val) {
+                // Only allow turning ON when there’s enough.
+                final want = val ?? false;
+                if (want && !sufficient)
+                  return; // guard (shouldn’t be visible anyway)
+                onChanged(want);
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+      ],
+    );
   }
-                  final shoppingBox = Hive.box<ShoppingListItem>(Boxes.shoppingList);
-                  final amountNeeded = amount - inStock;
-                  if (amountNeeded > 0) {
-                    final newItem = ShoppingListItem(
-                      id: generateId(),
-                      name: name,
-                      amount: amountNeeded,
-                      unit: unit,
-                      recipeName: batch.name,
-                    );
-                    shoppingBox.put(newItem.id, newItem);
-                    snacks.show(const SnackBar(
-                      content: Text('Added item to shopping list!'),
-                      duration: Duration(seconds: 2),
-                    ));
-                  }
-                },
-                child: const Icon(Icons.add_shopping_cart),
-              )
-            : null,
-      ),
-      if (showCheckbox)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-          child: CheckboxListTile(
-            value: shouldDeduct,
-            title: const Text('Deduct from Inventory'),
-            onChanged: (val) {
-              // Only allow turning ON when there’s enough.
-              final want = val ?? false;
-              if (want && !sufficient) return; // guard (shouldn’t be visible anyway)
-              onChanged(want);
-            },
-            controlAffinity: ListTileControlAffinity.leading,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-    ],
-  );
-}
 
   void _showQuickAddDialog(InventoryItem item, String unit) async {
     final TextEditingController controller = TextEditingController();
@@ -2356,40 +2435,43 @@ Widget _buildChecklistItem({
     }
   }
 
-void _showCreateInventoryItemDialog(String name, String unit) {
-  final box = Hive.box<InventoryItem>(Boxes.inventory); // must match where you save
+  void _showCreateInventoryItemDialog(String name, String unit) {
+    final box =
+        Hive.box<InventoryItem>(Boxes.inventory); // must match where you save
 
-  // Allow opening even if it exists (will merge).
-  final alreadyExists = box.values.any(
-    (i) => i.name.toLowerCase() == name.toLowerCase(),
-  );
+    // Allow opening even if it exists (will merge).
+    final alreadyExists = box.values.any(
+      (i) => i.name.toLowerCase() == name.toLowerCase(),
+    );
 
-  if (!alreadyExists) {
-    // ✅ don't "watch" here
-    final fg = context.read<FeatureGate>();
-    final activeCount = box.values.where((i) => !i.isArchived).length;
-    final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
+    if (!alreadyExists) {
+      // ✅ don't "watch" here
+      final fg = context.read<FeatureGate>();
+      final activeCount = box.values.where((i) => !i.isArchived).length;
+      final atLimit = !fg.isPremium && activeCount >= fg.inventoryLimitFree;
 
-    if (atLimit) {
-      snacks.show(
-        SnackBar(
-          content: Text('Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      showPaywall(context);
-      return;
+      if (atLimit) {
+        snacks.show(
+          SnackBar(
+            content: Text(
+                'Free limit reached (${fg.inventoryLimitFree}). Upgrade to add more.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        showPaywall(context);
+        return;
+      }
     }
-  }
 
-  showDialog<void>(
-    context: context,
-    builder: (ctx) => AddInventoryDialog(initialData: {'name': name, 'unit': unit}),
-  ).then((_) {
-    if (!mounted) return;
-    setState(() {}); // refresh “Not in inventory” -> “In stock …”
-  });
-}
+    showDialog<void>(
+      context: context,
+      builder: (ctx) =>
+          AddInventoryDialog(initialData: {'name': name, 'unit': unit}),
+    ).then((_) {
+      if (!mounted) return;
+      setState(() {}); // refresh “Not in inventory” -> “In stock …”
+    });
+  }
 
   Future<void> _handleDeductionChange({
     required BatchModel batch,
@@ -2405,9 +2487,7 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     final amount = (item['amount'] as num?)?.toDouble() ?? 0;
     final unit = item['unit'] as String? ?? '';
 
-    final inventoryItem = inventoryBox.values
-        .cast<InventoryItem?>()
-        .firstWhere(
+    final inventoryItem = inventoryBox.values.cast<InventoryItem?>().firstWhere(
           (i) => i?.name.toLowerCase() == name.toLowerCase(),
           orElse: () => null,
         );
@@ -2462,47 +2542,47 @@ void _showCreateInventoryItemDialog(String name, String unit) {
     inventoryItem.save();
   }
 
-/// Small row showing the linked device’s battery and last-seen.
-/// We consider the first device where linkedBatchId == batchId.
-/// Small row showing the linked device’s battery and last-seen.
-/// We consider the first device where linkedBatchId == batchId.
-Widget _deviceStatusRow({required String uid, required String batchId}) {
-  if (_pauseRealtime) return const SizedBox.shrink(); // 👈 this is enough
+  /// Small row showing the linked device’s battery and last-seen.
+  /// We consider the first device where linkedBatchId == batchId.
+  /// Small row showing the linked device’s battery and last-seen.
+  /// We consider the first device where linkedBatchId == batchId.
+  Widget _deviceStatusRow({required String uid, required String batchId}) {
+    if (_pauseRealtime) return const SizedBox.shrink(); // 👈 this is enough
 
-  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirestorePaths
-        .devicesColl(uid)
-        .where('linkedBatchId', isEqualTo: batchId)
-        .limit(1)
-        .snapshots(),
-    builder: (context, snap) {
-      final doc = (snap.data?.docs.isNotEmpty ?? false) ? snap.data!.docs.first : null;
-      if (doc == null) return const SizedBox.shrink();
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirestorePaths.devicesColl(uid)
+          .where('linkedBatchId', isEqualTo: batchId)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snap) {
+        final doc = (snap.data?.docs.isNotEmpty ?? false)
+            ? snap.data!.docs.first
+            : null;
+        if (doc == null) return const SizedBox.shrink();
 
-      final data     = doc.data();
-      final name     = (data['name'] as String?) ?? 'Device';
-      final battery  = (data['battery'] as num?)?.toDouble();
-      final lastSeen = (data['lastSeen'] as Timestamp?)?.toDate();
+        final data = doc.data();
+        final name = (data['name'] as String?) ?? 'Device';
+        final battery = (data['battery'] as num?)?.toDouble();
+        final lastSeen = (data['lastSeen'] as Timestamp?)?.toDate();
 
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          children: [
-            Icon(_batteryIconForPercent(battery)),
-            const SizedBox(width: 8),
-            Text(name),
-            const SizedBox(width: 12),
-            Text(
-              lastSeen == null ? 'Seen —' : 'Seen ${_timeAgoShort(lastSeen)}',
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Icon(_batteryIconForPercent(battery)),
+              const SizedBox(width: 8),
+              Text(name),
+              const SizedBox(width: 12),
+              Text(
+                lastSeen == null ? 'Seen —' : 'Seen ${_timeAgoShort(lastSeen)}',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
 // Stream the attached device's *name* for this batch (if any)
 
@@ -2510,445 +2590,485 @@ Widget _deviceStatusRow({required String uid, required String batchId}) {
 
 // Compact list of the most recent measurements with badges + quick actions
 
+  /// Merge lists preferring local (manual) points if within +/- 5 minutes of a device point.
+  List<Measurement> _mergeDeviceAndLocal({
+    required List<Measurement> local,
+    required List<Measurement> remote,
+  }) {
+    final merged = <Measurement>[];
+    int i = 0, j = 0;
+    const fiveMin = Duration(minutes: 5);
 
-/// Merge lists preferring local (manual) points if within +/- 5 minutes of a device point.
-List<Measurement> _mergeDeviceAndLocal({
-  required List<Measurement> local,
-  required List<Measurement> remote,
-}) {
-  final merged = <Measurement>[];
-  int i = 0, j = 0;
-  const fiveMin = Duration(minutes: 5);
+    final l = [...local]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final r = [...remote]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-  final l = [...local]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-  final r = [...remote]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-  while (i < l.length && j < r.length) {
-    final a = l[i], b = r[j];
-    if (a.timestamp.isBefore(b.timestamp.subtract(fiveMin))) {
-      merged.add(a); i++;
-    } else if (b.timestamp.isBefore(a.timestamp.subtract(fiveMin))) {
-      merged.add(b); j++;
-    } else {
-      merged.add(a); // close in time -> prefer local
-      i++; j++;
+    while (i < l.length && j < r.length) {
+      final a = l[i], b = r[j];
+      if (a.timestamp.isBefore(b.timestamp.subtract(fiveMin))) {
+        merged.add(a);
+        i++;
+      } else if (b.timestamp.isBefore(a.timestamp.subtract(fiveMin))) {
+        merged.add(b);
+        j++;
+      } else {
+        merged.add(a); // close in time -> prefer local
+        i++;
+        j++;
+      }
     }
+    while (i < l.length) {
+      merged.add(l[i++]);
+    }
+    while (j < r.length) {
+      merged.add(r[j++]);
+    }
+    return merged;
   }
-  while (i < l.length) {
-    merged.add(l[i++]);
-  }
-  while (j < r.length) {
-    merged.add(r[j++]);
-  }
-  return merged;
-}
 
 // Keep only points in the last N days
 
 // Cap total points for chart readability
-List<Measurement> _capPoints(List<Measurement> items, int maxPoints) {
-  if (items.length <= maxPoints) return items;
-  final step = (items.length / maxPoints).ceil();
-  final out = <Measurement>[];
-  for (var i = 0; i < items.length; i += step) {
-    out.add(items[i]);
+  List<Measurement> _capPoints(List<Measurement> items, int maxPoints) {
+    if (items.length <= maxPoints) return items;
+    final step = (items.length / maxPoints).ceil();
+    final out = <Measurement>[];
+    for (var i = 0; i < items.length; i += step) {
+      out.add(items[i]);
+    }
+    return out;
   }
-  return out;
-}
 
 // --- Ferment tab: grouped + capped recent list (authoritative) ---
-Widget _groupedRecentList({
-  required List<Measurement> local,
-  required List<Measurement> device,
-  required String? deviceName,
-  required String batchId,
-  required String? uid,
-  required void Function(Measurement) onEditLocal,
-  required void Function(Measurement) onDeleteLocal,
-  int cap = 12,
-}) {
-  if (_pauseRealtime) return const SizedBox.shrink();
-  // Merge + newest-first
-  final merged = <Measurement>[
-    ...local,
-    ...device,
-  ]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+  Widget _groupedRecentList({
+    required List<Measurement> local,
+    required List<Measurement> device,
+    required String? deviceName,
+    required String batchId,
+    required String? uid,
+    required void Function(Measurement) onEditLocal,
+    required void Function(Measurement) onDeleteLocal,
+    int cap = 12,
+  }) {
+    if (_pauseRealtime) return const SizedBox.shrink();
+    // Merge + newest-first
+    final merged = <Measurement>[
+      ...local,
+      ...device,
+    ]..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-  // Hard cap for the ferment tab
-  final limited = merged.take(cap).toList();
+    // Hard cap for the ferment tab
+    final limited = merged.take(cap).toList();
 
-  // Group (using local date)
-  final byDay = <DateTime, List<Measurement>>{};
-  for (final m in limited) {
-    final t = m.timestamp.toLocal();
-    final key = DateTime(t.year, t.month, t.day);
-    (byDay[key] ??= <Measurement>[]).add(m);
-  }
-  final dayKeys = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
+    // Group (using local date)
+    final byDay = <DateTime, List<Measurement>>{};
+    for (final m in limited) {
+      final t = m.timestamp.toLocal();
+      final key = DateTime(t.year, t.month, t.day);
+      (byDay[key] ??= <Measurement>[]).add(m);
+    }
+    final dayKeys = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
 
-  String fmt(Measurement m) {
-    final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
-    final g = (m.gravity != null)
-        ? m.gravity!.toStringAsFixed(3)
-        : (m.brix != null) ? '${m.brix!.toStringAsFixed(1)}°Bx' : '—';
-    final temp = (m.temperature != null) ? '${m.temperature!.toStringAsFixed(1)}°C' : '—';
-    final fsu = (m.fsuspeed != null) ? ' · FSU ${m.fsuspeed!.toStringAsFixed(0)}' : '';
-    return '$t · SG $g · $temp$fsu';
-  }
+    String fmt(Measurement m) {
+      final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
+      final g = (m.gravity != null)
+          ? m.gravity!.toStringAsFixed(3)
+          : (m.brix != null)
+              ? '${m.brix!.toStringAsFixed(1)}°Bx'
+              : '—';
+      final temp = (m.temperature != null)
+          ? '${m.temperature!.toStringAsFixed(1)}°C'
+          : '—';
+      final fsu = (m.fsuspeed != null)
+          ? ' · FSU ${m.fsuspeed!.toStringAsFixed(0)}'
+          : '';
+      return '$t · SG $g · $temp$fsu';
+    }
 
-  Widget badge(Measurement m) {
-    if (m.fromDevice != true) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(deviceName ?? 'device'),
-    );
-  }
+    Widget badge(Measurement m) {
+      if (m.fromDevice != true) return const SizedBox.shrink();
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(deviceName ?? 'device'),
+      );
+    }
 
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Recent measurements', style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.list),
-                label: const Text('Open full log'),
-                onPressed: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => MeasurementLogPage(
-                      batchId: batchId,
-                      uid: uid,      // null => local-only
-                      local: local,
-                      deviceName: deviceName,
-                      onEditLocal: onEditLocal,
-                    ),
-                  ));
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          for (final day in dayKeys) ...[
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    DateFormat.yMMMd().format(day),
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
+                const Expanded(
+                  child: Text('Recent measurements',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
-                const SizedBox(width: 8),
-                const Expanded(child: Divider()),
+                TextButton.icon(
+                  icon: const Icon(Icons.list),
+                  label: const Text('Open full log'),
+                  onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => MeasurementLogPage(
+                        batchId: batchId,
+                        uid: uid, // null => local-only
+                        local: local,
+                        deviceName: deviceName,
+                        onEditLocal: onEditLocal,
+                      ),
+                    ));
+                  },
+                ),
               ],
             ),
             const SizedBox(height: 4),
-            ...byDay[day]!.map((m) => ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(m.fromDevice == true ? Icons.sensors : Icons.edit_note),
-                  title: Text(fmt(m)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      badge(m),
-                      const SizedBox(width: 6),
-                      if (m.fromDevice != true)
-                        IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit), onPressed: () => onEditLocal(m)),
-                      if (m.fromDevice != true)
-                        IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: () => onDeleteLocal(m)),
-                    ],
+            for (final day in dayKeys) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      DateFormat.yMMMd().format(day),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                   ),
-                )),
-            const Divider(height: 8),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 4),
+              ...byDay[day]!.map((m) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                        m.fromDevice == true ? Icons.sensors : Icons.edit_note),
+                    title: Text(fmt(m)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        badge(m),
+                        const SizedBox(width: 6),
+                        if (m.fromDevice != true)
+                          IconButton(
+                              tooltip: 'Edit',
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => onEditLocal(m)),
+                        if (m.fromDevice != true)
+                          IconButton(
+                              tooltip: 'Delete',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => onDeleteLocal(m)),
+                      ],
+                    ),
+                  )),
+              const Divider(height: 8),
+            ],
           ],
-        ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
 // --- GROUPED + CAPPED recent list for the Ferment tab ---
 
+  Widget _buildFermentingTab(BatchModel batch) {
+    final localSorted = [...batch.measurements]
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final uid = _uid; // nullable
+    final batchId = batch.id; // non-null
 
-Widget _buildFermentingTab(BatchModel batch) {
-  final localSorted = [...batch.measurements]
-    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-final uid = _uid;          // nullable
-final batchId = batch.id;  // non-null
-
-
-  return ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Text('Fermentation Progress',
-                style: Theme.of(context).textTheme.titleLarge),
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add Measurement'),
-            onPressed: () async {
-              if (mounted) setState(() => _pauseRealtime = true);
-              try {
-                final sorted = [...batch.measurements]
-                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-                final newM = await showDialog<Measurement>(
-                context: context,
-                builder: (_) => AddMeasurementDialog(
-                  previousMeasurement: sorted.isNotEmpty ? sorted.last : null,
-                  firstMeasurementDate: sorted.isNotEmpty ? sorted.first.timestamp : null,
-                ),
-    );
-    if (newM != null) {
-      await _mutateBatch((b) => b.measurements.add(newM));
-    }
-  } finally {
-    if (mounted) setState(() => _pauseRealtime = false);
-  }
-            },
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text('Fermentation Progress',
+                  style: Theme.of(context).textTheme.titleLarge),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Add Measurement'),
+              onPressed: () async {
+                if (mounted) setState(() => _pauseRealtime = true);
+                try {
+                  final sorted = [...batch.measurements]
+                    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+                  final newM = await showDialog<Measurement>(
+                    context: context,
+                    builder: (_) => AddMeasurementDialog(
+                      previousMeasurement:
+                          sorted.isNotEmpty ? sorted.last : null,
+                      firstMeasurementDate:
+                          sorted.isNotEmpty ? sorted.first.timestamp : null,
+                    ),
+                  );
+                  if (newM != null) {
+                    await _mutateBatch((b) => b.measurements.add(newM));
+                  }
+                } finally {
+                  if (mounted) setState(() => _pauseRealtime = false);
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
 
 // ---- Device status row (only when signed-in) ----
 // ---- Device status row (only when signed-in AND Premium) ----
-if (uid != null && context.read<FeatureGate>().allowDevices)
-  _deviceStatusRow(uid: uid, batchId: batchId),
-const SizedBox(height: 4),
+        if (uid != null && context.read<FeatureGate>().allowDevices)
+          _deviceStatusRow(uid: uid, batchId: batchId),
+        const SizedBox(height: 4),
 
-Builder(
-  builder: (context) {
-    final fg = context.read<FeatureGate>();
+        Builder(
+          builder: (context) {
+            final fg = context.read<FeatureGate>();
 
 // Not signed in -> show local-only chart
-if (uid == null) {
-  if (_pauseRealtime) return const SizedBox.shrink();
+            if (uid == null) {
+              if (_pauseRealtime) return const SizedBox.shrink();
 
-  final settings = context.watch<SettingsModel>();
-  final useFahrenheit = !settings.useCelsius;
+              final settings = context.watch<SettingsModel>();
+              final useFahrenheit = !settings.useCelsius;
 
-  if (_pauseRealtime) return const SizedBox.shrink();
-  return TickerMode(
-    enabled: !_pauseRealtime,
-    child: Column(    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      SimpleFermentationChartPanel(
-        measurements: batch.safeMeasurements,
-        useFahrenheit: useFahrenheit,
-sincePitchingAt: _inferPitchTime(batch),        initialRange: ChartRange.d7,
-      ),
-      const SizedBox(height: 8),
-      _groupedRecentList(
-        local: localSorted,
-        device: const [],
-        deviceName: null,
-        batchId: batch.id,
-        uid: null,
-        onEditLocal: (m) => _openMeasurementEditor(batch, m),
-        onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
-      ),
-    ],
-    ),
-  );
-}
+              if (_pauseRealtime) return const SizedBox.shrink();
+              return TickerMode(
+                enabled: !_pauseRealtime,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SimpleFermentationChartPanel(
+                      measurements: batch.safeMeasurements,
+                      useFahrenheit: useFahrenheit,
+                      sincePitchingAt: _inferPitchTime(batch),
+                      initialRange: ChartRange.d7,
+                    ),
+                    const SizedBox(height: 8),
+                    _groupedRecentList(
+                      local: localSorted,
+                      device: const [],
+                      deviceName: null,
+                      batchId: batch.id,
+                      uid: null,
+                      onEditLocal: (m) => _openMeasurementEditor(batch, m),
+                      onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
+                    ),
+                  ],
+                ),
+              );
+            }
 
-  // Signed in but not Premium -> subtle upsell + one-time device fetch
-if (!fg.allowDeviceStreaming) {
-  // UPDATED: Dynamically get data for the full batch if "Since pitching" is selected
-  final cutoff = _currentChartRange == ChartRange.sincePitch
-      ? null
-      : DateTime.now().subtract(const Duration(days: 30));
+            // Signed in but not Premium -> subtle upsell + one-time device fetch
+            if (!fg.allowDeviceStreaming) {
+              // UPDATED: Dynamically get data for the full batch if "Since pitching" is selected
+              final cutoff = _currentChartRange == ChartRange.sincePitch
+                  ? null
+                  : DateTime.now().subtract(const Duration(days: 30));
 
-  _deviceOnceFuture ??= (cutoff != null)
-      ? FirestorePaths.batchMeasurements(uid, batchId)
-          .where('timestamp', isGreaterThan: cutoff)
-          .orderBy('timestamp', descending: false)
-          .get()
-      : FirestorePaths.batchMeasurements(uid, batchId)
-          .orderBy('timestamp', descending: false)
-          .get();
+              _deviceOnceFuture ??= (cutoff != null)
+                  ? FirestorePaths.batchMeasurements(uid, batchId)
+                      .where('timestamp', isGreaterThan: cutoff)
+                      .orderBy('timestamp', descending: false)
+                      .get()
+                  : FirestorePaths.batchMeasurements(uid, batchId)
+                      .orderBy('timestamp', descending: false)
+                      .get();
 
-  if (_pauseRealtime) return const SizedBox.shrink();
+              if (_pauseRealtime) return const SizedBox.shrink();
 
-  final settings = context.watch<SettingsModel>();
-  final useFahrenheit = !settings.useCelsius;
+              final settings = context.watch<SettingsModel>();
+              final useFahrenheit = !settings.useCelsius;
 
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      if (!_hidePremiumHint)
-        _PremiumHint(
-          onUpgrade: () => showPaywall(context),
-          onDismiss: () => setState(() => _hidePremiumHint = true),
-        ),
-      const SizedBox(height: 8),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!_hidePremiumHint)
+                    _PremiumHint(
+                      onUpgrade: () => showPaywall(context),
+                      onDismiss: () => setState(() => _hidePremiumHint = true),
+                    ),
+                  const SizedBox(height: 8),
+                  FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    future: _deviceOnceFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const SizedBox(
+                          height: 300,
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (snap.hasError) {
+                        return const SizedBox(
+                          height: 80,
+                          child: Center(
+                              child: Text('Failed to load measurements')),
+                        );
+                      }
 
-      FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        future: _deviceOnceFuture,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const SizedBox(
-              height: 300,
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snap.hasError) {
-            return const SizedBox(
-              height: 80,
-              child: Center(child: Text('Failed to load measurements')),
-            );
-          }
+                      final remote = (snap.data?.docs ?? const [])
+                          .map<Measurement>(
+                              (d) => fromRemoteDoc(d.data(), docId: d.id))
+                          .where((m) =>
+                              m.gravity != null ||
+                              m.brix != null ||
+                              m.temperature != null)
+                          .toList();
 
-          final remote = (snap.data?.docs ?? const [])
-              .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
-              .where((m) => m.gravity != null || m.brix != null || m.temperature != null)
-              .toList();
+                      final combined = _mergeDeviceAndLocal(
+                          local: localSorted, remote: remote);
 
-          final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+                      // UPDATED: Dynamic data cap based on the selected range
+                      final maxPoints =
+                          _currentChartRange == ChartRange.sincePitch
+                              ? _kSincePitchMaxPoints
+                              : 600;
+                      final capped = _capPoints(combined, maxPoints);
 
-          // UPDATED: Dynamic data cap based on the selected range
-          final maxPoints = _currentChartRange == ChartRange.sincePitch ? _kSincePitchMaxPoints : 600;
-          final capped = _capPoints(combined, maxPoints);
-
-          return SimpleFermentationChartPanel(
-            measurements: capped,
-            useFahrenheit: useFahrenheit,
-            sincePitchingAt: _inferPitchTime(batch),
-            initialRange: _currentChartRange, // UPDATED: Pass the current range
-            onRangeChanged: (r) => setState(() => _currentChartRange = r), // NEW: Add callback
-          );
-        },
-      ),
-      const SizedBox(height: 8),
-      _groupedRecentList(
-        local: localSorted,
-        device: const [], // one-time fetch is summarized in chart; list shows local
-        deviceName: null,
-        batchId: batch.id,
-        uid: uid,
-        onEditLocal: (m) => _openMeasurementEditor(batch, m),
-        onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
-      ),
-    ],
-  );
-}
-
-
+                      return SimpleFermentationChartPanel(
+                        measurements: capped,
+                        useFahrenheit: useFahrenheit,
+                        sincePitchingAt: _inferPitchTime(batch),
+                        initialRange:
+                            _currentChartRange, // UPDATED: Pass the current range
+                        onRangeChanged: (r) => setState(
+                            () => _currentChartRange = r), // NEW: Add callback
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _groupedRecentList(
+                    local: localSorted,
+                    device: const [], // one-time fetch is summarized in chart; list shows local
+                    deviceName: null,
+                    batchId: batch.id,
+                    uid: uid,
+                    onEditLocal: (m) => _openMeasurementEditor(batch, m),
+                    onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
+                  ),
+                ],
+              );
+            }
 
 // Signed in + Premium -> live stream
-final settings = context.watch<SettingsModel>();
-final useFahrenheit = !settings.useCelsius;
+            final settings = context.watch<SettingsModel>();
+            final useFahrenheit = !settings.useCelsius;
 
 // UPDATED: Dynamically create the stream based on the selected range
-final streamQuery = _currentChartRange == ChartRange.sincePitch
-    ? FirestorePaths.batchMeasurements(uid, batchId)
-        .orderBy('timestamp', descending: false)
-    : FirestorePaths.batchMeasurements(uid, batchId)
-        .where('timestamp', isGreaterThan: DateTime.now().subtract(const Duration(days: 30)))
-        .orderBy('timestamp', descending: false);
+            final streamQuery = _currentChartRange == ChartRange.sincePitch
+                ? FirestorePaths.batchMeasurements(uid, batchId)
+                    .orderBy('timestamp', descending: false)
+                : FirestorePaths.batchMeasurements(uid, batchId)
+                    .where('timestamp',
+                        isGreaterThan:
+                            DateTime.now().subtract(const Duration(days: 30)))
+                    .orderBy('timestamp', descending: false);
 
-return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-  stream: _pauseRealtime
-      ? const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
-      : streamQuery.snapshots(),
-  builder: (context, snap) {
-    
-    if (_pauseRealtime) return const SizedBox.shrink();
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _pauseRealtime
+                  ? const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
+                  : streamQuery.snapshots(),
+              builder: (context, snap) {
+                if (_pauseRealtime) return const SizedBox.shrink();
 
-    if (snap.connectionState == ConnectionState.waiting) {
-      return const SizedBox(
-        height: 300,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (snap.hasError) {
-      return const SizedBox(
-        height: 80,
-        child: Center(child: Text('Failed to load measurements')),
-      );
-    }
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 300,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snap.hasError) {
+                  return const SizedBox(
+                    height: 80,
+                    child: Center(child: Text('Failed to load measurements')),
+                  );
+                }
 
-    final remote = (snap.data?.docs ?? const [])
-        .map<Measurement>((d) => fromRemoteDoc(d.data(), docId: d.id))
-        .where((m) => m.gravity != null || m.brix != null || m.temperature != null)
-        .toList();
+                final remote = (snap.data?.docs ?? const [])
+                    .map<Measurement>(
+                        (d) => fromRemoteDoc(d.data(), docId: d.id))
+                    .where((m) =>
+                        m.gravity != null ||
+                        m.brix != null ||
+                        m.temperature != null)
+                    .toList();
 
-    final combined = _mergeDeviceAndLocal(local: localSorted, remote: remote);
+                final combined =
+                    _mergeDeviceAndLocal(local: localSorted, remote: remote);
 
-    // UPDATED: Dynamic data cap based on the selected range
-    final maxPoints = _currentChartRange == ChartRange.sincePitch ? _kSincePitchMaxPoints : 600;
-    final capped = _capPoints(combined, maxPoints);
+                // UPDATED: Dynamic data cap based on the selected range
+                final maxPoints = _currentChartRange == ChartRange.sincePitch
+                    ? _kSincePitchMaxPoints
+                    : 600;
+                final capped = _capPoints(combined, maxPoints);
 
-  return TickerMode(
-    enabled: !_pauseRealtime,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SimpleFermentationChartPanel(
-          measurements: capped,
-          useFahrenheit: useFahrenheit,
-          sincePitchingAt: _inferPitchTime(batch),
-          initialRange: _currentChartRange, // UPDATED: Pass the current range
-          onRangeChanged: (r) => setState(() => _currentChartRange = r), // NEW: Add callback
-          
+                return TickerMode(
+                  enabled: !_pauseRealtime,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SimpleFermentationChartPanel(
+                        measurements: capped,
+                        useFahrenheit: useFahrenheit,
+                        sincePitchingAt: _inferPitchTime(batch),
+                        initialRange:
+                            _currentChartRange, // UPDATED: Pass the current range
+                        onRangeChanged: (r) => setState(
+                            () => _currentChartRange = r), // NEW: Add callback
+                      ),
+                      const SizedBox(height: 8),
+                      _groupedRecentList(
+                        local: localSorted,
+                        device: remote,
+                        deviceName:
+                            null, // keep null to avoid the undefined variable warning
+                        batchId: batch.id,
+                        uid: uid,
+                        onEditLocal: (m) => _openMeasurementEditor(batch, m),
+                        onDeleteLocal: (m) =>
+                            _handleDeleteMeasurement(batch, m),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
         ),
-        const SizedBox(height: 8),
-        _groupedRecentList(
-          local: localSorted,
-          device: remote,
-          deviceName: null, // keep null to avoid the undefined variable warning
-          batchId: batch.id,
-          uid: uid,
-          onEditLocal: (m) => _openMeasurementEditor(batch, m),
-          onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
+        _buildStatusProgressionButton(
+          batch: batch,
+          currentStatus: 'Fermenting',
+          nextStatus: 'Completed',
+          buttonText: 'Mark as Completed',
+          icon: Icons.check_circle_outline,
         ),
-     ],
-   ),
- );
-  },
-);
-},
-  ),
-      _buildStatusProgressionButton(
-        batch: batch,
-        currentStatus: 'Fermenting',
-        nextStatus: 'Completed',
-        buttonText: 'Mark as Completed',
-        icon: Icons.check_circle_outline,
-      ),
-    ],
-  );
-}
-
-  void _syncTextController(TextEditingController c, String text) {
-  if (c.text != text) {
-    c.value = c.value.copyWith(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-      composing: TextRange.empty,
+      ],
     );
   }
-}
 
-void _syncCompletedControllersFrom(BatchModel b) {
-  _syncTextController(_tastingAromaController, b.tastingNotes?['aroma'] ?? '');
-  _syncTextController(_tastingAppearanceController, b.tastingNotes?['appearance'] ?? '');
-  _syncTextController(_tastingFlavorController, b.tastingNotes?['flavor'] ?? '');
-  _syncTextController(_finalNotesController, b.finalNotes ?? '');
-}
+  void _syncTextController(TextEditingController c, String text) {
+    if (c.text != text) {
+      c.value = c.value.copyWith(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+        composing: TextRange.empty,
+      );
+    }
+  }
+
+  void _syncCompletedControllersFrom(BatchModel b) {
+    _syncTextController(
+        _tastingAromaController, b.tastingNotes?['aroma'] ?? '');
+    _syncTextController(
+        _tastingAppearanceController, b.tastingNotes?['appearance'] ?? '');
+    _syncTextController(
+        _tastingFlavorController, b.tastingNotes?['flavor'] ?? '');
+    _syncTextController(_finalNotesController, b.finalNotes ?? '');
+  }
 
   Widget _buildCompletedTab(BatchModel batch) {
     _tastingRating = batch.tastingRating ?? 0;
@@ -2994,8 +3114,8 @@ void _syncCompletedControllersFrom(BatchModel b) {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, 
-                    color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  Icon(Icons.info_outline,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -3015,9 +3135,9 @@ void _syncCompletedControllersFrom(BatchModel b) {
               ),
             ),
           ),
-        
+
         const SizedBox(height: 8),
-        
+
         // Batch Metrics
         _sectionCard(
           title: 'Batch Metrics',
@@ -3053,20 +3173,19 @@ void _syncCompletedControllersFrom(BatchModel b) {
                       builder: (context, snap) {
                         if (!snap.hasData) {
                           return _metricTile(
-                            icon: Icons.percent, 
-                            label: 'ABV', 
-                            value: '—'
-                          );
+                              icon: Icons.percent, label: 'ABV', value: '—');
                         }
                         final abvInfo = snap.data!;
-                        final displayAbv = abvInfo.currentAbv ?? abvInfo.estimatedFinalAbv;
-                        final displayValue = displayAbv == null 
-                          ? '—' 
-                          : '${displayAbv.toStringAsFixed(1)}%';
-                        final label = abvInfo.hasActualMeasurements && abvInfo.currentAbv != null 
-                          ? 'ABV' 
-                          : 'Est. ABV';
-                        
+                        final displayAbv =
+                            abvInfo.currentAbv ?? abvInfo.estimatedFinalAbv;
+                        final displayValue = displayAbv == null
+                            ? '—'
+                            : '${displayAbv.toStringAsFixed(1)}%';
+                        final label = abvInfo.hasActualMeasurements &&
+                                abvInfo.currentAbv != null
+                            ? 'ABV'
+                            : 'Est. ABV';
+
                         return _metricTile(
                           icon: Icons.percent,
                           label: label,
@@ -3088,13 +3207,14 @@ void _syncCompletedControllersFrom(BatchModel b) {
                           }
                         } else if (batch.finalYield != null) {
                           // Fallback to old field if no breakdown
-                          totalGallons = _toGallons(batch.finalYield!, batch.finalYieldUnit ?? 'gal');
+                          totalGallons = _toGallons(
+                              batch.finalYield!, batch.finalYieldUnit ?? 'gal');
                         }
-                        
+
                         final displayValue = totalGallons == 0.0
-                          ? '—'
-                          : '${totalGallons.toStringAsFixed(2)} gal';
-                        
+                            ? '—'
+                            : '${totalGallons.toStringAsFixed(2)} gal';
+
                         return _metricTile(
                           icon: Icons.inventory_2_outlined,
                           label: 'Final Yield',
@@ -3108,8 +3228,8 @@ void _syncCompletedControllersFrom(BatchModel b) {
               const Divider(height: 24),
               Row(
                 children: [
-                  const Text('Overall Rating:', 
-                    style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text('Overall Rating:',
+                      style: TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(width: 12),
                   _starRow(
                     value: _tastingRating,
@@ -3126,16 +3246,16 @@ void _syncCompletedControllersFrom(BatchModel b) {
                     Text(
                       '$_tastingRating/5',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.amber,
-                        fontWeight: FontWeight.bold,
-                      ),
+                            color: Colors.amber,
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                 ],
               ),
             ],
           ),
-        ),        
-        
+        ),
+
         // Packaging Details
         _sectionCard(
           title: 'Packaging Details',
@@ -3166,46 +3286,49 @@ void _syncCompletedControllersFrom(BatchModel b) {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.calendar_today, 
-                        size: 20,
-                        color: Theme.of(context).colorScheme.primary),
+                      Icon(Icons.calendar_today,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Packaging Date', 
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                            const Text('Packaging Date',
+                                style: TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w500)),
                             const SizedBox(height: 2),
                             Text(
                               batch.packagingDate == null
                                   ? 'Tap to set date'
-                                  : DateFormat.yMMMd().format(batch.packagingDate!),
+                                  : DateFormat.yMMMd()
+                                      .format(batch.packagingDate!),
                               style: TextStyle(
                                 fontSize: 14,
-                                color: batch.packagingDate == null 
-                                  ? Colors.grey 
-                                  : null,
+                                color: batch.packagingDate == null
+                                    ? Colors.grey
+                                    : null,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                      const Icon(Icons.chevron_right,
+                          size: 20, color: Colors.grey),
                     ],
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 16),
-              
+
               // Package Breakdown - The actual containers used
               Row(
                 children: [
-                  Text('Containers', 
-                    style: Theme.of(context).textTheme.titleSmall),
+                  Text('Containers',
+                      style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
@@ -3224,19 +3347,21 @@ void _syncCompletedControllersFrom(BatchModel b) {
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               if (batch.safePackagingBreakdown.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceVariant
+                        .withOpacity(0.3),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
                     children: [
-                      Icon(Icons.inventory_2_outlined, 
-                        size: 48, 
-                        color: Colors.grey.withOpacity(0.5)),
+                      Icon(Icons.inventory_2_outlined,
+                          size: 48, color: Colors.grey.withOpacity(0.5)),
                       const SizedBox(height: 8),
                       const Text(
                         'No containers recorded yet',
@@ -3269,17 +3394,20 @@ void _syncCompletedControllersFrom(BatchModel b) {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
-                          method == 'Kegged' ? Icons.water_drop : 
-                          method == 'Aged in Secondary' ? Icons.science :
-                          Icons.local_drink,
+                          method == 'Kegged'
+                              ? Icons.water_drop
+                              : method == 'Aged in Secondary'
+                                  ? Icons.science
+                                  : Icons.local_drink,
                           size: 20,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
                         ),
                       ),
                       title: Text('$qty $unit',
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
-                      subtitle: Text(method, 
-                        style: const TextStyle(fontSize: 12)),
+                          style: const TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle:
+                          Text(method, style: const TextStyle(fontSize: 12)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -3302,9 +3430,9 @@ void _syncCompletedControllersFrom(BatchModel b) {
                     ),
                   );
                 }).toList(),
-                
+
                 const SizedBox(height: 12),
-                
+
                 // Summary section with totals and costs
                 Builder(builder: (_) {
                   // Calculate total yield from packages
@@ -3314,19 +3442,22 @@ void _syncCompletedControllersFrom(BatchModel b) {
                     final unit = (pkg['unit'] ?? 'gal') as String;
                     totalGallons += _toGallons(qty, unit);
                   }
-                  
+
                   if (totalGallons == 0) return const SizedBox.shrink();
-                  
+
                   final totalCost = _computeTotalIngredientCost(batch);
                   final n12 = (totalGallons * 128.0 / 12.0).floor();
                   final n16 = (totalGallons * 128.0 / 16.0).floor();
                   final n25 = (totalGallons * 128.0 / 25.4).floor();
                   final kegs = totalGallons / 5.0;
-                  
+
                   return Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceVariant
+                          .withOpacity(0.3),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Column(
@@ -3343,11 +3474,12 @@ void _syncCompletedControllersFrom(BatchModel b) {
                         const SizedBox(height: 8),
                         Text(
                           '${totalGallons.toStringAsFixed(2)} gal (${(totalGallons * 3.78541).toStringAsFixed(2)} L)',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
-                        const Text('Equivalent to:', 
-                          style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const Text('Equivalent to:',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 8,
@@ -3381,7 +3513,7 @@ void _syncCompletedControllersFrom(BatchModel b) {
             ],
           ),
         ),
-        
+
         // Tasting Notes
         _sectionCard(
           title: 'Tasting Notes',
@@ -3434,8 +3566,8 @@ void _syncCompletedControllersFrom(BatchModel b) {
                 },
               ),
               const SizedBox(height: 12),
-              const Text('Quick Descriptors', 
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              const Text('Quick Descriptors',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,
@@ -3473,7 +3605,7 @@ void _syncCompletedControllersFrom(BatchModel b) {
             ],
           ),
         ),
-        
+
         // Lessons Learned
         _sectionCard(
           title: 'Lessons Learned',
@@ -3491,7 +3623,7 @@ void _syncCompletedControllersFrom(BatchModel b) {
             },
           ),
         ),
-        
+
         // Actions
         Card(
           child: Padding(
@@ -3522,7 +3654,8 @@ void _syncCompletedControllersFrom(BatchModel b) {
                           abv: abvVal,
                           additives: batch.additives,
                           ingredients: batch.ingredients,
-                          fermentationStages: batch.safeFermentationStages.toList(),
+                          fermentationStages:
+                              batch.safeFermentationStages.toList(),
                           yeast: batch.yeast,
                           notes: batch.finalNotes ?? '',
                           batchVolume: batch.batchVolume,
@@ -3534,7 +3667,9 @@ void _syncCompletedControllersFrom(BatchModel b) {
 
                         if (!mounted) return;
                         snacks.show(
-                          SnackBar(content: Text('Saved as recipe: "${newRecipe.name}"')),
+                          SnackBar(
+                              content:
+                                  Text('Saved as recipe: "${newRecipe.name}"')),
                         );
                       },
                     ),
@@ -3570,8 +3705,8 @@ void _syncCompletedControllersFrom(BatchModel b) {
                             e['deductFromInventory'] = false;
                             return e;
                           }).toList(),
-                          fermentationStages:
-                              List<FermentationStage>.from(batch.safeFermentationStages),
+                          fermentationStages: List<FermentationStage>.from(
+                              batch.safeFermentationStages),
                           plannedEvents: [],
                           measurements: [],
                           batchVolume: batch.batchVolume,
@@ -3618,100 +3753,106 @@ void _syncCompletedControllersFrom(BatchModel b) {
 
   // ===== gravity & volume helpers =====
 
-double _volumeGalOf(Map<String, dynamic> item) {
-  final unit = ((item['unit'] ?? '') as String).toLowerCase();
-  final amt  = ((item['amount'] ?? 0) as num).toDouble();
+  double _volumeGalOf(Map<String, dynamic> item) {
+    final unit = ((item['unit'] ?? '') as String).toLowerCase();
+    final amt = ((item['amount'] ?? 0) as num).toDouble();
 
-  if (unit == 'oz') {
-    // Bare "oz" here is ambiguous (mass vs volume). Require "fl oz" for volume.
-    debugPrint('⚠️ Use "fl oz" for volume, "oz" for mass. Got oz in volume path for ${item['name']}');
+    if (unit == 'oz') {
+      // Bare "oz" here is ambiguous (mass vs volume). Require "fl oz" for volume.
+      debugPrint(
+          '⚠️ Use "fl oz" for volume, "oz" for mass. Got oz in volume path for ${item['name']}');
+      return 0.0;
+    }
+
+    switch (unit) {
+      case 'gal':
+        return amt;
+      case 'l':
+        return amt * 0.2641720524;
+      case 'ml':
+        return amt * 0.0002641720524;
+      case 'fl oz':
+        return amt / 128.0;
+      default:
+        return 0.0;
+    }
+  }
+
+  /// Get an item's OG if present (e.g. a juice), else null.
+  double? _ogOf(Map<String, dynamic> item) {
+    final raw = item['og'];
+    if (raw == null) return null;
+    final v = (raw is num) ? raw.toDouble() : double.tryParse(raw.toString());
+    if (v == null || v <= 1.0) return null;
+    return v;
+  }
+
+  /// Try to read known PPG directly from the map (preferred), else guess from name.
+  double _ppgFor(Map<String, dynamic> item) {
+    // If the item already carries ppg/gravityPoints, use it
+    final gp = item['ppg'] ?? item['gravityPoints'];
+    if (gp is num) return gp.toDouble();
+
+    final name = ((item['name'] ?? '') as String).toLowerCase();
+    if (name.contains('table sugar') || name.contains('sucrose')) return 46.0;
+    if (name.contains('dme') && name.contains('light')) return 44.0;
+    if (name.contains('honey')) return 35.0;
+    if (name.contains('corn sugar') || name.contains('dextrose')) return 42.0;
+    if (name.contains('brown sugar')) return 46.0;
+    if (name.contains('lme')) return 36.0;
+    // add any other house defaults you want
     return 0.0;
   }
 
-  switch (unit) {
-    case 'gal':   return amt;
-    case 'l':     return amt * 0.2641720524;
-    case 'ml':    return amt * 0.0002641720524;
-    case 'fl oz': return amt / 128.0;
-    default:      return 0.0;
+  /// Return how many lbs the item represents if it’s a mass unit; else 0.
+  double _poundsOf(Map<String, dynamic> item) {
+    final unit = ((item['unit'] ?? '') as String).toLowerCase();
+    final amt = ((item['amount'] ?? 0) as num).toDouble();
+
+    switch (unit) {
+      case 'lb':
+      case 'lbs':
+        return amt;
+      case 'oz': // mass-oz (ambiguous with fl oz; UI should avoid this)
+        // If you allow mass-oz anywhere, rename your volume oz to "fl oz".
+        return amt / 16.0;
+      case 'kg':
+        return amt * 2.2046226218;
+      case 'g':
+        return amt * 0.0022046226;
+      default:
+        return 0.0;
+    }
   }
-}
 
-/// Get an item's OG if present (e.g. a juice), else null.
-double? _ogOf(Map<String, dynamic> item) {
-  final raw = item['og'];
-  if (raw == null) return null;
-  final v = (raw is num) ? raw.toDouble() : double.tryParse(raw.toString());
-  if (v == null || v <= 1.0) return null;
-  return v;
-}
-
-/// Try to read known PPG directly from the map (preferred), else guess from name.
-double _ppgFor(Map<String, dynamic> item) {
-  // If the item already carries ppg/gravityPoints, use it
-  final gp = item['ppg'] ?? item['gravityPoints'];
-  if (gp is num) return gp.toDouble();
-
-  final name = ((item['name'] ?? '') as String).toLowerCase();
-  if (name.contains('table sugar') || name.contains('sucrose')) return 46.0;
-  if (name.contains('dme') && name.contains('light')) return 44.0;
-  if (name.contains('honey')) return 35.0;
-  if (name.contains('corn sugar') || name.contains('dextrose')) return 42.0;
-  if (name.contains('brown sugar')) return 46.0;
-  if (name.contains('lme')) return 36.0;
-  // add any other house defaults you want
-  return 0.0;
-}
-
-/// Return how many lbs the item represents if it’s a mass unit; else 0.
-double _poundsOf(Map<String, dynamic> item) {
-  final unit = ((item['unit'] ?? '') as String).toLowerCase();
-  final amt  = ((item['amount'] ?? 0) as num).toDouble();
-
-  switch (unit) {
-    case 'lb':
-    case 'lbs':
-      return amt;
-    case 'oz': // mass-oz (ambiguous with fl oz; UI should avoid this)
-      // If you allow mass-oz anywhere, rename your volume oz to "fl oz".
-      return amt / 16.0;
-    case 'kg':
-      return amt * 2.2046226218;
-    case 'g':
-      return amt * 0.0022046226;
-    default:
-      return 0.0;
+  /// GU contributed by *mass* fermentables (no volume added)
+  double _massGU(Map<String, dynamic> item) {
+    final lbs = _poundsOf(item);
+    if (lbs <= 0) return 0.0;
+    return _ppgFor(item) * lbs; // PPG × pounds => gravity units
   }
-}
 
-/// GU contributed by *mass* fermentables (no volume added)
-double _massGU(Map<String, dynamic> item) {
-  final lbs = _poundsOf(item);
-  if (lbs <= 0) return 0.0;
-  return _ppgFor(item) * lbs; // PPG × pounds => gravity units
-}
-
-/// Weighted blend OG from all *liquids* that have an OG.
-double? _blendedOgFromLiquids(List<Map<String, dynamic>> items) {
-  double totalVolGal = 0.0, totalGU = 0.0;
-  for (final it in items) {
-    final v  = _volumeGalOf(it);
-    final og = _ogOf(it);
-    totalVolGal += v;
-    if (og != null) totalGU += v * ((og - 1.0) * 1000.0);
+  /// Weighted blend OG from all *liquids* that have an OG.
+  double? _blendedOgFromLiquids(List<Map<String, dynamic>> items) {
+    double totalVolGal = 0.0, totalGU = 0.0;
+    for (final it in items) {
+      final v = _volumeGalOf(it);
+      final og = _ogOf(it);
+      totalVolGal += v;
+      if (og != null) totalGU += v * ((og - 1.0) * 1000.0);
+    }
+    if (totalVolGal <= 0) return null;
+    return 1.0 + (totalGU / totalVolGal) / 1000.0;
   }
-  if (totalVolGal <= 0) return null;
-  return 1.0 + (totalGU / totalVolGal) / 1000.0;
-}
 
-/// Sum GU from all *mass* fermentables.
-double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
-  double gu = 0.0;
-  for (final it in items) {
-    gu += _massGU(it);
+  /// Sum GU from all *mass* fermentables.
+  double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
+    double gu = 0.0;
+    for (final it in items) {
+      gu += _massGU(it);
+    }
+    return gu;
   }
-  return gu;
-}
 
   Widget _sectionCard({
     required String title,
@@ -3775,7 +3916,8 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
+              Icon(icon,
+                  size: 16, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -3826,7 +3968,7 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         return qty;
       case 'L':
         return qty * 0.264172;
-      
+
       // Standard bottles
       case '12oz bottle':
         return (qty * 12.0) / 128.0;
@@ -3839,11 +3981,11 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         return (qty * 32.0) / 128.0;
       case '64oz growler':
         return (qty * 64.0) / 128.0;
-      
+
       // Metric bottles
       case '330ml bottle':
       case '330ml can':
-        return (qty * 330.0) / 3785.41;  // ml to gallons
+        return (qty * 330.0) / 3785.41; // ml to gallons
       case '375ml bottle':
         return (qty * 375.0) / 3785.41;
       case '500ml bottle':
@@ -3853,25 +3995,24 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         return (qty * 750.0) / 3785.41;
       case '1L bottle':
         return (qty * 1000.0) / 3785.41;
-      
+
       // Kegs
       case '5gal keg':
       case 'corny keg':
         return qty * 5.0;
       case '1/6 bbl keg':
-        return qty * 5.16;  // 5.16 gallons
+        return qty * 5.16; // 5.16 gallons
       case '1/4 bbl keg':
-        return qty * 7.75;  // 7.75 gallons
+        return qty * 7.75; // 7.75 gallons
       case '1/2 bbl keg':
-        return qty * 15.5;  // 15.5 gallons (standard commercial)
+        return qty * 15.5; // 15.5 gallons (standard commercial)
       case 'full bbl keg':
-        return qty * 31.0;  // 31 gallons
-      
+        return qty * 31.0; // 31 gallons
+
       default:
         return qty; // fallback assumes gal
     }
   }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Total ingredient cost = sum(amount_used (converted to inventory unit) × averageCostPerUnit)
@@ -3916,8 +4057,6 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
         ),
       ],
     );
-
-    
   }
 
   // ---------------- Packaging Helpers ----------------
@@ -3928,12 +4067,42 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
 
     // Quick preset buttons - common packaging scenarios
     final presets = [
-      {'label': '24 × 12oz', 'qty': '24', 'unit': '12oz bottle', 'method': 'Bottled'},
-      {'label': '12 × 750mL', 'qty': '12', 'unit': '750ml bottle', 'method': 'Bottled'},
-      {'label': '12 × 16oz', 'qty': '12', 'unit': '16oz can', 'method': 'Bottled'},
-      {'label': '1 × Corny', 'qty': '1', 'unit': '5gal keg', 'method': 'Kegged'},
-      {'label': '1 × 1/6 BBL', 'qty': '1', 'unit': '1/6 bbl keg', 'method': 'Kegged'},
-      {'label': '5 gal bulk', 'qty': '5', 'unit': 'gal', 'method': 'Aged in Secondary'},
+      {
+        'label': '24 × 12oz',
+        'qty': '24',
+        'unit': '12oz bottle',
+        'method': 'Bottled'
+      },
+      {
+        'label': '12 × 750mL',
+        'qty': '12',
+        'unit': '750ml bottle',
+        'method': 'Bottled'
+      },
+      {
+        'label': '12 × 16oz',
+        'qty': '12',
+        'unit': '16oz can',
+        'method': 'Bottled'
+      },
+      {
+        'label': '1 × Corny',
+        'qty': '1',
+        'unit': '5gal keg',
+        'method': 'Kegged'
+      },
+      {
+        'label': '1 × 1/6 BBL',
+        'qty': '1',
+        'unit': '1/6 bbl keg',
+        'method': 'Kegged'
+      },
+      {
+        'label': '5 gal bulk',
+        'qty': '5',
+        'unit': 'gal',
+        'method': 'Aged in Secondary'
+      },
     ];
 
     final saved = await showDialog<bool>(
@@ -3946,32 +4115,37 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Quick Presets:', 
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                const Text('Quick Presets:',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: presets.map((p) => ActionChip(
-                    label: Text(p['label']!),
-                    onPressed: () {
-                      setDialogState(() {
-                        qtyCtrl.text = p['qty']!;
-                        unit = p['unit']!;
-                        method = p['method']!;
-                      });
-                    },
-                  )).toList(),
+                  children: presets
+                      .map((p) => ActionChip(
+                            label: Text(p['label']!),
+                            onPressed: () {
+                              setDialogState(() {
+                                qtyCtrl.text = p['qty']!;
+                                unit = p['unit']!;
+                                method = p['method']!;
+                              });
+                            },
+                          ))
+                      .toList(),
                 ),
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 8),
-                const Text('Or enter custom:', 
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                const Text('Or enter custom:',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 12),
                 TextField(
                   controller: qtyCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
                     labelText: 'Quantity',
                     border: OutlineInputBorder(),
@@ -3988,31 +4162,58 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
                   isExpanded: true,
                   items: const [
                     // US Bottles & Cans
-                    DropdownMenuItem(value: '12oz bottle', child: Text('12 oz bottles')),
-                    DropdownMenuItem(value: '16oz bottle', child: Text('16 oz bottles')),
-                    DropdownMenuItem(value: '16oz can', child: Text('16 oz cans (tallboy)')),
-                    DropdownMenuItem(value: '22oz bottle', child: Text('22 oz bottles (bomber)')),
-                    DropdownMenuItem(value: '32oz growler', child: Text('32 oz growlers (quart)')),
-                    DropdownMenuItem(value: '64oz growler', child: Text('64 oz growlers (half-gal)')),
-                    
+                    DropdownMenuItem(
+                        value: '12oz bottle', child: Text('12 oz bottles')),
+                    DropdownMenuItem(
+                        value: '16oz bottle', child: Text('16 oz bottles')),
+                    DropdownMenuItem(
+                        value: '16oz can', child: Text('16 oz cans (tallboy)')),
+                    DropdownMenuItem(
+                        value: '22oz bottle',
+                        child: Text('22 oz bottles (bomber)')),
+                    DropdownMenuItem(
+                        value: '32oz growler',
+                        child: Text('32 oz growlers (quart)')),
+                    DropdownMenuItem(
+                        value: '64oz growler',
+                        child: Text('64 oz growlers (half-gal)')),
+
                     // Metric Bottles & Cans
-                    DropdownMenuItem(value: '330ml bottle', child: Text('330 mL bottles')),
-                    DropdownMenuItem(value: '330ml can', child: Text('330 mL cans')),
-                    DropdownMenuItem(value: '375ml bottle', child: Text('375 mL bottles')),
-                    DropdownMenuItem(value: '500ml bottle', child: Text('500 mL bottles')),
-                    DropdownMenuItem(value: '500ml can', child: Text('500 mL cans')),
-                    DropdownMenuItem(value: '750ml bottle', child: Text('750 mL bottles (wine)')),
-                    DropdownMenuItem(value: '1L bottle', child: Text('1 L bottles')),
-                    
+                    DropdownMenuItem(
+                        value: '330ml bottle', child: Text('330 mL bottles')),
+                    DropdownMenuItem(
+                        value: '330ml can', child: Text('330 mL cans')),
+                    DropdownMenuItem(
+                        value: '375ml bottle', child: Text('375 mL bottles')),
+                    DropdownMenuItem(
+                        value: '500ml bottle', child: Text('500 mL bottles')),
+                    DropdownMenuItem(
+                        value: '500ml can', child: Text('500 mL cans')),
+                    DropdownMenuItem(
+                        value: '750ml bottle',
+                        child: Text('750 mL bottles (wine)')),
+                    DropdownMenuItem(
+                        value: '1L bottle', child: Text('1 L bottles')),
+
                     // Kegs
-                    DropdownMenuItem(value: '5gal keg', child: Text('5 gal keg (corny)')),
-                    DropdownMenuItem(value: '1/6 bbl keg', child: Text('1/6 bbl keg (5.16 gal)')),
-                    DropdownMenuItem(value: '1/4 bbl keg', child: Text('1/4 bbl keg (7.75 gal)')),
-                    DropdownMenuItem(value: '1/2 bbl keg', child: Text('1/2 bbl keg (15.5 gal)')),
-                    DropdownMenuItem(value: 'full bbl keg', child: Text('Full bbl keg (31 gal)')),
-                    
+                    DropdownMenuItem(
+                        value: '5gal keg', child: Text('5 gal keg (corny)')),
+                    DropdownMenuItem(
+                        value: '1/6 bbl keg',
+                        child: Text('1/6 bbl keg (5.16 gal)')),
+                    DropdownMenuItem(
+                        value: '1/4 bbl keg',
+                        child: Text('1/4 bbl keg (7.75 gal)')),
+                    DropdownMenuItem(
+                        value: '1/2 bbl keg',
+                        child: Text('1/2 bbl keg (15.5 gal)')),
+                    DropdownMenuItem(
+                        value: 'full bbl keg',
+                        child: Text('Full bbl keg (31 gal)')),
+
                     // Bulk
-                    DropdownMenuItem(value: 'gal', child: Text('Gallons (bulk)')),
+                    DropdownMenuItem(
+                        value: 'gal', child: Text('Gallons (bulk)')),
                     DropdownMenuItem(value: 'L', child: Text('Liters (bulk)')),
                   ],
                   onChanged: (v) => setDialogState(() => unit = v!),
@@ -4027,7 +4228,9 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
                   items: const [
                     DropdownMenuItem(value: 'Bottled', child: Text('Bottled')),
                     DropdownMenuItem(value: 'Kegged', child: Text('Kegged')),
-                    DropdownMenuItem(value: 'Aged in Secondary', child: Text('Aged in Secondary')),
+                    DropdownMenuItem(
+                        value: 'Aged in Secondary',
+                        child: Text('Aged in Secondary')),
                   ],
                   onChanged: (v) => setDialogState(() => method = v!),
                 ),
@@ -4035,7 +4238,9 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Add'),
@@ -4049,15 +4254,18 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
       final qty = double.tryParse(qtyCtrl.text.trim()) ?? 0.0;
       if (qty > 0) {
         batch.packagingBreakdown ??= [];
-        batch.packagingBreakdown!.add({'quantity': qty, 'unit': unit, 'method': method});
+        batch.packagingBreakdown!
+            .add({'quantity': qty, 'unit': unit, 'method': method});
         await batch.save();
         setState(() {});
       }
     }
   }
 
-  Future<void> _editPackageEntry(BatchModel batch, int idx, Map<String, dynamic> pkg) async {
-    final qtyCtrl = TextEditingController(text: (pkg['quantity'] ?? 0.0).toString());
+  Future<void> _editPackageEntry(
+      BatchModel batch, int idx, Map<String, dynamic> pkg) async {
+    final qtyCtrl =
+        TextEditingController(text: (pkg['quantity'] ?? 0.0).toString());
     String method = pkg['method'] ?? 'Bottled';
     String unit = pkg['unit'] ?? '12oz bottle';
 
@@ -4071,7 +4279,8 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
             children: [
               TextField(
                 controller: qtyCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
                   labelText: 'Quantity',
                   border: OutlineInputBorder(),
@@ -4087,29 +4296,55 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
                 isExpanded: true,
                 items: const [
                   // US Bottles & Cans
-                  DropdownMenuItem(value: '12oz bottle', child: Text('12 oz bottles')),
-                  DropdownMenuItem(value: '16oz bottle', child: Text('16 oz bottles')),
-                  DropdownMenuItem(value: '16oz can', child: Text('16 oz cans (tallboy)')),
-                  DropdownMenuItem(value: '22oz bottle', child: Text('22 oz bottles (bomber)')),
-                  DropdownMenuItem(value: '32oz growler', child: Text('32 oz growlers (quart)')),
-                  DropdownMenuItem(value: '64oz growler', child: Text('64 oz growlers (half-gal)')),
-                  
+                  DropdownMenuItem(
+                      value: '12oz bottle', child: Text('12 oz bottles')),
+                  DropdownMenuItem(
+                      value: '16oz bottle', child: Text('16 oz bottles')),
+                  DropdownMenuItem(
+                      value: '16oz can', child: Text('16 oz cans (tallboy)')),
+                  DropdownMenuItem(
+                      value: '22oz bottle',
+                      child: Text('22 oz bottles (bomber)')),
+                  DropdownMenuItem(
+                      value: '32oz growler',
+                      child: Text('32 oz growlers (quart)')),
+                  DropdownMenuItem(
+                      value: '64oz growler',
+                      child: Text('64 oz growlers (half-gal)')),
+
                   // Metric Bottles & Cans
-                  DropdownMenuItem(value: '330ml bottle', child: Text('330 mL bottles')),
-                  DropdownMenuItem(value: '330ml can', child: Text('330 mL cans')),
-                  DropdownMenuItem(value: '375ml bottle', child: Text('375 mL bottles')),
-                  DropdownMenuItem(value: '500ml bottle', child: Text('500 mL bottles')),
-                  DropdownMenuItem(value: '500ml can', child: Text('500 mL cans')),
-                  DropdownMenuItem(value: '750ml bottle', child: Text('750 mL bottles (wine)')),
-                  DropdownMenuItem(value: '1L bottle', child: Text('1 L bottles')),
-                  
+                  DropdownMenuItem(
+                      value: '330ml bottle', child: Text('330 mL bottles')),
+                  DropdownMenuItem(
+                      value: '330ml can', child: Text('330 mL cans')),
+                  DropdownMenuItem(
+                      value: '375ml bottle', child: Text('375 mL bottles')),
+                  DropdownMenuItem(
+                      value: '500ml bottle', child: Text('500 mL bottles')),
+                  DropdownMenuItem(
+                      value: '500ml can', child: Text('500 mL cans')),
+                  DropdownMenuItem(
+                      value: '750ml bottle',
+                      child: Text('750 mL bottles (wine)')),
+                  DropdownMenuItem(
+                      value: '1L bottle', child: Text('1 L bottles')),
+
                   // Kegs
-                  DropdownMenuItem(value: '5gal keg', child: Text('5 gal keg (corny)')),
-                  DropdownMenuItem(value: '1/6 bbl keg', child: Text('1/6 bbl keg (5.16 gal)')),
-                  DropdownMenuItem(value: '1/4 bbl keg', child: Text('1/4 bbl keg (7.75 gal)')),
-                  DropdownMenuItem(value: '1/2 bbl keg', child: Text('1/2 bbl keg (15.5 gal)')),
-                  DropdownMenuItem(value: 'full bbl keg', child: Text('Full bbl keg (31 gal)')),
-                  
+                  DropdownMenuItem(
+                      value: '5gal keg', child: Text('5 gal keg (corny)')),
+                  DropdownMenuItem(
+                      value: '1/6 bbl keg',
+                      child: Text('1/6 bbl keg (5.16 gal)')),
+                  DropdownMenuItem(
+                      value: '1/4 bbl keg',
+                      child: Text('1/4 bbl keg (7.75 gal)')),
+                  DropdownMenuItem(
+                      value: '1/2 bbl keg',
+                      child: Text('1/2 bbl keg (15.5 gal)')),
+                  DropdownMenuItem(
+                      value: 'full bbl keg',
+                      child: Text('Full bbl keg (31 gal)')),
+
                   // Bulk
                   DropdownMenuItem(value: 'gal', child: Text('Gallons (bulk)')),
                   DropdownMenuItem(value: 'L', child: Text('Liters (bulk)')),
@@ -4126,14 +4361,18 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
                 items: const [
                   DropdownMenuItem(value: 'Bottled', child: Text('Bottled')),
                   DropdownMenuItem(value: 'Kegged', child: Text('Kegged')),
-                  DropdownMenuItem(value: 'Aged in Secondary', child: Text('Aged in Secondary')),
+                  DropdownMenuItem(
+                      value: 'Aged in Secondary',
+                      child: Text('Aged in Secondary')),
                 ],
                 onChanged: (v) => setDialogState(() => method = v!),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Save'),
@@ -4146,295 +4385,347 @@ double _sumMassFermentablesGU(List<Map<String, dynamic>> items) {
     if (saved == true) {
       final qty = double.tryParse(qtyCtrl.text.trim()) ?? 0.0;
       if (qty > 0) {
-        batch.packagingBreakdown![idx] = {'quantity': qty, 'unit': unit, 'method': method};
+        batch.packagingBreakdown![idx] = {
+          'quantity': qty,
+          'unit': unit,
+          'method': method
+        };
         await batch.save();
         setState(() {});
       }
     }
   }
 
-  
+  @override
+  Widget build(BuildContext context) {
+    final box = Hive.box<BatchModel>(Boxes.batches);
 
-@override
-Widget build(BuildContext context) {
-  final box = Hive.box<BatchModel>(Boxes.batches);
+    final isTight = MediaQuery.of(context).size.width < 420 ||
+        MediaQuery.textScaleFactorOf(context) > 1.10;
 
-final isTight = MediaQuery.of(context).size.width < 420 ||
-    MediaQuery.textScaleFactorOf(context) > 1.10;
+    return ValueListenableBuilder<Box<BatchModel>>(
+      valueListenable: box.listenable(keys: [_hiveKey]),
+      builder: (context, b, _) {
+        final batch = b.get(_hiveKey);
 
-  return ValueListenableBuilder<Box<BatchModel>>(
-    valueListenable: box.listenable(keys: [_hiveKey]),
-    builder: (context, b, _) {
-      final batch = b.get(_hiveKey);
+        if (batch == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Batch Not Found")),
+            body:
+                const Center(child: Text("This batch may have been deleted.")),
+          );
+        }
 
-      if (batch == null) {
+        final media = MediaQuery.of(context);
+        final width = media.size.width;
+        final double scale = MediaQuery.textScalerOf(context).scale(1.0);
+        final bool needsScroll = width < 380 || scale > 1.0;
+        final fg = context.watch<FeatureGate>();
+
         return Scaffold(
-          appBar: AppBar(title: const Text("Batch Not Found")),
-          body: const Center(child: Text("This batch may have been deleted.")),
-        );
-      }
+          appBar: AppBar(
+            automaticallyImplyLeading: true,
+            leadingWidth: 40,
+            titleSpacing: 8,
+            centerTitle: false,
 
-      final media = MediaQuery.of(context);
-      final width = media.size.width;
-      final double scale = MediaQuery.textScalerOf(context).scale(1.0);
-      final bool needsScroll = width < 380 || scale > 1.0;
-      final fg = context.watch<FeatureGate>();
-
-      return Scaffold(
-
-
-appBar: AppBar(
-  automaticallyImplyLeading: true,
-  leadingWidth: 40,
-  titleSpacing: 8,
-  centerTitle: false,
-
-  // Title that auto-shrinks (never clipped)
-  title: Tooltip(
-    message: batch.name.trim().isEmpty ? 'Batch' : batch.name,
-    waitDuration: const Duration(milliseconds: 400),
-    child: FittedBox(
-      alignment: Alignment.centerLeft,
-      fit: BoxFit.scaleDown, // scales down text to fit available width
-      child: Text(
-        batch.name.trim().isEmpty ? 'Batch' : batch.name,
-        maxLines: 1,
-        softWrap: false,
-      ),
-    ),
-  ),
-
-  actionsIconTheme: const IconThemeData(size: 22),
-
-  actions: [
-    // Brew Mode (always visible)
-    IconButton(
-      tooltip: _isBrewModeEnabled ? 'Disable Brew Mode' : 'Enable Brew Mode',
-      icon: Icon(
-        _isBrewModeEnabled ? Icons.lightbulb : Icons.lightbulb_outline,
-        color: _isBrewModeEnabled ? Colors.amber : null,
-      ),
-      onPressed: _toggleBrewMode,
-    ),
-
-    // Show extra icons only if we truly have room
-    if (!needsScroll && !isTight) ...[
-      // Rename
-      IconButton(
-        tooltip: 'Rename batch',
-        icon: const Icon(Icons.edit),
-        onPressed: () async => _showRenameBatchDialog(batch),
-      ),
-
-      // Archive / Unarchive
-      IconButton(
-        tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
-        icon: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
-        onPressed: () async => _onArchiveToggle(batch),
-      ),
-
-      // Devices (signed-in only)
-      ifSignedIn((uid) => IconButton(
-        tooltip: 'Attach / change device',
-        icon: const Icon(Icons.sensors),
-        onPressed: () async {
-          if (!fg.allowDevices) { showPaywall(context); return; }
-          final dialogContext = context;
-          final currentId = await _currentDeviceIdForBatch(uid, batch.id);
-          if (!dialogContext.mounted) return;
-
-          final result = await showAttachDeviceSheet(
-            context: dialogContext,
-            currentlyAttachedDeviceId: currentId,
-            fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batch.id),
-            showAssignedToo: true,
-            batchId: batch.id,
-          );
-          if (result == null) return;
-
-          await _attachDeviceToBatch(uid: uid, batchId: batch.id, deviceId: result.deviceId);
-          if (!dialogContext.mounted) return;
-
-          ScaffoldMessenger.of(dialogContext).showSnackBar(
-            SnackBar(content: Text(result.deviceId == null ? 'Device detached' : 'Device attached')),
-          );
-        },
-      )),
-
-      // Export CSV
-      IconButton(
-        tooltip: 'Export CSV (device raw)',
-        icon: const Icon(Icons.download),
-        onPressed: () async {
-          if (!fg.allowDeviceExport) { showPaywall(context); return; }
-          final uid = _uid; if (uid == null) return;
-
-          final dialogContext = context;
-          final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-          final rawName = 'device_data_${batch.name}_$ts.csv';
-          final filename = sanitizeFilename(rawName);
-
-          final csv = await exportRawMeasurementsCsv(uid: uid, batchId: batch.id);
-          if (!dialogContext.mounted) return;
-
-          await promptSaveCsv(context: dialogContext, filename: filename, csv: csv);
-          if (!dialogContext.mounted) return;
-
-          ScaffoldMessenger.of(dialogContext).showSnackBar(
-            SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
-          );
-        },
-      ),
-    ]
-    // Otherwise: overflow to protect the title width
-    else
-      PopupMenuButton<_OverflowAction>(
-        tooltip: 'More',
-        onSelected: (choice) async {
-          switch (choice) {
-            case _OverflowAction.archiveToggle:
-              await _onArchiveToggle(batch);
-              break;
-
-            case _OverflowAction.attachDevice:
-              if (!fg.allowDevices) { showPaywall(context); break; }
-              final uid = _uid; if (uid == null) break;
-              final dialogContext = context;
-              final currentId = await _currentDeviceIdForBatch(uid, batch.id);
-              if (!dialogContext.mounted) break;
-
-              final result = await showAttachDeviceSheet(
-                context: dialogContext,
-                currentlyAttachedDeviceId: currentId,
-                fetchDevices: () => _fetchDevicePickItems(uid: uid, batchId: batch.id),
-                showAssignedToo: true,
-                batchId: batch.id,
-              );
-              if (result == null) break;
-
-              await _attachDeviceToBatch(uid: uid, batchId: batch.id, deviceId: result.deviceId);
-              if (!dialogContext.mounted) break;
-
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                SnackBar(content: Text(result.deviceId == null ? 'Device detached' : 'Device attached')),
-              );
-              break;
-
-            case _OverflowAction.exportCsv:
-              if (!fg.allowDeviceExport) { showPaywall(context); break; }
-              final uid2 = _uid; if (uid2 == null) break;
-              final dialogContext2 = context;
-              final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-              final rawName = 'device_data_${batch.name}_$ts.csv';
-              final filename = sanitizeFilename(rawName);
-              final csv = await exportRawMeasurementsCsv(uid: uid2, batchId: batch.id);
-              if (!dialogContext2.mounted) break;
-              await promptSaveCsv(context: dialogContext2, filename: filename, csv: csv);
-              if (!dialogContext2.mounted) break;
-              ScaffoldMessenger.of(dialogContext2).showSnackBar(
-                SnackBar(content: Text('Exported ${csv.length} chars of CSV.')),
-              );
-              break;
-
-            case _OverflowAction.rename:
-              await _showRenameBatchDialog(batch);
-              break;
-          }
-        },
-        itemBuilder: (context) => [
-          const PopupMenuItem(
-            value: _OverflowAction.rename,
-            child: ListTile(
-              dense: true,
-              leading: Icon(Icons.edit),
-              title: Text('Rename'),
-            ),
-          ),
-          PopupMenuItem(
-            value: _OverflowAction.archiveToggle,
-            child: ListTile(
-              dense: true,
-              leading: Icon(batch.isArchived ? Icons.unarchive : Icons.archive_outlined),
-              title: Text(batch.isArchived ? 'Unarchive' : 'Archive'),
-            ),
-          ),
-          if (_uid != null)
-            const PopupMenuItem(
-              value: _OverflowAction.attachDevice,
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.sensors),
-                title: Text('Attach / change device'),
+            // Title that auto-shrinks (never clipped)
+            title: Tooltip(
+              message: batch.name.trim().isEmpty ? 'Batch' : batch.name,
+              waitDuration: const Duration(milliseconds: 400),
+              child: FittedBox(
+                alignment: Alignment.centerLeft,
+                fit:
+                    BoxFit.scaleDown, // scales down text to fit available width
+                child: Text(
+                  batch.name.trim().isEmpty ? 'Batch' : batch.name,
+                  maxLines: 1,
+                  softWrap: false,
+                ),
               ),
             ),
-          const PopupMenuItem(
-            value: _OverflowAction.exportCsv,
-            child: ListTile(
-              dense: true,
-              leading: Icon(Icons.download),
-              title: Text('Export CSV'),
-            ),
-          ),
-        ],
-      ),
-  ],
 
-  bottom: TabBar(
-    controller: _tabController,
-    isScrollable: needsScroll,
-    tabAlignment: needsScroll ? TabAlignment.start : TabAlignment.center,
-    labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-    tabs: const [
-      Tab(text: 'Plan'),
-      Tab(text: 'Prep'),
-      Tab(text: 'Ferment'),
-      Tab(text: 'Complete'),
-    ],
-  ),
-),
+            actionsIconTheme: const IconThemeData(size: 22),
 
-
-
-        body: Column(
-          children: [
-            if (batch.isArchived)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
+            actions: [
+              // Brew Mode (always visible)
+              IconButton(
+                tooltip: _isBrewModeEnabled
+                    ? 'Disable Brew Mode'
+                    : 'Enable Brew Mode',
+                icon: Icon(
+                  _isBrewModeEnabled
+                      ? Icons.lightbulb
+                      : Icons.lightbulb_outline,
+                  color: _isBrewModeEnabled ? Colors.amber : null,
                 ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.lock, size: 18),
-                    SizedBox(width: 8),
-                    Expanded(child: Text('This batch is archived and read-only.')),
+                onPressed: _toggleBrewMode,
+              ),
+
+              // Show extra icons only if we truly have room
+              if (!needsScroll && !isTight) ...[
+                // Rename
+                IconButton(
+                  tooltip: 'Rename batch',
+                  icon: const Icon(Icons.edit),
+                  onPressed: () async => _showRenameBatchDialog(batch),
+                ),
+
+                // Archive / Unarchive
+                IconButton(
+                  tooltip: batch.isArchived ? 'Unarchive' : 'Archive',
+                  icon: Icon(batch.isArchived
+                      ? Icons.unarchive
+                      : Icons.archive_outlined),
+                  onPressed: () async => _onArchiveToggle(batch),
+                ),
+
+                // Devices (signed-in only)
+                ifSignedIn((uid) => IconButton(
+                      tooltip: 'Attach / change device',
+                      icon: const Icon(Icons.sensors),
+                      onPressed: () async {
+                        if (!fg.allowDevices) {
+                          showPaywall(context);
+                          return;
+                        }
+                        final dialogContext = context;
+                        final currentId =
+                            await _currentDeviceIdForBatch(uid, batch.id);
+                        if (!dialogContext.mounted) return;
+
+                        final result = await showAttachDeviceSheet(
+                          context: dialogContext,
+                          currentlyAttachedDeviceId: currentId,
+                          fetchDevices: () => _fetchDevicePickItems(
+                              uid: uid, batchId: batch.id),
+                          showAssignedToo: true,
+                          batchId: batch.id,
+                        );
+                        if (result == null) return;
+
+                        await _attachDeviceToBatch(
+                            uid: uid,
+                            batchId: batch.id,
+                            deviceId: result.deviceId);
+                        if (!dialogContext.mounted) return;
+
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                              content: Text(result.deviceId == null
+                                  ? 'Device detached'
+                                  : 'Device attached')),
+                        );
+                      },
+                    )),
+
+                // Export CSV
+                IconButton(
+                  tooltip: 'Export CSV (device raw)',
+                  icon: const Icon(Icons.download),
+                  onPressed: () async {
+                    if (!fg.allowDeviceExport) {
+                      showPaywall(context);
+                      return;
+                    }
+                    final uid = _uid;
+                    if (uid == null) return;
+
+                    final dialogContext = context;
+                    final ts =
+                        DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+                    final rawName = 'device_data_${batch.name}_$ts.csv';
+                    final filename = sanitizeFilename(rawName);
+
+                    final csv = await exportRawMeasurementsCsv(
+                        uid: uid, batchId: batch.id);
+                    if (!dialogContext.mounted) return;
+
+                    await promptSaveCsv(
+                        context: dialogContext, filename: filename, csv: csv);
+                    if (!dialogContext.mounted) return;
+
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      SnackBar(
+                          content:
+                              Text('Exported ${csv.length} chars of CSV.')),
+                    );
+                  },
+                ),
+              ]
+              // Otherwise: overflow to protect the title width
+              else
+                PopupMenuButton<_OverflowAction>(
+                  tooltip: 'More',
+                  onSelected: (choice) async {
+                    switch (choice) {
+                      case _OverflowAction.archiveToggle:
+                        await _onArchiveToggle(batch);
+                        break;
+
+                      case _OverflowAction.attachDevice:
+                        if (!fg.allowDevices) {
+                          showPaywall(context);
+                          break;
+                        }
+                        final uid = _uid;
+                        if (uid == null) break;
+                        final dialogContext = context;
+                        final currentId =
+                            await _currentDeviceIdForBatch(uid, batch.id);
+                        if (!dialogContext.mounted) break;
+
+                        final result = await showAttachDeviceSheet(
+                          context: dialogContext,
+                          currentlyAttachedDeviceId: currentId,
+                          fetchDevices: () => _fetchDevicePickItems(
+                              uid: uid, batchId: batch.id),
+                          showAssignedToo: true,
+                          batchId: batch.id,
+                        );
+                        if (result == null) break;
+
+                        await _attachDeviceToBatch(
+                            uid: uid,
+                            batchId: batch.id,
+                            deviceId: result.deviceId);
+                        if (!dialogContext.mounted) break;
+
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                              content: Text(result.deviceId == null
+                                  ? 'Device detached'
+                                  : 'Device attached')),
+                        );
+                        break;
+
+                      case _OverflowAction.exportCsv:
+                        if (!fg.allowDeviceExport) {
+                          showPaywall(context);
+                          break;
+                        }
+                        final uid2 = _uid;
+                        if (uid2 == null) break;
+                        final dialogContext2 = context;
+                        final ts = DateFormat('yyyyMMdd_HHmmss')
+                            .format(DateTime.now());
+                        final rawName = 'device_data_${batch.name}_$ts.csv';
+                        final filename = sanitizeFilename(rawName);
+                        final csv = await exportRawMeasurementsCsv(
+                            uid: uid2, batchId: batch.id);
+                        if (!dialogContext2.mounted) break;
+                        await promptSaveCsv(
+                            context: dialogContext2,
+                            filename: filename,
+                            csv: csv);
+                        if (!dialogContext2.mounted) break;
+                        ScaffoldMessenger.of(dialogContext2).showSnackBar(
+                          SnackBar(
+                              content:
+                                  Text('Exported ${csv.length} chars of CSV.')),
+                        );
+                        break;
+
+                      case _OverflowAction.rename:
+                        await _showRenameBatchDialog(batch);
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: _OverflowAction.rename,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.edit),
+                        title: Text('Rename'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _OverflowAction.archiveToggle,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(batch.isArchived
+                            ? Icons.unarchive
+                            : Icons.archive_outlined),
+                        title: Text(batch.isArchived ? 'Unarchive' : 'Archive'),
+                      ),
+                    ),
+                    if (_uid != null)
+                      const PopupMenuItem(
+                        value: _OverflowAction.attachDevice,
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(Icons.sensors),
+                          title: Text('Attach / change device'),
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: _OverflowAction.exportCsv,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.download),
+                        title: Text('Export CSV'),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            Expanded(
-              child: AbsorbPointer(
-                absorbing: batch.isArchived == true,
-                child: Opacity(
-                  opacity: batch.isArchived == true ? 0.75 : 1.0,
-                  child: TabBarView(
-                    controller: _tabController,
+            ],
+
+            bottom: TabBar(
+              controller: _tabController,
+              isScrollable: needsScroll,
+              tabAlignment:
+                  needsScroll ? TabAlignment.start : TabAlignment.center,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+              tabs: const [
+                Tab(text: 'Plan'),
+                Tab(text: 'Prep'),
+                Tab(text: 'Ferment'),
+                Tab(text: 'Complete'),
+              ],
+            ),
+          ),
+          body: Column(
+            children: [
+              if (batch.isArchived)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
                     children: [
-                      _buildPlanningTab(batch),
-                      _buildPreparationTab(batch),
-                      _buildFermentingTab(batch),
-                      _buildCompletedTab(batch),
+                      Icon(Icons.lock, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                          child: Text('This batch is archived and read-only.')),
                     ],
                   ),
                 ),
+              Expanded(
+                child: AbsorbPointer(
+                  absorbing: batch.isArchived == true,
+                  child: Opacity(
+                    opacity: batch.isArchived == true ? 0.75 : 1.0,
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildPlanningTab(batch),
+                        _buildPreparationTab(batch),
+                        _buildFermentingTab(batch),
+                        _buildCompletedTab(batch),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
