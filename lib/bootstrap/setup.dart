@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../firebase_options.dart';
 import 'package:fermentacraft/services/analytics_service.dart';
+import 'package:fermentacraft/services/auth_service.dart';
 
 import '../utils/boxes.dart';
 import '../utils/data_management.dart';
@@ -35,6 +36,10 @@ Future<void> setupAppServices() async {
 
   // --- Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Set LOCAL persistence for mobile/desktop to keep users logged in across app restarts
+  await AuthService.instance.initForMobilePersistence();
+
   // Debug: print the Firebase project/app identifiers to verify environment
   assert(() {
     try {
@@ -47,11 +52,15 @@ Future<void> setupAppServices() async {
   if (!kIsWeb) {
     try {
       // DISABLED to save memory - Firebase persistence can use 100MB+
-      // FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
-      FirebaseFirestore.instance.settings =
-          const Settings(persistenceEnabled: false);
+      // Re-enable in debug mode for proper sync testing
       if (kDebugMode) {
-        print('[SETUP] Firebase persistence DISABLED to save memory');
+        FirebaseFirestore.instance.settings =
+            const Settings(persistenceEnabled: true);
+        debugPrint('[SETUP] Firebase persistence ENABLED for debug mode');
+      } else {
+        FirebaseFirestore.instance.settings =
+            const Settings(persistenceEnabled: false);
+        debugPrint('[SETUP] Firebase persistence DISABLED to save memory');
       }
     } catch (_) {
       // Already applied or not supported on this platform/runtime.

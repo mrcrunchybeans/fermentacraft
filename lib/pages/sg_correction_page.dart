@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/utils.dart'; // Must contain correctedSgJolicoeur(sg, tempF)
+import '../services/review_prompter.dart';
 
 class SgCorrectionPage extends StatefulWidget {
   const SgCorrectionPage({super.key});
@@ -14,6 +15,7 @@ class _SgCorrectionPageState extends State<SgCorrectionPage> {
 
   double? correctedSG;
   String selectedUnit = '°F';
+  bool _hasCalculated = false;
 
   @override
   void initState() {
@@ -37,6 +39,12 @@ class _SgCorrectionPageState extends State<SgCorrectionPage> {
       final tempInF = selectedUnit == '°F' ? temp : (temp * 9 / 5) + 32;
       final corrected = CiderUtils.correctedSgJolicoeur(sg, tempInF);
       setState(() => correctedSG = corrected);
+
+      // Trigger review prompt after first successful calculation
+      if (!_hasCalculated) {
+        _hasCalculated = true;
+        ReviewPrompter.instance.fireCalculatorUsed(context);
+      }
     } else {
       setState(() => correctedSG = null);
     }

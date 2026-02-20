@@ -14,6 +14,7 @@ Future<void> performLogout(BuildContext context) async {
   } catch (_) {/* ignore */}
 
   // Navigate away first so widgets stop listening to Hive
+  if (!context.mounted) return;
   Navigator.of(context).pushAndRemoveUntil(
     MaterialPageRoute(builder: (_) => const AuthGate()),
     (_) => false,

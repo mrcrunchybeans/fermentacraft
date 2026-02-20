@@ -1,6 +1,147 @@
 # 🍎 Cider-Craft (Codename)
 
-**Cider-Craft** is the codename for the **FermentaCraft** source project.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- Total time: ___________- Store submission time: ___________- Build time: ___________Time taken:___________________________________________________________________________________________________________________________________________________________________________________________________Issues encountered:Release Manager: ___________Version: ___________Date: ___________## Notes   - [ ] Document issue in changelog   - [ ] Notify users via support channels   - [ ] Update GitHub release notes with known issues3. **Communication**   - [ ] Create new release with patch version bump   - [ ] Test thoroughly   - [ ] Fix the issue   - [ ] Create hotfix branch from release tag2. **Fix Actions**   - [ ] Post notice on support channels   - [ ] Mark release as draft on GitHub   - [ ] Halt rollout in Play Console (if gradual rollout)1. **Immediate Actions**If critical issues are discovered:## Rollback Plan (if needed)- [ ] Close milestone/project in GitHub (if using)- [ ] Monitor crash reports and user feedback  - [ ] Email newsletter (if applicable)  - [ ] Discord/Slack  - [ ] Social media  - [ ] GitHub Discussions- [ ] Announce release:- [ ] Update website if needed  - [ ] App Store: https://apps.apple.com/app/fermentacraft (when approved)  - [ ] Microsoft Store: https://apps.microsoft.com/store/search?q=fermentacraft  - [ ] Google Play: https://play.google.com/store/apps/details?id=com.fermentacraft  - [ ] GitHub: https://github.com/[owner]/fermentacraft/releases- [ ] Verify release is live on all platforms:## Post-Release- [ ] Submit for App Store review when ready- [ ] Submit for external testing (optional)- [ ] Test build on iOS device- [ ] Add to TestFlight for internal testing- [ ] Verify build appears in TestFlight- [ ] Navigate to [App Store Connect](https://appstoreconnect.apple.com)### Apple App Store (via TestFlight)- [ ] Monitor certification status- [ ] Submit for certification- [ ] Update store listing if needed- [ ] Copy/paste changelog- [ ] Upload `.msix` file- [ ] Create new submission- [ ] Navigate to [Partner Center](https://partner.microsoft.com/dashboard)### Microsoft Store- [ ] Monitor rollout status- [ ] Submit for review- [ ] Review release- [ ] Fill in release notes (all supported languages)- [ ] Copy/paste changelog from `CHANGELOG-vX.X.X.txt`- [ ] Upload `.aab` file- [ ] Create new production release- [ ] Navigate to [Play Console](https://play.google.com/console)### Google Play Console## Store Submissions- [ ] Tag matches version (vX.X.X)- [ ] Release notes are correct  - [ ] Changelog  - [ ] Windows MSIX  - [ ] Android APKs (3 files)  - [ ] Android App Bundle (.aab)- [ ] All artifacts uploaded:- [ ] Release created at: https://github.com/[owner]/fermentacraft/releases## GitHub Release- [ ] TestFlight upload succeeds- [ ] Build completes successfully- [ ] Monitor workflow at: https://github.com/[owner]/fermentacraft/actions- [ ] GitHub Actions workflow started### iOS- [ ] Test MSIX installation on Windows 10/11- [ ] `fermentacraft-vX.X.X.msix` created- [ ] `fermentacraft.exe` runs without errors### Windows- [ ] Test install APK on physical device- [ ] Split APKs exist (arm64-v8a, armeabi-v7a, x86_64)- [ ] `fermentacraft-vX.X.X.aab` exists### Android## Verify Builds- [ ] Verify all artifacts in `release-artifacts/` directory- [ ] Review generated `CHANGELOG.txt`- [ ] Script completes successfully  ```  .\scripts\release.ps1 -VersionBump patch  # OR for more control    .\quick-release.ps1  # Standard patch release  ```powershell- [ ] Run release script:- [ ] Decide on version bump type (patch/minor/major)## Run Release Script- [ ] Latest changes pulled (`git pull`)- [ ] On `main` branch (`git branch`)- [ ] Git working directory is clean (`git status`)- [ ] `android/key.properties` exists and is valid- [ ] `.secrets/.env` file is configured with all required secrets- [ ] No known critical bugs- [ ] All tests pass locally- [ ] All features for this release are merged to `main`## Pre-ReleaseUse this checklist when creating a new release.**Cider-Craft** is the codename for the **FermentaCraft** source project.  
 It’s a Flutter-based app designed for homebrewers who focus on **cider, mead, kombucha, and fruit wines**.  
 
 Think **Brewfather**, but crafted specifically for fruit fermenters.  
@@ -210,7 +351,33 @@ For new developers joining the project:
 
 ## 🚀 Release Workflow
 
-When preparing a new release for the **public FermentaCraft repo**:
+### Automated Release (Recommended)
+
+Use the automated release script to build all platforms and create releases:
+
+```powershell
+# Quick standard release (patch version bump)
+.\quick-release.ps1
+
+# Or use the full script with options
+.\scripts\release.ps1 -VersionBump minor
+.\scripts\release.ps1 -ReleaseNotes "Major feature update"
+.\scripts\release.ps1 -DryRun  # Test without making changes
+```
+
+The script automatically:
+- ✅ Increments version number in `pubspec.yaml`
+- ✅ Generates changelog from git commits
+- ✅ Builds Android (AAB + split APKs)
+- ✅ Builds Windows (EXE + MSIX)
+- ✅ Creates GitHub release with artifacts
+- ✅ Triggers iOS TestFlight build
+
+**See [Release Script Guide](docs/release-script-guide.md) for full documentation.**
+
+### Manual Release (Advanced Users)
+
+When preparing a manual release:
 
 1. **Update versioning**
 

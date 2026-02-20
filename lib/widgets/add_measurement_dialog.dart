@@ -9,7 +9,10 @@ import '../models/settings_model.dart';
 import '../utils/gravity_utils.dart';
 import '../utils/fsu_utils.dart';
 import '../utils/hydrometer_correction.dart';
+import '../utils/temp_display.dart';
 import 'package:fermentacraft/services/review_prompter.dart';
+import 'error_display.dart';
+import '../services/logging_service.dart';
 
 class AddMeasurementDialog extends StatefulWidget {
   final Measurement? existingMeasurement;
@@ -96,8 +99,15 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
 
     if (m != null) {
       if (m.temperature != null) {
+        // Temperature is ALWAYS stored as °C canonically
         double t = m.temperature!; // stored as °C
-        if (_isFahrenheitOverride) t = (t * 9 / 5) + 32;
+        
+        // Convert to display unit based on current user setting
+        if (_isFahrenheitOverride) {
+          t = TempConversion.toF(t); // Convert C -> F for display
+        }
+        // else: already in C, use as-is
+        
         _tempController.text = t.toStringAsFixed(1);
       }
       final value = _gravityUnit == 'sg' ? m.gravity : m.brix;
@@ -290,54 +300,86 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final gravityVal = double.tryParse(_gravityController.text);
-    final tempVal = double.tryParse(_tempController.text);
-    final taVal = double.tryParse(_taController.text);
-    final note = _noteController.text.trim();
+    try {
+      final gravityVal = double.tryParse(_gravityController.text);
+      final tempVal = double.tryParse(_tempController.text);
+      final taVal = double.tryParse(_taController.text);
+      final note = _noteController.text.trim();
 
-    final double? tempC =
-        tempVal != null ? (_isFahrenheitOverride ? (tempVal - 32) * 5 / 9 : tempVal) : null;
+      final double? tempC =
+          tempVal != null ? TempConversion.toC(tempVal, _isFahrenheitOverride ? 'F' : 'C') : null;
 
-    double? currentSg;
-    double? currentBrix;
-    if (gravityVal != null) {
-      if (_gravityUnit == 'sg') {
-        currentSg = gravityVal;
-        currentBrix = sgToBrix(gravityVal);
-      } else {
-        currentBrix = gravityVal;
-        currentSg = brixToSg(gravityVal);
+      double? currentSg;
+      double? currentBrix;
+      if (gravityVal != null) {
+        if (_gravityUnit == 'sg') {
+          currentSg = gravityVal;
+          currentBrix = sgToBrix(gravityVal);
+        } else {
+          currentBrix = gravityVal;
+          currentSg = brixToSg(gravityVal);
+        }
       }
+
+      final prevSg = widget.previousMeasurement?.sgCorrected ?? widget.previousMeasurement?.gravity;
+      final currSgForFsu = _sgCorrectedPreview ?? currentSg;
+
+      double? fsuspeed;
+      if (prevSg != null && currSgForFsu != null && widget.previousMeasurement != null) {
+        final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
+        fsuspeed = calculateFSU(prevSg, currSgForFsu, difference);
+      }
+
+      final measurement = Measurement(
+        id: widget.existingMeasurement?.id,
+        timestamp: _timestamp,
+        gravityUnit: _gravityUnit,
+        gravity: currentSg,
+        brix: currentBrix,
+        temperature: tempC, // stored as °C
+        notes: note.isNotEmpty ? note : null,
+        fsuspeed: fsuspeed,
+        ta: taVal,
+        sgCorrected: _sgCorrectedPreview,
+        interventions: _selectedInterventions,
+      );
+
+      widget.onSave?.call(measurement);
+      
+      // Log measurement operation
+      LoggingService.measurement(
+        widget.existingMeasurement == null ? 'Created' : 'Updated',
+        batchId: 'unknown', // batch ID would need to be passed from parent
+        data: {
+          'gravity': currentSg,
+          'temperature': tempC,
+          'timestamp': _timestamp,
+          'interventions': _selectedInterventions.length,
+        },
+      );
+
+      if (!mounted) return;
+
+      unawaited(ReviewPrompter.instance.fireMeasurementLogged(context));
+      _closeGuarded(measurement);
+    } catch (e) {
+      if (!mounted) return;
+      LoggingService.error(
+        'Failed to save measurement',
+        tag: 'Measurement',
+        error: e,
+        data: {
+          'gravity': _gravityController.text,
+          'temperature': _tempController.text,
+          'timestamp': _timestamp,
+        },
+      );
+      showErrorSnackBar(
+        context,
+        e,
+        title: 'Failed to save measurement',
+      );
     }
-
-    final prevSg = widget.previousMeasurement?.sgCorrected ?? widget.previousMeasurement?.gravity;
-    final currSgForFsu = _sgCorrectedPreview ?? currentSg;
-
-    double? fsuspeed;
-    if (prevSg != null && currSgForFsu != null && widget.previousMeasurement != null) {
-      final difference = _timestamp.difference(widget.previousMeasurement!.timestamp);
-      fsuspeed = calculateFSU(prevSg, currSgForFsu, difference);
-    }
-
-    final measurement = Measurement(
-      id: widget.existingMeasurement?.id,
-      timestamp: _timestamp,
-      gravityUnit: _gravityUnit,
-      gravity: currentSg,
-      brix: currentBrix,
-      temperature: tempC, // stored as °C
-      notes: note.isNotEmpty ? note : null,
-      fsuspeed: fsuspeed,
-      ta: taVal,
-      sgCorrected: _sgCorrectedPreview,
-      interventions: _selectedInterventions,
-    );
-
-    widget.onSave?.call(measurement);
-    if (!mounted) return;
-
-    unawaited(ReviewPrompter.instance.fireMeasurementLogged(context));
-    _closeGuarded(measurement);
   }
 
   Future<void> _pickDate() async {
@@ -559,8 +601,19 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                           ],
                           selected: {_isFahrenheitOverride},
                           onSelectionChanged: (s) {
-                            setState(() => _isFahrenheitOverride = s.first);
-                            _recalculateAllValues();
+                            final newIsFahrenheit = s.first;
+                            if (newIsFahrenheit != _isFahrenheitOverride) {
+                              // Convert the temperature value to the new unit
+                              final currentTemp = double.tryParse(_tempController.text);
+                              if (currentTemp != null) {
+                                final convertedTemp = newIsFahrenheit
+                                    ? TempConversion.toF(currentTemp)  // C to F
+                                    : TempConversion.toC(currentTemp, 'F');  // F to C
+                                _tempController.text = convertedTemp.toStringAsFixed(1);
+                              }
+                              setState(() => _isFahrenheitOverride = newIsFahrenheit);
+                              _recalculateAllValues();
+                            }
                           },
                         ),
                       ),
@@ -577,8 +630,19 @@ class _AddMeasurementDialogState extends State<AddMeasurementDialog> {
                     ],
                     selected: {_isFahrenheitOverride},
                     onSelectionChanged: (s) {
-                      setState(() => _isFahrenheitOverride = s.first);
-                      _recalculateAllValues();
+                      final newIsFahrenheit = s.first;
+                      if (newIsFahrenheit != _isFahrenheitOverride) {
+                        // Convert the temperature value to the new unit
+                        final currentTemp = double.tryParse(_tempController.text);
+                        if (currentTemp != null) {
+                          final convertedTemp = newIsFahrenheit
+                              ? TempConversion.toF(currentTemp)  // C to F
+                              : TempConversion.toC(currentTemp, 'F');  // F to C
+                          _tempController.text = convertedTemp.toStringAsFixed(1);
+                        }
+                        setState(() => _isFahrenheitOverride = newIsFahrenheit);
+                        _recalculateAllValues();
+                      }
                     },
                   ),
                 ],

@@ -13,6 +13,7 @@ import 'package:fermentacraft/services/local_mode_service.dart';
 import 'package:fermentacraft/services/firestore_sync_service.dart';
 import 'package:fermentacraft/widgets/show_paywall.dart';
 import 'package:fermentacraft/widgets/devices_selection.dart';
+import 'package:fermentacraft/services/review_prompter.dart';
 import 'package:fermentacraft/widgets/sync_health_dashboard.dart';
 import 'package:fermentacraft/widgets/performance_dashboard.dart';
 
@@ -333,6 +334,7 @@ class _SettingsPageState extends State<SettingsPage> {
               await sync.forceSync();
               if (!mounted) return;
               snacks.show(const SnackBar(content: Text("Sync enabled. Merging changes…")));
+              ReviewPrompter.instance.fireSyncSuccess(context);
             } else {
               snacks.show(const SnackBar(content: Text("Sync disabled.")));
             }
@@ -344,9 +346,11 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: const Icon(Icons.sync),
               label: const Text("Sync now"),
               onPressed: (canToggleSync && sync.isEnabled)
-                  ? () {
+                  ? () async {
                       snacks.show(const SnackBar(content: Text('Sync queued…')));
-                      sync.forceSync();
+                      await sync.forceSync();
+                      if (!mounted) return;
+                      ReviewPrompter.instance.fireSyncSuccess(context);
                     }
                   : () {
                       if (!fg.allowSync) {

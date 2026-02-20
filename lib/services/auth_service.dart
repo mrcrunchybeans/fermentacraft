@@ -67,6 +67,19 @@ class AuthService {
     }
   }
 
+  /// Set LOCAL persistence for mobile to persist sessions across app restarts.
+  /// By default Firebase Auth uses SESSION on mobile, which logs out when app is killed.
+  Future<void> initForMobilePersistence() async {
+    if (!kIsWeb && (_isMobile || _isDesktop)) {
+      try {
+        await _auth.setPersistence(Persistence.LOCAL);
+        if (kAuthDebugLogs) debugPrint('[AUTH] LOCAL persistence set for ${defaultTargetPlatform.name}');
+      } catch (e) {
+        if (kAuthDebugLogs) debugPrint('[AUTH] Mobile persistence init note: $e');
+      }
+    }
+  }
+
   // ---------------------------- Public API -----------------------------------
 
   /// Starts Google sign-in. Returns a [UserCredential] on success, or throws

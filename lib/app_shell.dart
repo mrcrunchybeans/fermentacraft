@@ -214,14 +214,24 @@ class MorePage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (!kIsWeb &&
-                      defaultTargetPlatform == TargetPlatform.android) ...[
+                  if (!kIsWeb) ...[
                     const SizedBox(height: 12),
+                    // Platform-specific review button
                     FilledButton.icon(
-                      icon: const Icon(Icons.thumb_up_alt_outlined),
+                      icon: const Icon(Icons.star_outline),
                       onPressed: () =>
-                          ReviewPrompter.instance.openRateFromSettings(),
-                      label: const Text('Rate FermentaCraft'),
+                          ReviewPrompter.instance.openStoreReview(),
+                      label: Text(defaultTargetPlatform == TargetPlatform.iOS
+                          ? 'Rate on App Store'
+                          : 'Rate on Play Store'),
+                    ),
+                    const SizedBox(height: 8),
+                    // Feedback button (works on all platforms)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.mail_outline),
+                      onPressed: () =>
+                          ReviewPrompter.instance.sendFeedback(),
+                      label: const Text('Send Feedback'),
                     ),
                   ],
                   Row(

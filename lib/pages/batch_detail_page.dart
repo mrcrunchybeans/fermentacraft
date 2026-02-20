@@ -28,10 +28,12 @@ import 'package:fermentacraft/services/feature_gate.dart';
 import 'package:fermentacraft/services/counts_service.dart';
 import 'package:fermentacraft/services/gravity_service.dart';
 import 'package:fermentacraft/services/batch_extras_repo.dart';
+import '../widgets/error_display.dart';
 import 'package:fermentacraft/models/settings_model.dart';
 import 'package:provider/provider.dart';
 import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
+import '../services/logging_service.dart';
 import 'package:fermentacraft/services/review_prompter.dart';
 import 'package:fermentacraft/utils/recipe_to_batch.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,16 +43,21 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fermentacraft/widgets/attach_device_sheet.dart';
 import 'package:fermentacraft/utils/gravity_utils.dart';
 import 'package:fermentacraft/pages/measurement_log_page.dart';
-import 'package:fermentacraft/widgets/fermentation_chart_simple.dart';
+import 'package:fermentacraft/widgets/fermentation_chart_improved.dart';
 
 // Import the unique ID generator
 import '../utils/id.dart';
 
 // ---- Top-level: visible to both pages ----
 Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
+  // Validate required timestamp field
+  if (!m.containsKey('timestamp') || m['timestamp'] == null) {
+    throw const FormatException('Invalid device data: missing timestamp');
+  }
+  
   final ts = (m['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
 
-  // ----- Gravity -----
+  // ----- Gravity with null safety -----
   double? sg = (m['sg'] as num?)?.toDouble() ??
       (m['corrSG'] as num?)?.toDouble() ??
       (m['corr_gravity'] as num?)?.toDouble() ??
@@ -59,34 +66,48 @@ Measurement fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
   double? brix = (m['brix'] as num?)?.toDouble();
 
   if (sg == null && m['gravity'] != null) {
-    final gVal = (m['gravity'] as num).toDouble();
-    final gUnit = (m['gravity_unit'] ?? m['gravity-unit'] ?? m['gravityUnit'])
-        ?.toString()
-        .toLowerCase(); // ← no generic "unit" here
-    if (gUnit == 'brix' || gUnit == '°brix' || gUnit == 'bx') {
-      brix = gVal;
-      sg = brixToSg(gVal);
-    } else {
-      sg = gVal;
+    try {
+      final gVal = (m['gravity'] as num).toDouble();
+      final gUnit = (m['gravity_unit'] ?? m['gravity-unit'] ?? m['gravityUnit'])
+          ?.toString()
+          .toLowerCase();
+      if (gUnit == 'brix' || gUnit == '°brix' || gUnit == 'bx') {
+        brix = gVal;
+        sg = brixToSg(gVal);
+      } else {
+        sg = gVal;
+      }
+    } catch (e) {
+      debugPrint('Error parsing gravity from device data: $e');
+      // sg remains null
     }
   }
   sg ??= (brix != null) ? brixToSg(brix) : null;
 
-  // ----- Temperature -----
+  // ----- Temperature with TemperatureUtils -----
   double? tempC;
-  if (m['tempC'] is num) {
-    tempC = (m['tempC'] as num).toDouble();
-  } else if (m['tempF'] is num) {
-    tempC = ((m['tempF'] as num).toDouble() - 32) * 5 / 9;
-  } else {
-    final rawTemp = (m['temperature'] ?? m['temp']) as num?;
-    final tUnit = (m['temperature_unit'] ?? m['temp_units'] ?? m['tempUnit'])
-        ?.toString()
-        .toUpperCase(); // ← no generic "unit" here either
-    if (rawTemp != null) {
-      final t = rawTemp.toDouble();
-      tempC = (tUnit != null && tUnit.contains('F')) ? ((t - 32) * 5 / 9) : t;
+  try {
+    if (m['tempC'] is num) {
+      tempC = (m['tempC'] as num).toDouble();
+    } else if (m['tempF'] is num) {
+      tempC = TempConversion.toC((m['tempF'] as num).toDouble(), 'F');
+    } else {
+      final rawTemp = (m['temperature'] ?? m['temp']) as num?;
+      final tUnit = (m['temperature_unit'] ?? m['temp_units'] ?? m['tempUnit'])
+          ?.toString();
+      if (rawTemp != null) {
+        tempC = TempConversion.parse(rawTemp, tUnit);
+      }
     }
+    
+    // Validate temperature is in realistic range
+    if (tempC != null && !TempConversion.isValidBrewingTemp(tempC)) {
+      debugPrint('Warning: Temperature $tempC°C out of valid brewing range');
+      // Keep the value but log the warning
+    }
+  } catch (e) {
+    debugPrint('Error parsing temperature from device data: $e');
+    tempC = null;
   }
 
   final deviceLabel =
@@ -184,6 +205,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   static const _kSincePitchMaxPoints = 5000; // A high cap for full-history view
   bool _hidePremiumHint = false;
   bool _pauseRealtime = false;
+  bool _addingMeasurement = false; // Prevents concurrent measurement additions
 
   // ---- Model / key ----
   BatchModel? _batch;
@@ -200,9 +222,10 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   late final TextEditingController _tastingAppearanceController;
   late final TextEditingController _tastingAromaController;
   late final TextEditingController _tastingFlavorController;
+  
+  // Use ValueNotifier for chart range to avoid full page rebuilds
+  late final ValueNotifier<ChartRange> _chartRangeNotifier;
   int _tastingRating = 0;
-  // NEW: The selected chart range, defaults to 7 days
-  ChartRange _currentChartRange = ChartRange.d7;
   DateTime? _inferPitchTime(BatchModel b) {
     // Prefer an explicit startDate if you use it as “pitched”
 
@@ -226,6 +249,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _tastingAppearanceController.dispose();
     _tastingFlavorController.dispose();
     _finalNotesController.dispose();
+    _chartRangeNotifier.dispose();
     super.dispose();
   }
 
@@ -242,6 +266,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     final initialTabIndex = _initialTabIndexFor(_batch?.status);
     _tabController =
         TabController(length: 4, vsync: this, initialIndex: initialTabIndex);
+    _chartRangeNotifier = ValueNotifier<ChartRange>(ChartRange.d7);
 
     _initControllersFrom(_batch);
   }
@@ -801,6 +826,20 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           batch.fg! > 0.9) {
         batch.abv = GravityService.abv(og: batch.og!, fg: batch.fg!);
       }
+
+      // Auto-populate total yield from packaging breakdown if available
+      if (batch.safePackagingBreakdown.isNotEmpty) {
+        double totalGallons = 0.0;
+        for (final pkg in batch.safePackagingBreakdown) {
+          final qty = (pkg['quantity'] ?? 0.0) as double;
+          final unit = (pkg['unit'] ?? 'gal') as String;
+          totalGallons += _toGallons(qty, unit);
+        }
+        if (totalGallons > 0) {
+          batch.finalYield = totalGallons;
+          batch.finalYieldUnit = 'gal';
+        }
+      }
     }
 
     _mutateBatch((b) {
@@ -935,6 +974,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       batch.name = newName;
       await batch.save();
 
+      LoggingService.batch(
+        'Renamed',
+        batchId: batch.id,
+        batchName: newName,
+        data: {'oldName': oldName},
+      );
+
       if (!mounted) return;
       setState(() {
         _batch = batch;
@@ -962,8 +1008,16 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       );
     } catch (e) {
       if (!mounted) return;
-      snacks.show(
-        SnackBar(content: Text('Failed to rename batch: $e')),
+      LoggingService.error(
+        'Failed to rename batch',
+        tag: 'Batch',
+        error: e,
+        data: {'batchId': batch.id, 'newName': newName},
+      );
+      showErrorSnackBar(
+        context,
+        e,
+        title: 'Failed to rename batch',
       );
     }
   }
@@ -1601,8 +1655,9 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                     FutureBuilder<AbvInfo>(
                       future: _abvInfoForBatch(batch),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData)
+                        if (!snapshot.hasData) {
                           return const Text('Estimated ABV: —');
+                        }
                         final abvInfo = snapshot.data!;
 
                         // Build ABV display based on what data is available
@@ -1782,7 +1837,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           ),
         ],
       ),
-    );
+    ).then((_) {
+      // Dispose controllers after dialog is closed
+      volumeController.dispose();
+      ogController.dispose();
+      abvController.dispose();
+    });
   }
 
   void _handleDeleteMeasurement(BatchModel batch, Measurement measurement) {
@@ -2369,8 +2429,9 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               onChanged: (val) {
                 // Only allow turning ON when there’s enough.
                 final want = val ?? false;
-                if (want && !sufficient)
+                if (want && !sufficient) {
                   return; // guard (shouldn’t be visible anyway)
+                }
                 onChanged(want);
               },
               controlAffinity: ListTileControlAffinity.leading,
@@ -2668,6 +2729,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     }
     final dayKeys = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
 
+    // Get temperature display unit from settings
+    final settings = context.read<SettingsModel>();
+    final useCelsius = settings.useCelsius;
+    final tempUnit = useCelsius ? 'c' : 'f';
+
     String fmt(Measurement m) {
       final t = DateFormat.Md().add_jm().format(m.timestamp.toLocal());
       final g = (m.gravity != null)
@@ -2676,7 +2742,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               ? '${m.brix!.toStringAsFixed(1)}°Bx'
               : '—';
       final temp = (m.temperature != null)
-          ? '${m.temperature!.toStringAsFixed(1)}°C'
+          ? m.temperature!.toDisplay(targetUnit: tempUnit)
           : '—';
       final fsu = (m.fsuspeed != null)
           ? ' · FSU ${m.fsuspeed!.toStringAsFixed(0)}'
@@ -2794,7 +2860,16 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               icon: const Icon(Icons.add),
               label: const Text('Add Measurement'),
               onPressed: () async {
-                if (mounted) setState(() => _pauseRealtime = true);
+                // Prevent concurrent measurement additions
+                if (_addingMeasurement) return;
+                
+                if (mounted) {
+                  setState(() {
+                    _pauseRealtime = true;
+                    _addingMeasurement = true;
+                  });
+                }
+                
                 try {
                   final sorted = [...batch.measurements]
                     ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -2811,7 +2886,12 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                     await _mutateBatch((b) => b.measurements.add(newM));
                   }
                 } finally {
-                  if (mounted) setState(() => _pauseRealtime = false);
+                  if (mounted) {
+                    setState(() {
+                      _pauseRealtime = false;
+                      _addingMeasurement = false;
+                    });
+                  }
                 }
               },
             ),
@@ -2842,7 +2922,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SimpleFermentationChartPanel(
+                    ImprovedFermentationChartPanel(
                       measurements: batch.safeMeasurements,
                       useFahrenheit: useFahrenheit,
                       sincePitchingAt: _inferPitchTime(batch),
@@ -2866,91 +2946,94 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             // Signed in but not Premium -> subtle upsell + one-time device fetch
             if (!fg.allowDeviceStreaming) {
               // UPDATED: Dynamically get data for the full batch if "Since pitching" is selected
-              final cutoff = _currentChartRange == ChartRange.sincePitch
-                  ? null
-                  : DateTime.now().subtract(const Duration(days: 30));
+              return ValueListenableBuilder<ChartRange>(
+                valueListenable: _chartRangeNotifier,
+                builder: (context, chartRange, child) {
+                  final cutoff = chartRange == ChartRange.sincePitch
+                      ? null
+                      : DateTime.now().subtract(const Duration(days: 30));
 
-              _deviceOnceFuture ??= (cutoff != null)
-                  ? FirestorePaths.batchMeasurements(uid, batchId)
-                      .where('timestamp', isGreaterThan: cutoff)
-                      .orderBy('timestamp', descending: false)
-                      .get()
-                  : FirestorePaths.batchMeasurements(uid, batchId)
-                      .orderBy('timestamp', descending: false)
-                      .get();
+                  _deviceOnceFuture ??= (cutoff != null)
+                      ? FirestorePaths.batchMeasurements(uid, batchId)
+                          .where('timestamp', isGreaterThan: cutoff)
+                          .orderBy('timestamp', descending: false)
+                          .get()
+                      : FirestorePaths.batchMeasurements(uid, batchId)
+                          .orderBy('timestamp', descending: false)
+                          .get();
 
-              if (_pauseRealtime) return const SizedBox.shrink();
+                  if (_pauseRealtime) return const SizedBox.shrink();
 
-              final settings = context.watch<SettingsModel>();
-              final useFahrenheit = !settings.useCelsius;
+                  final settings = context.watch<SettingsModel>();
+                  final useFahrenheit = !settings.useCelsius;
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (!_hidePremiumHint)
-                    _PremiumHint(
-                      onUpgrade: () => showPaywall(context),
-                      onDismiss: () => setState(() => _hidePremiumHint = true),
-                    ),
-                  const SizedBox(height: 8),
-                  FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    future: _deviceOnceFuture,
-                    builder: (context, snap) {
-                      if (snap.connectionState == ConnectionState.waiting) {
-                        return const SizedBox(
-                          height: 300,
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      if (snap.hasError) {
-                        return const SizedBox(
-                          height: 80,
-                          child: Center(
-                              child: Text('Failed to load measurements')),
-                        );
-                      }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!_hidePremiumHint)
+                        _PremiumHint(
+                          onUpgrade: () => showPaywall(context),
+                          onDismiss: () => setState(() => _hidePremiumHint = true),
+                        ),
+                      const SizedBox(height: 8),
+                      FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        future: _deviceOnceFuture,
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.waiting) {
+                            return const SizedBox(
+                              height: 300,
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          if (snap.hasError) {
+                            return const SizedBox(
+                              height: 80,
+                              child: Center(
+                                  child: Text('Failed to load measurements')),
+                            );
+                          }
 
-                      final remote = (snap.data?.docs ?? const [])
-                          .map<Measurement>(
-                              (d) => fromRemoteDoc(d.data(), docId: d.id))
-                          .where((m) =>
-                              m.gravity != null ||
-                              m.brix != null ||
-                              m.temperature != null)
-                          .toList();
+                          final remote = (snap.data?.docs ?? const [])
+                              .map<Measurement>(
+                                  (d) => fromRemoteDoc(d.data(), docId: d.id))
+                              .where((m) =>
+                                  m.gravity != null ||
+                                  m.brix != null ||
+                                  m.temperature != null)
+                              .toList();
 
-                      final combined = _mergeDeviceAndLocal(
-                          local: localSorted, remote: remote);
+                          final combined = _mergeDeviceAndLocal(
+                              local: localSorted, remote: remote);
 
-                      // UPDATED: Dynamic data cap based on the selected range
-                      final maxPoints =
-                          _currentChartRange == ChartRange.sincePitch
-                              ? _kSincePitchMaxPoints
-                              : 600;
-                      final capped = _capPoints(combined, maxPoints);
+                          // UPDATED: Dynamic data cap based on the selected range
+                          final maxPoints =
+                              chartRange == ChartRange.sincePitch
+                                  ? _kSincePitchMaxPoints
+                                  : 600;
+                          final capped = _capPoints(combined, maxPoints);
 
-                      return SimpleFermentationChartPanel(
-                        measurements: capped,
-                        useFahrenheit: useFahrenheit,
-                        sincePitchingAt: _inferPitchTime(batch),
-                        initialRange:
-                            _currentChartRange, // UPDATED: Pass the current range
-                        onRangeChanged: (r) => setState(
-                            () => _currentChartRange = r), // NEW: Add callback
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  _groupedRecentList(
-                    local: localSorted,
-                    device: const [], // one-time fetch is summarized in chart; list shows local
-                    deviceName: null,
-                    batchId: batch.id,
-                    uid: uid,
-                    onEditLocal: (m) => _openMeasurementEditor(batch, m),
-                    onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
-                  ),
-                ],
+                          return ImprovedFermentationChartPanel(
+                            measurements: capped,
+                            useFahrenheit: useFahrenheit,
+                            sincePitchingAt: _inferPitchTime(batch),
+                            initialRange: chartRange,
+                            onRangeChanged: (r) => _chartRangeNotifier.value = r,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _groupedRecentList(
+                        local: localSorted,
+                        device: const [], // one-time fetch is summarized in chart; list shows local
+                        deviceName: null,
+                        batchId: batch.id,
+                        uid: uid,
+                        onEditLocal: (m) => _openMeasurementEditor(batch, m),
+                        onDeleteLocal: (m) => _handleDeleteMeasurement(batch, m),
+                      ),
+                    ],
+                  );
+                },
               );
             }
 
@@ -2959,81 +3042,84 @@ class _BatchDetailPageState extends State<BatchDetailPage>
             final useFahrenheit = !settings.useCelsius;
 
 // UPDATED: Dynamically create the stream based on the selected range
-            final streamQuery = _currentChartRange == ChartRange.sincePitch
-                ? FirestorePaths.batchMeasurements(uid, batchId)
-                    .orderBy('timestamp', descending: false)
-                : FirestorePaths.batchMeasurements(uid, batchId)
-                    .where('timestamp',
-                        isGreaterThan:
-                            DateTime.now().subtract(const Duration(days: 30)))
-                    .orderBy('timestamp', descending: false);
+            return ValueListenableBuilder<ChartRange>(
+              valueListenable: _chartRangeNotifier,
+              builder: (context, chartRange, child) {
+                final streamQuery = chartRange == ChartRange.sincePitch
+                    ? FirestorePaths.batchMeasurements(uid, batchId)
+                        .orderBy('timestamp', descending: false)
+                    : FirestorePaths.batchMeasurements(uid, batchId)
+                        .where('timestamp',
+                            isGreaterThan:
+                                DateTime.now().subtract(const Duration(days: 30)))
+                        .orderBy('timestamp', descending: false);
 
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _pauseRealtime
-                  ? const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
-                  : streamQuery.snapshots(),
-              builder: (context, snap) {
-                if (_pauseRealtime) return const SizedBox.shrink();
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: _pauseRealtime
+                      ? const Stream<QuerySnapshot<Map<String, dynamic>>>.empty()
+                      : streamQuery.snapshots(),
+                  builder: (context, snap) {
+                    if (_pauseRealtime) return const SizedBox.shrink();
 
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const SizedBox(
-                    height: 300,
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (snap.hasError) {
-                  return const SizedBox(
-                    height: 80,
-                    child: Center(child: Text('Failed to load measurements')),
-                  );
-                }
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        height: 300,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snap.hasError) {
+                      return const SizedBox(
+                        height: 80,
+                        child: Center(child: Text('Failed to load measurements')),
+                      );
+                    }
 
-                final remote = (snap.data?.docs ?? const [])
-                    .map<Measurement>(
-                        (d) => fromRemoteDoc(d.data(), docId: d.id))
-                    .where((m) =>
-                        m.gravity != null ||
-                        m.brix != null ||
-                        m.temperature != null)
-                    .toList();
+                    final remote = (snap.data?.docs ?? const [])
+                        .map<Measurement>(
+                            (d) => fromRemoteDoc(d.data(), docId: d.id))
+                        .where((m) =>
+                            m.gravity != null ||
+                            m.brix != null ||
+                            m.temperature != null)
+                        .toList();
 
-                final combined =
-                    _mergeDeviceAndLocal(local: localSorted, remote: remote);
+                    final combined =
+                        _mergeDeviceAndLocal(local: localSorted, remote: remote);
 
-                // UPDATED: Dynamic data cap based on the selected range
-                final maxPoints = _currentChartRange == ChartRange.sincePitch
-                    ? _kSincePitchMaxPoints
-                    : 600;
-                final capped = _capPoints(combined, maxPoints);
+                    // UPDATED: Dynamic data cap based on the selected range
+                    final maxPoints = chartRange == ChartRange.sincePitch
+                        ? _kSincePitchMaxPoints
+                        : 600;
+                    final capped = _capPoints(combined, maxPoints);
 
-                return TickerMode(
-                  enabled: !_pauseRealtime,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SimpleFermentationChartPanel(
-                        measurements: capped,
-                        useFahrenheit: useFahrenheit,
-                        sincePitchingAt: _inferPitchTime(batch),
-                        initialRange:
-                            _currentChartRange, // UPDATED: Pass the current range
-                        onRangeChanged: (r) => setState(
-                            () => _currentChartRange = r), // NEW: Add callback
+                    return TickerMode(
+                      enabled: !_pauseRealtime,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ImprovedFermentationChartPanel(
+                            measurements: capped,
+                            useFahrenheit: useFahrenheit,
+                            sincePitchingAt: _inferPitchTime(batch),
+                            initialRange: chartRange,
+                            onRangeChanged: (r) => _chartRangeNotifier.value = r,
+                          ),
+                          const SizedBox(height: 8),
+                          _groupedRecentList(
+                            local: localSorted,
+                            device: remote,
+                            deviceName:
+                                null, // keep null to avoid the undefined variable warning
+                            batchId: batch.id,
+                            uid: uid,
+                            onEditLocal: (m) => _openMeasurementEditor(batch, m),
+                            onDeleteLocal: (m) =>
+                                _handleDeleteMeasurement(batch, m),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      _groupedRecentList(
-                        local: localSorted,
-                        device: remote,
-                        deviceName:
-                            null, // keep null to avoid the undefined variable warning
-                        batchId: batch.id,
-                        uid: uid,
-                        onEditLocal: (m) => _openMeasurementEditor(batch, m),
-                        onDeleteLocal: (m) =>
-                            _handleDeleteMeasurement(batch, m),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 );
               },
             );
@@ -3429,7 +3515,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                       ),
                     ),
                   );
-                }).toList(),
+                }),
 
                 const SizedBox(height: 12),
 

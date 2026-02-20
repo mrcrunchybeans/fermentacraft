@@ -83,6 +83,9 @@ class CiderUtils {
     int lower = tempCorrections.keys.lastWhere((t) => t <= tempF);
     int upper = tempCorrections.keys.firstWhere((t) => t >= tempF);
 
+    // At exactly 60°F (calibration temp), no correction needed
+    if (lower == upper) return measuredSG;
+
     double lowerCorrection = tempCorrections[lower]!;
     double upperCorrection = tempCorrections[upper]!;
 
