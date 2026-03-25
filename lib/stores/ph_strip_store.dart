@@ -13,6 +13,7 @@ class PHStripStore {
   static const _uuid = Uuid();
 
   Box<PHStrip>? _box;
+  StreamSubscription? _watchSubscription;
 
   // Use a plain StreamController so you don't need rxdart.
   final _controller = StreamController<List<PHStrip>>.broadcast();
@@ -28,7 +29,7 @@ class PHStripStore {
     _box ??= await Hive.openBox<PHStrip>(boxName);
     _emit();
     // Re-emit whenever box changes.
-    _box!.watch().listen((_) => _emit());
+    _watchSubscription = _box!.watch().listen((_) => _emit());
   }
 
   void _emit() {
@@ -67,6 +68,7 @@ class PHStripStore {
   PHStrip? getById(String id) => _box!.get(id);
 
   Future<void> dispose() async {
+    await _watchSubscription?.cancel();
     await _controller.close();
   }
 }

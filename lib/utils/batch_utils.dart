@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:fermentacraft/models/batch_model.dart';
 import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:fermentacraft/utils/recipe_to_batch.dart';
@@ -49,5 +51,5 @@ void syncBatchFromRecipe(BatchModel batch, RecipeModel recipe) {
 }
 
 double calculateABV(double og, double fg) {
-  return (og - fg) * 131.25;
+  return max(0.0, (og - fg) * 131.25);
 }

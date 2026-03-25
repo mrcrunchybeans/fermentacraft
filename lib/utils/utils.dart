@@ -1,4 +1,6 @@
 
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../models/ingredient.dart';
@@ -98,7 +100,7 @@ static double correctedSG(double measuredSG, double tempF) {
 
   /// Calculate ABV from OG and FG
   static double calculateABV(double og, double fg) {
-    return (og - fg) * 131.25;
+    return max(0.0, (og - fg) * 131.25);
   }
 
 

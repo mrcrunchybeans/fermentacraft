@@ -19,4 +19,4 @@ If you see errors about missing DLLs when running the application:
 This application requires Windows 10 or later. Please update your Windows installation.
 
 ## Support
-For issues, visit: https://github.com/mrcrunchybeans/fermentacraft/issues
+For issues: https://github.com/mrcrunchybeans/fermentacraft/issues
