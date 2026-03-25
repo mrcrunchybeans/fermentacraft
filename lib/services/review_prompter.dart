@@ -12,6 +12,7 @@ enum ReviewTrigger {
   recipeShared,
   syncSuccess,
   calculatorUsed,
+  sessions3,
 }
 
 extension _Key on ReviewTrigger {
@@ -22,6 +23,7 @@ extension _Key on ReviewTrigger {
         ReviewTrigger.recipeShared => 'recipe_shared',
         ReviewTrigger.syncSuccess => 'sync_success',
         ReviewTrigger.calculatorUsed => 'calculator_used',
+        ReviewTrigger.sessions3 => 'sessions_3',
       };
 }
 
@@ -36,6 +38,7 @@ class ReviewPrompter {
   static const _kToolsDays = 'rp_tools_days';               // List<String> yyyy-mm-dd
   static const _kMeasurementCount = 'rp_measurement_count'; // int
   static const _kLastPromptDate = 'rp_last_prompt_date';   // ISO8601 string
+  static const _kSessionCount = 'rp_session_count';        // int
 
   /// Minimum days between any review prompts (cooldown)
   static const int _cooldownDays = 30;
@@ -92,6 +95,18 @@ class ReviewPrompter {
   /// Call when a calculator tool is used
   Future<void> fireCalculatorUsed(BuildContext context) =>
       _maybePrompt(context, ReviewTrigger.calculatorUsed);
+
+  /// Call once per app start - triggers after 3 sessions
+  Future<void> fireAppSession(BuildContext context) async {
+    final p = await _prefs;
+    final count = (p.getInt(_kSessionCount) ?? 0) + 1;
+    await p.setInt(_kSessionCount, count);
+
+    if (count >= 3) {
+      if (!context.mounted) return;
+      await _maybePrompt(context, ReviewTrigger.sessions3);
+    }
+  }
 
   /// Store IDs for direct links
   static const _iosAppId = '6477420432'; // FermentaCraft iOS App Store ID
@@ -278,6 +293,8 @@ class ReviewPrompter {
         'Your data synced successfully! If FermentaCraft is working well for you, a quick review would be appreciated.',
       ReviewTrigger.calculatorUsed =>
         'Thanks for using the calculator! If FermentaCraft is helpful, a quick review would be great.',
+      ReviewTrigger.sessions3 =>
+        'Thanks for using FermentaCraft! If you\'re enjoying the app, a quick review would help others find it.',
     };
 
     final res = await showModalBottomSheet<_SoftAskResult>(

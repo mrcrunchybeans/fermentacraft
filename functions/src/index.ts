@@ -133,16 +133,22 @@ async function rcGrantPromo(
   const path = `/subscribers/${encodeURIComponent(uid)}/entitlements/${encodeURIComponent(
     entitlementId
   )}/promotional`;
-  const toMs = (d: string | number | Date) =>
-    Math.floor(typeof d === "number" ? d : new Date(d).getTime());
+  const toISO = (d: string | number | Date) => new Date(d).toISOString();
 
   const body: Record<string, unknown> = {};
-  if (opts?.end_time) {
-    body.end_time_ms = toMs(opts.end_time);
-    if (opts.start_time) body.start_time_ms = toMs(opts.start_time);
+  // Use != null to allow end_time=0 as a valid value (falsy check would reject 0)
+  if (opts?.end_time != null) {
+    body.expires_at = toISO(opts.end_time);
+    if (opts.start_time != null) body.starts_at = toISO(opts.start_time);
   } else if (opts?.duration) {
     body.duration = opts.duration; // "weekly" | "monthly" | "yearly" | "lifetime"
   }
+
+  logger.info("RC promo request", {
+    url: `https://api.revenuecat.com/v1${path}`,
+    method: "POST",
+    body,
+  });
 
   const { r } = await rcFetchV("v1", path, {
     method: "POST",

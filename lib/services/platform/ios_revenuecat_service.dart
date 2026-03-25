@@ -7,7 +7,7 @@ import '../../utils/result.dart';
 /// iOS-specific RevenueCat implementation for App Store subscriptions
 class IOSRevenueCatService {
   static bool _isConfigured = false;
-  static const String _apiKey = 'appl_your_api_key_here'; // Replace with actual key
+  static const String _apiKey = 'appl_QAKngpqASRdtVjdSkUPDtQoOaXI'; // Replace with actual key
   
   /// Configure RevenueCat for iOS
   static Future<Result<void, Exception>> configure() async {

@@ -41,6 +41,15 @@ class _AppShellState extends State<AppShell> {
 
   int _selectedIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Fire session trigger after first few sessions
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReviewPrompter.instance.fireAppSession(context);
+    });
+  }
+
   void _onItemTapped(int index) {
     if (_selectedIndex == index) return;
     setState(() => _selectedIndex = index);

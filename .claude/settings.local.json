@@ -5,5 +5,8 @@
       "WebFetch(domain:beersmith.com)",
       "Bash(curl:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "insforge"
+  ]
 }
