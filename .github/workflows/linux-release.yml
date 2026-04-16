@@ -1,0 +1,176 @@
+# ===============================================================
+# Linux Release Workflow
+# ===============================================================
+# Builds Flutter Linux release bundle and uploads it as a GitHub
+# release artifact in the fermentacraft repo.
+#
+# Required secrets (environment: linux-release):
+# - GA_MEASUREMENT_ID / GA_API_SECRET (Google Analytics, optional)
+# - GH_RELEASE_TOKEN (PAT with 'repo' scope, access to fermentacraft)
+#
+# Safe edit guidelines:
+# - Keep ubuntu-latest; runner is pinned for reproducibility.
+# - flutter build linux --release produces build/linux/x64/release/bundle/
+# - Artifacts are uploaded per workflow-run so re-runs don't overwrite prior builds.
+# ===============================================================
+name: Linux Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-channel:
+        description: "Release channel or tag (for artifact naming)"
+        required: false
+        default: "manual"
+
+concurrency:
+  group: linux-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Linux Bundle
+    environment: linux-release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    env:
+      FLUTTER_VERSION: 3.35.4
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Tool versions
+        run: |
+          set -euxo pipefail
+          flutter --version
+          dart --version
+
+      - name: Cache Flutter pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-
+
+      - name: Flutter pub get
+        run: |
+          set -euxo pipefail
+          flutter pub get
+
+      - name: Build Linux Release
+        env:
+          GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
+          GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
+        run: |
+          set -euxo pipefail
+          defines=""
+          if [ -n "$GA_MEASUREMENT_ID" ]; then
+            defines="$defines --dart-define=GA_MEASUREMENT_ID=$GA_MEASUREMENT_ID"
+          fi
+          if [ -n "$GA_API_SECRET" ]; then
+            defines="$defines --dart-define=GA_API_SECRET=$GA_API_SECRET"
+          fi
+          flutter build linux --release $defines
+
+      - name: Verify bundle exists
+        run: |
+          set -euxo pipefail
+          bundle="build/linux/x64/release/bundle"
+          if [ -d "$bundle" ]; then
+            echo "Bundle found: $bundle"
+          else
+            echo "ERROR: Linux bundle not found at $bundle"
+            exit 1
+          fi
+
+      - name: Generate release notes from git log
+        id: notes
+        run: |
+          set -euxo pipefail
+          prevTag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$prevTag" ]; then range="$prevTag..HEAD"; else range=""; fi
+          git log --pretty=format:"- %s" $range > CHANGELOG.txt || true
+          if [ ! -s CHANGELOG.txt ]; then echo "- Automated build" > CHANGELOG.txt; fi
+
+      - name: Set release tag output
+        id: tag
+        run: |
+          set -euxo pipefail
+          TAG="${{ github.event.inputs.release-channel }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Release tag: $TAG"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-artifacts-${{ github.event.inputs.release-channel || 'manual' }}
+          path: |
+            build/linux/x64/release/bundle/
+            CHANGELOG.txt
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Publish: download artifacts and create a GitHub Release in fermentacraft
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish:
+    name: Publish to GitHub (fermentacraft)
+    needs: build
+    runs-on: ubuntu-latest
+    environment: linux-release
+    if: |
+      github.event.inputs.release-channel &&
+      github.event.inputs.release-channel != 'manual'
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-release-artifacts-${{ github.event.inputs.release-channel }}
+          path: artifacts/
+
+      - name: Prepare release directory
+        run: |
+          mkdir -p release-artifacts
+          cp -r artifacts/build/linux/x64/release/bundle release-artifacts/fermentacraft-${{ needs.build.outputs.tag }}-linux
+          cp artifacts/CHANGELOG.txt release-artifacts/
+
+      - name: Create GitHub Release in fermentacraft repo
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          set -euxo pipefail
+          TAG="${{ needs.build.outputs.tag }}"
+          if [ -z "$TAG" ]; then
+            echo "ERROR: No tag available from build job" >&2
+            exit 1
+          fi
+
+          git tag "$TAG" 2>/dev/null || true
+          git push origin "refs/tags/${TAG}" 2>/dev/null || true
+
+          gh release create "$TAG" \
+            --repo "mrcrunchybeans/fermentacraft" \
+            --title "Linux Release ${TAG}" \
+            --notes-file artifacts/CHANGELOG.txt \
+            --clobber \
+            ./release-artifacts/
+
+      - name: Summarize
+        run: |
+          echo "Release published to https://github.com/mrcrunchybeans/fermentacraft/releases/tag/${{ needs.build.outputs.tag }}"

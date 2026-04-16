@@ -1,6 +1,7 @@
 #!/bin/bash
-# FermentaCraft Release Script (Linux/macOS)
-# Usage: ./release.sh [patch|minor|major] [--dry-run] [--skip-android] [--skip-windows] [--skip-github] [--skip-ios]
+# FermentaCraft Release Script (Linux/macOS/Windows via Git Bash or WSL)
+# Auto-skips Windows builds on non-Windows hosts.
+# Usage: ./release.sh [patch|minor|major] [--dry-run] [--skip-android] [--skip-windows] [--skip-github] [--skip-ios] [--notes "notes text"]
 
 set -e
 
@@ -19,6 +20,11 @@ SKIP_GITHUB=false
 SKIP_IOS=false
 DRY_RUN=false
 RELEASE_NOTES=""
+
+# Auto-detect OS: skip Windows builds on non-Windows hosts
+if [[ "$(uname -s)" != "MINGW"* && "$(uname -s)" != "CYGWIN"* && "$(uname -s)" != "Windows_NT" ]]; then
+    SKIP_WINDOWS=true
+fi
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -87,6 +93,10 @@ if $DRY_RUN; then
     info "DRY RUN MODE - No changes will be committed or pushed"
 fi
 
+if [ "$SKIP_WINDOWS" = true ]; then
+    info "Auto-skipping Windows builds (non-Windows host detected)"
+fi
+
 # ============================================
 # 1. Load secrets
 # ============================================
@@ -112,6 +122,14 @@ fi
 # Check required secrets
 if [ -z "$RC_API_KEY_ANDROID" ] && [ "$SKIP_ANDROID" = false ]; then
     info "RC_API_KEY_ANDROID not set. Android build may not have RevenueCat configured."
+fi
+
+if [ -z "$RC_API_KEY_IOS" ] && [ "$SKIP_IOS" = false ]; then
+    info "RC_API_KEY_IOS not set. iOS build may not have RevenueCat configured."
+fi
+
+if [ -z "$GOOGLE_DESKTOP_CLIENT_SECRET" ] && [ "$SKIP_WINDOWS" = false ]; then
+    info "GOOGLE_DESKTOP_CLIENT_SECRET not set. Windows build OAuth may not work."
 fi
 
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
@@ -237,10 +255,16 @@ if [ "$SKIP_ANDROID" = false ]; then
         error "Missing android/key.properties - skipping Android build"
         SKIP_ANDROID=true
     else
-        # Build App Bundle
+        # Build App Bundle with RevenueCat and GA dart-defines
         dart_defines=""
         if [ -n "$RC_API_KEY_ANDROID" ]; then
-            dart_defines="--dart-define=RC_API_KEY_ANDROID=$RC_API_KEY_ANDROID"
+            dart_defines="$dart_defines --dart-define=RC_API_KEY_ANDROID=$RC_API_KEY_ANDROID"
+        fi
+        if [ -n "$GA_MEASUREMENT_ID" ]; then
+            dart_defines="$dart_defines --dart-define=GA_MEASUREMENT_ID=$GA_MEASUREMENT_ID"
+        fi
+        if [ -n "$GA_API_SECRET" ]; then
+            dart_defines="$dart_defines --dart-define=GA_API_SECRET=$GA_API_SECRET"
         fi
 
         info "Building Android App Bundle..."
@@ -277,9 +301,20 @@ fi
 if [ "$SKIP_WINDOWS" = false ]; then
     step "Building Windows Release"
 
-    # Build EXE
+    # Build EXE with Google OAuth and GA dart-defines
+    win_defines=""
+    if [ -n "$GOOGLE_DESKTOP_CLIENT_SECRET" ]; then
+        win_defines="$win_defines --dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=$GOOGLE_DESKTOP_CLIENT_SECRET"
+    fi
+    if [ -n "$GA_MEASUREMENT_ID" ]; then
+        win_defines="$win_defines --dart-define=GA_MEASUREMENT_ID=$GA_MEASUREMENT_ID"
+    fi
+    if [ -n "$GA_API_SECRET" ]; then
+        win_defines="$win_defines --dart-define=GA_API_SECRET=$GA_API_SECRET"
+    fi
+
     info "Building Windows EXE..."
-    flutter build windows --release
+    flutter build windows --release $win_defines
 
     exe_path="build/windows/x64/runner/Release/fermentacraft.exe"
     if [ -f "$exe_path" ]; then
@@ -302,6 +337,32 @@ if [ "$SKIP_WINDOWS" = false ]; then
     fi
 else
     info "Skipping Windows build"
+fi
+
+# ============================================
+# 6b. Build Linux
+# ============================================
+if [ "$SKIP_WINDOWS" = false ] && [ "$(uname -s)" = "Linux" ]; then
+    step "Building Linux Release"
+
+    linux_defines=""
+    if [ -n "$GA_MEASUREMENT_ID" ]; then
+        linux_defines="$linux_defines --dart-define=GA_MEASUREMENT_ID=$GA_MEASUREMENT_ID"
+    fi
+    if [ -n "$GA_API_SECRET" ]; then
+        linux_defines="$linux_defines --dart-define=GA_API_SECRET=$GA_API_SECRET"
+    fi
+
+    info "Building Linux release..."
+    flutter build linux --release $linux_defines
+
+    linux_dir="build/linux/x64/release/bundle"
+    if [ -d "$linux_dir" ]; then
+        success "Linux release built: $linux_dir"
+    else
+        error "Failed to build Linux release"
+        exit 1
+    fi
 fi
 
 # ============================================
@@ -368,6 +429,15 @@ if [ "$SKIP_GITHUB" = false ] && [ "$DRY_RUN" = false ]; then
         fi
     fi
 
+    # Linux release bundle
+    if [ "$(uname -s)" = "Linux" ]; then
+        linux_dir="build/linux/x64/release/bundle"
+        if [ -d "$linux_dir" ]; then
+            cp -r "$linux_dir" "$release_dir/fermentacraft-$version_tag-linux"
+            artifacts+=("$release_dir/fermentacraft-$version_tag-linux")
+        fi
+    fi
+
     # Copy changelog
     cp "$CHANGELOG_PATH" "$release_dir/CHANGELOG-$version_tag.txt"
 
@@ -376,9 +446,6 @@ if [ "$SKIP_GITHUB" = false ] && [ "$DRY_RUN" = false ]; then
     # Create GitHub release using gh CLI
     if command -v gh &> /dev/null; then
         info "Creating GitHub release using gh CLI..."
-
-        # Get repo info
-        repo_slug=$(git remote get-url origin | sed 's/.*github.com[/:]//' | sed 's/\.git//')
 
         release_args=("release" "create" "$version_tag" "--title" "Release $version_tag" "--notes-file" "$CHANGELOG_PATH")
 
@@ -389,7 +456,7 @@ if [ "$SKIP_GITHUB" = false ] && [ "$DRY_RUN" = false ]; then
 
         gh "${release_args[@]}"
 
-        success "GitHub release created: https://github.com/$repo_slug/releases/tag/$version_tag"
+        success "GitHub release created: https://github.com/mrcrunchybeans/fermentacraft/releases/tag/$version_tag"
     else
         info "gh CLI not found. Please create the release manually at: https://github.com/mrcrunchybeans/fermentacraft/releases/new"
     fi
@@ -411,10 +478,11 @@ if [ "$SKIP_IOS" = false ] && [ "$DRY_RUN" = false ]; then
         info "Dispatching iOS release workflow..."
 
         gh workflow run ios-release.yml \
-            --field "release-channel=$version_tag" \
-            --field "build-number=$new_build"
+            --field release-channel="$version_tag" \
+            --field build-number="$new_build"
 
         success "iOS release workflow triggered"
+        info "Monitor at: https://github.com/mrcrunchybeans/fermentacraft/actions/workflows/ios-release.yml"
     else
         info "gh CLI not found. Please trigger manually at: https://github.com/mrcrunchybeans/fermentacraft/actions/workflows/ios-release.yml"
     fi
@@ -423,6 +491,56 @@ else
         info "[DRY RUN] Would trigger iOS release workflow"
     else
         info "Skipping iOS release workflow"
+    fi
+fi
+
+# ============================================
+# 10. Trigger Windows Release Workflow
+# ============================================
+if [ "$SKIP_WINDOWS" = false ] && [ "$DRY_RUN" = false ]; then
+    step "Triggering Windows Release Workflow"
+
+    if command -v gh &> /dev/null; then
+        info "Dispatching Windows release workflow..."
+
+        gh workflow run windows-release.yml \
+            --field release-channel="$version_tag"
+
+        success "Windows release workflow triggered"
+        info "Monitor at: https://github.com/mrcrunchybeans/cider-craft/actions/workflows/windows-release.yml"
+    else
+        info "gh CLI not found. Please trigger manually at: https://github.com/mrcrunchybeans/cider-craft/actions/workflows/windows-release.yml"
+    fi
+else
+    if $DRY_RUN; then
+        info "[DRY RUN] Would trigger Windows release workflow"
+    else
+        info "Skipping Windows release workflow"
+    fi
+fi
+
+# ============================================
+# 11. Trigger Linux Release Workflow
+# ============================================
+if [ "$(uname -s)" = "Linux" ] && [ "$DRY_RUN" = false ]; then
+    step "Triggering Linux Release Workflow"
+
+    if command -v gh &> /dev/null; then
+        info "Dispatching Linux release workflow..."
+
+        gh workflow run linux-release.yml \
+            --field release-channel="$version_tag"
+
+        success "Linux release workflow triggered"
+        info "Monitor at: https://github.com/mrcrunchybeans/cider-craft/actions/workflows/linux-release.yml"
+    else
+        info "gh CLI not found. Please trigger manually at: https://github.com/mrcrunchybeans/cider-craft/actions/workflows/linux-release.yml"
+    fi
+else
+    if $DRY_RUN; then
+        info "[DRY RUN] Would trigger Linux release workflow"
+    else
+        info "Skipping Linux release workflow"
     fi
 fi
 
@@ -447,6 +565,10 @@ fi
 
 if [ "$SKIP_WINDOWS" = false ]; then
     echo -e "${GREEN}  ✓ Windows MSIX (Recommended)${NC}"
+fi
+
+if [ "$(uname -s)" = "Linux" ]; then
+    echo -e "${GREEN}  ✓ Linux release bundle${NC}"
 fi
 
 echo -e "\n${YELLOW}Next Steps:${NC}"
