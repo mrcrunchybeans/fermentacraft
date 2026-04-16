@@ -1,0 +1,245 @@
+# ===============================================================
+# Windows Release Workflow — Read me before editing
+# ===============================================================
+# Builds Flutter Windows release artifacts (EXE + MSIX) and
+# uploads them as GitHub release artifacts.
+#
+# No code signing is required for GitHub-distributed releases —
+# users download and run the portable .exe / .msix directly.
+# To distribute via Microsoft Store, submit the .msix there.
+#
+# Required secrets (environment: windows-release):
+# - GOOGLE_DESKTOP_CLIENT_SECRET  (Desktop OAuth flow)
+# - RC_API_KEY_IOS / RC_API_KEY_ANDROID (RevenueCat)
+# - GA_MEASUREMENT_ID / GA_API_SECRET (Google Analytics, optional)
+#
+# Safe edit guidelines:
+# - Keep windows-2022; runner is pinned for reproducibility.
+# - flutter build windows --release produces build/windows/x64/runner/Release/
+# - flutter pub run msix:create produces build/windows/x64/runner/Release/*.msix
+# - Artifacts are uploaded per workflow-run so re-runs don't overwrite prior builds.
+# ===============================================================
+name: Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-channel:
+        description: "Release channel or tag (for artifact naming)"
+        required: false
+        default: "manual"
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Windows EXE + MSIX
+    environment: windows-release
+    runs-on: windows-2022
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    env:
+      FLUTTER_VERSION: 3.35.4
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Tool versions
+        run: |
+          Set-StrictMode -Version Latest
+          flutter --version
+          dart --version
+
+      - name: Cache Flutter pub
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-${{ env.FLUTTER_VERSION }}-
+
+      - name: Flutter pub get
+        run: |
+          Set-StrictMode -Version Latest
+          flutter pub get
+
+      - name: Build Windows EXE (Release)
+        env:
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+          RC_API_KEY_IOS: ${{ secrets.RC_API_KEY_IOS }}
+          RC_API_KEY_ANDROID: ${{ secrets.RC_API_KEY_ANDROID }}
+          GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
+          GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
+        run: |
+          Set-StrictMode -Version Latest
+          $defines = @()
+          if ($env:GOOGLE_DESKTOP_CLIENT_SECRET) {
+            $defines += "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=$env:GOOGLE_DESKTOP_CLIENT_SECRET"
+          }
+          if ($env:RC_API_KEY_IOS) {
+            $defines += "--dart-define=RC_API_KEY_IOS=$env:RC_API_KEY_IOS"
+          }
+          if ($env:RC_API_KEY_ANDROID) {
+            $defines += "--dart-define=RC_API_KEY_ANDROID=$env:RC_API_KEY_ANDROID"
+          }
+          if ($env:GA_MEASUREMENT_ID) {
+            $defines += "--dart-define=GA_MEASUREMENT_ID=$env:GA_MEASUREMENT_ID"
+          }
+          if ($env:GA_API_SECRET) {
+            $defines += "--dart-define=GA_API_SECRET=$env:GA_API_SECRET"
+          }
+          flutter build windows --release $defines
+
+      - name: Verify EXE exists
+        run: |
+          Set-StrictMode -Version Latest
+          $exe = "build\windows\x64\runner\Release\fermentacraft.exe"
+          if (Test-Path $exe) {
+            Write-Host "EXE found: $exe"
+          } else {
+            Write-Host "ERROR: EXE not found at $exe"
+            exit 1
+          }
+
+      - name: Build Windows MSIX
+        run: |
+          Set-StrictMode -Version Latest
+          flutter pub run msix:create
+
+      - name: Verify MSIX exists
+        run: |
+          Set-StrictMode -Version Latest
+          $msix = "build\windows\x64\runner\Release\fermentacraft.msix"
+          if (Test-Path $msix) {
+            Write-Host "MSIX found: $msix"
+          } else {
+            Write-Host "ERROR: MSIX not found at $msix"
+            exit 1
+          }
+
+      - name: Generate release notes from git log
+        id: notes
+        run: |
+          Set-StrictMode -Version Latest
+          $prevTag = git describe --tags --abbrev=0 2>$null
+          if ($prevTag) { $range = "$prevTag..HEAD" } else { $range = "" }
+          git log --pretty=format:"- %s" $range | Out-File -FilePath CHANGELOG.txt -Encoding utf8
+          if ((Get-Content CHANGELOG.txt -Raw).Trim() -eq "") {
+            "Automated build" | Out-File -FilePath CHANGELOG.txt -Encoding utf8
+          }
+
+      - name: Build Windows Portable
+        run: |
+          Set-StrictMode -Version Latest
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "fermentacraft-portable"
+          powershell -ExecutionPolicy Bypass -File "$PSScriptRoot\..\scripts\build-windows-portable.ps1" -OutputDir $outputDir
+          # Verify it exists
+          if (Test-Path (Join-Path $outputDir "fermentacraft.exe")) {
+            Write-Host "Portable build OK: $outputDir"
+          } else {
+            Write-Host "ERROR: Portable build missing executable"
+            exit 1
+          }
+
+      - name: Set release tag output
+        id: tag
+        run: |
+          Set-StrictMode -Version Latest
+          $TAG = "${{ github.event.inputs.release-channel }}"
+          if ([string]::IsNullOrWhiteSpace($TAG)) {
+            $TAG = git describe --tags --abbrev=0 2>$null
+          }
+          # Write to GITHUB_OUTPUT; must also declare job outputs below
+          echo "tag=$TAG" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          Write-Host "Release tag: $TAG"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-artifacts-${{ github.event.inputs.release-channel || 'manual' }}
+          path: |
+            build/windows/x64/runner/Release/fermentacraft.exe
+            build/windows/x64/runner/Release/fermentacraft.msix
+            build/windows/x64/runner/Release/*.dll
+            fermentacraft-portable/
+            CHANGELOG.txt
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Publish: download artifacts and create a GitHub Release in fermentacraft
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish:
+    name: Publish to GitHub (fermentacraft)
+    needs: build
+    runs-on: ubuntu-latest
+    environment: windows-release
+    # Only run when release-channel is explicitly set to a real tag (not 'manual')
+    if: |
+      github.event.inputs.release-channel &&
+      github.event.inputs.release-channel != 'manual'
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-artifacts-${{ github.event.inputs.release-channel }}
+          path: artifacts/
+
+      - name: Prepare release directory
+        run: |
+          mkdir -p release-artifacts/dlls
+          cp artifacts/build/windows/x64/runner/Release/fermentacraft.exe release-artifacts/
+          cp artifacts/build/windows/x64/runner/Release/fermentacraft.msix release-artifacts/
+          cp -r artifacts/fermentacraft-portable release-artifacts/
+          cp artifacts/CHANGELOG.txt release-artifacts/
+          cp artifacts/build/windows/x64/runner/Release/*.dll release-artifacts/dlls/ || true
+
+      - name: Set tag from build job
+        id: tag
+        run: |
+          echo "tag=${{ needs.build.outputs.tag }}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release in fermentacraft repo
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          set -euxo pipefail
+          TAG="${{ needs.build.outputs.tag }}"
+          if [ -z "$TAG" ]; then
+            echo "ERROR: No tag available from build job" >&2
+            exit 1
+          fi
+
+          # Push tag to origin so the release can reference it
+          git config --global hub_protocol https
+          git tag "$TAG" 2>/dev/null || true
+          git push origin "refs/tags/${TAG}" 2>/dev/null || true
+
+          gh release create "$TAG" \
+            --repo "mrcrunchybeans/fermentacraft" \
+            --title "Windows Release ${TAG}" \
+            --notes-file artifacts/CHANGELOG.txt \
+            --clobber \
+            ./release-artifacts/fermentacraft.exe \
+            ./release-artifacts/fermentacraft.msix \
+            ./release-artifacts/fermentacraft-portable/ \
+            ./release-artifacts/dlls/
+
+      - name: Summarize
+        run: |
+          echo "Release published to https://github.com/mrcrunchybeans/fermentacraft/releases/tag/${{ needs.build.outputs.tag }}"
