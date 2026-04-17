@@ -407,7 +407,6 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
                   child: DropdownButtonFormField<DeviceType>(
                     value: _type,
                     isExpanded: true,
-                    menuMaxWidth: 280,
                     items: const [
                       DropdownMenuItem(
                         value: DeviceType.ispindel,
@@ -431,7 +430,6 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
                   child: DropdownButtonFormField<TargetMode>(
                     value: _mode,
                     isExpanded: true,
-                    menuMaxWidth: 280,
                     items: const [
                       DropdownMenuItem(
                         value: TargetMode.genericUrl,

@@ -88,7 +88,7 @@ flutter_launcher_icons:
 flutter_native_splash:
   # Light mode splash (use a light background so dark-text logo is readable)
   color: "#FFFFFF"
-  image: assets/images/fermentacraftlogo_lightmode.png
+  image: assets/images/fermentacraftlogo.png
 
   # Dark mode splash (keep your dark background with white-text logo)
   color_dark: "#1B263B"
@@ -97,7 +97,7 @@ flutter_native_splash:
   # Android 12 requires explicit section; mirror the same choices
   android_12:
     color: "#FFFFFF"
-    image: assets/images/fermentacraftlogo_lightmode.png
+    image: assets/images/fermentacraftlogo.png
     color_dark: "#1B263B"
     image_dark: assets/images/fermentacraftlogo_darkmode.png
 
