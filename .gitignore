@@ -75,3 +75,4 @@ ios/Flutter/Flutter.podspec
 !.vscode/launch.json
 play_api_key.json
 functions/scripts/generated-codes/proOffline-codes-2025-12-07-50.txt
+functions/.env
