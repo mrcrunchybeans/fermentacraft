@@ -1,9 +1,11 @@
-# Release v2.0.16 (2.0.16+96)
+# Release v2.0.19 (2.0.19+99)
 
 ## What's New
 
-April update: Bugs - 1: Fix 'Must Stats' unit reverting. 2: Fix inventory units reverting to gallons. 3: Fix fermentation stages target temp reverting to 20C. 4: Add feature - add inventory items to fermentable autocomplete.
-
-## Commits
-
-- Initial release
+- fix: ispindle dropdown overflow, iOS SDK 26 requirement, and splash screen updates
+- fix: correct Stripe env var names in functions/.env.example
+- chore: remove functions/.env from git tracking (contained live API keys)
+- chore: remove large build artifacts from git tracking
+- release: perform v2.0.16 production release with Linux support, Android APKs, and updated build infrastructure
+- chore: bump iOS workflows from Xcode 16.2/macos-15 to Xcode 26.3/macos-26
+- fix: guard against null/empty content in changelog generation
