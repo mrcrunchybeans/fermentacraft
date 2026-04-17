@@ -109,11 +109,12 @@ restore_files() {
 
 on_error() {
   local line="$1"
-  error "Release script failed at line $line"
+  local cmd="$2"
+  error "Release script failed at line $line while running: $cmd"
   restore_files
 }
 
-trap 'on_error $LINENO' ERR
+trap 'on_error $LINENO "$BASH_COMMAND"' ERR
 
 # =========================
 # Helpers
@@ -190,8 +191,25 @@ git_repo_slug() {
   [[ -n "$remote_url" ]] || { echo ""; return; }
 
   remote_url="${remote_url%.git}"
-  remote_url="${remote_url#git@github.com:}"
-  remote_url="${remote_url#https://github.com/}"
+
+  case "$remote_url" in
+    git@github.com:*)
+      remote_url="${remote_url#git@github.com:}"
+      ;;
+    https://github.com/*)
+      remote_url="${remote_url#https://github.com/}"
+      ;;
+    http://github.com/*)
+      remote_url="${remote_url#http://github.com/}"
+      ;;
+    https://*@github.com/*)
+      remote_url="${remote_url#https://*@github.com/}"
+      ;;
+    http://*@github.com/*)
+      remote_url="${remote_url#http://*@github.com/}"
+      ;;
+  esac
+
   echo "$remote_url"
 }
 
@@ -264,7 +282,7 @@ bump_version() {
 
 ensure_tag_does_not_exist() {
   local tag="$1"
-  if git rev-parse "$tag" >/dev/null 2>&1; then
+  if git show-ref --verify --quiet "refs/tags/$tag" 2>/dev/null; then
     die "Git tag already exists: $tag"
   fi
 }
