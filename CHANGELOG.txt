@@ -1,11 +1,8 @@
-# Release v2.0.19 (2.0.19+99)
+# Release v2.0.20 (2.0.20+100)
 
 ## What's New
 
-- fix: ispindle dropdown overflow, iOS SDK 26 requirement, and splash screen updates
-- fix: correct Stripe env var names in functions/.env.example
-- chore: remove functions/.env from git tracking (contained live API keys)
-- chore: remove large build artifacts from git tracking
-- release: perform v2.0.16 production release with Linux support, Android APKs, and updated build infrastructure
-- chore: bump iOS workflows from Xcode 16.2/macos-15 to Xcode 26.3/macos-26
-- fix: guard against null/empty content in changelog generation
+- fix: improve error reporting and security in release script
+- fix: properly handle git rev-parse failure in ensure_tag_does_not_exist
+- fix: strip carriage returns from version string parsing
+- chore: update release script and changelog
