@@ -134,9 +134,10 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $prevTag = git describe --tags --abbrev=0 2>$null
-          if ($prevTag) { $range = "$prevTag..HEAD" } else { $range = "" }
+          if ($prevTag) { $range = "$prevTag..HEAD" } else { $range = "--all" }
           git log --pretty=format:"- %s" $range | Out-File -FilePath CHANGELOG.txt -Encoding utf8
-          if ((Get-Content CHANGELOG.txt -Raw).Trim() -eq "") {
+          $content = Get-Content CHANGELOG.txt -Raw
+          if ([string]::IsNullOrWhiteSpace($content)) {
             "Automated build" | Out-File -FilePath CHANGELOG.txt -Encoding utf8
           }
 
