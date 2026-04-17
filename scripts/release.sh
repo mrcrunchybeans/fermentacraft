@@ -1,6 +1,45 @@
 #!/usr/bin/env bash
 # FermentaCraft Release Script
 # Expected location: scripts/release.sh
+#
+# This script:
+# - bumps pubspec version
+# - generates changelog
+# - builds local artifacts (Android/Linux/Windows/Web when supported)
+# - commits and tags in the current repo
+# - creates GitHub release in PUBLIC_RELEASE_REPO
+# - triggers CI workflows in WORKFLOW_REPO
+# - optionally deploys web output using WEB_DEPLOY_COMMAND
+#
+# Default setup:
+#   Public release repo: mrcrunchybeans/fermentacraft
+#   Workflow repo:       mrcrunchybeans/cider-craft
+#
+# Example env vars in .secrets/.env:
+#   PUBLIC_RELEASE_REPO=mrcrunchybeans/fermentacraft
+#   WORKFLOW_REPO=mrcrunchybeans/cider-craft
+#   WEB_DEPLOY_COMMAND=rsync -av --delete build/web/ user@server:/var/www/app.fermentacraft.com/
+#
+# Usage:
+#   ./scripts/release.sh [patch|minor|major] [options]
+#
+# Options:
+#   --dry-run
+#   --skip-android
+#   --skip-windows
+#   --skip-linux
+#   --skip-web
+#   --skip-web-deploy
+#   --skip-github
+#   --skip-ios
+#   --skip-win-ci
+#   --skip-linux-ci
+#   --allow-dirty
+#   --no-branch-check
+#   --allow-branch BRANCH
+#   --release-repo owner/repo
+#   --workflow-repo owner/repo
+#   --notes "text"
 
 set -Eeuo pipefail
 
@@ -13,6 +52,9 @@ DRY_RUN=false
 SKIP_ANDROID=false
 SKIP_WINDOWS_LOCAL=false
 SKIP_LINUX_LOCAL=false
+SKIP_WEB_LOCAL=false
+SKIP_WEB_DEPLOY=false
+
 SKIP_GITHUB_RELEASE=false
 SKIP_IOS_CI=false
 SKIP_WINDOWS_CI=false
@@ -22,6 +64,12 @@ ALLOW_DIRTY=false
 ENFORCE_BRANCH=true
 RELEASE_BRANCH="main"
 RELEASE_NOTES=""
+
+PUBLIC_RELEASE_REPO="mrcrunchybeans/fermentacraft"
+WORKFLOW_REPO="mrcrunchybeans/cider-craft"
+
+# Optional, defaults to Firebase Hosting deploy
+WEB_DEPLOY_COMMAND="${WEB_DEPLOY_COMMAND:-firebase deploy --only hosting --project fermentacraft}"
 
 # rollback state
 SNAPSHOT_CREATED=false
@@ -86,7 +134,7 @@ case "$OS_NAME" in
   MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=true ;;
 esac
 
-# Auto-skip local builds that don't match host
+# Auto-skip local builds that do not match host
 $IS_WINDOWS || SKIP_WINDOWS_LOCAL=true
 $IS_LINUX   || SKIP_LINUX_LOCAL=true
 
@@ -109,7 +157,7 @@ restore_files() {
 
 on_error() {
   local line="$1"
-  local cmd="$2"
+  local cmd="${2:-unknown}"
   error "Release script failed at line $line while running: $cmd"
   restore_files
 }
@@ -166,7 +214,6 @@ load_env_file() {
 
   info "Loading environment from $file"
 
-  # shellcheck disable=SC2163
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" =~ ^[[:space:]]*$ ]] && continue
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
@@ -183,34 +230,6 @@ load_env_file() {
 
     export "$key=$value"
   done < "$file"
-}
-
-git_repo_slug() {
-  local remote_url
-  remote_url="$(git remote get-url origin 2>/dev/null || true)"
-  [[ -n "$remote_url" ]] || { echo ""; return; }
-
-  remote_url="${remote_url%.git}"
-
-  case "$remote_url" in
-    git@github.com:*)
-      remote_url="${remote_url#git@github.com:}"
-      ;;
-    https://github.com/*)
-      remote_url="${remote_url#https://github.com/}"
-      ;;
-    http://github.com/*)
-      remote_url="${remote_url#http://github.com/}"
-      ;;
-    https://*@github.com/*)
-      remote_url="${remote_url#https://*@github.com/}"
-      ;;
-    http://*@github.com/*)
-      remote_url="${remote_url#http://*@github.com/}"
-      ;;
-  esac
-
-  echo "$remote_url"
 }
 
 current_branch() {
@@ -239,19 +258,30 @@ enforce_branch_rule() {
 
 read_pubspec_version() {
   local version_line
+
   version_line="$(awk '/^version:/ {print $2; exit}' "$PUBSPEC_PATH" | tr -d '\r')"
   [[ -n "$version_line" ]] || die "Could not find version in pubspec.yaml"
+
+  if [[ ! "$version_line" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+    die "Invalid version format in pubspec.yaml: '$version_line' (expected x.y.z+build)"
+  fi
+
   echo "$version_line"
 }
 
 bump_version() {
   local full_version="$1"
-
   local semver build major minor patch
+
+  full_version="$(printf '%s' "$full_version" | tr -d '\r')"
+
   IFS='+' read -r semver build <<< "$full_version"
   IFS='.' read -r major minor patch <<< "$semver"
 
-  [[ -n "$major" && -n "$minor" && -n "$patch" && -n "$build" ]] || die "Invalid version format in pubspec.yaml: $full_version"
+  [[ "$major" =~ ^[0-9]+$ ]] || die "Invalid major version: '$major'"
+  [[ "$minor" =~ ^[0-9]+$ ]] || die "Invalid minor version: '$minor'"
+  [[ "$patch" =~ ^[0-9]+$ ]] || die "Invalid patch version: '$patch'"
+  [[ "$build" =~ ^[0-9]+$ ]] || die "Invalid build number: '$build'"
 
   case "$VERSION_BUMP" in
     major)
@@ -282,7 +312,8 @@ bump_version() {
 
 ensure_tag_does_not_exist() {
   local tag="$1"
-  if git show-ref --verify --quiet "refs/tags/$tag" 2>/dev/null; then
+
+  if git show-ref --verify --quiet "refs/tags/$tag"; then
     die "Git tag already exists: $tag"
   fi
 }
@@ -354,6 +385,10 @@ collect_dart_defines() {
       [[ -n "${GA_MEASUREMENT_ID:-}" ]] && defines+=("--dart-define=GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}")
       [[ -n "${GA_API_SECRET:-}" ]] && defines+=("--dart-define=GA_API_SECRET=${GA_API_SECRET}")
       ;;
+    web)
+      [[ -n "${GA_MEASUREMENT_ID:-}" ]] && defines+=("--dart-define=GA_MEASUREMENT_ID=${GA_MEASUREMENT_ID}")
+      [[ -n "${GA_API_SECRET:-}" ]] && defines+=("--dart-define=GA_API_SECRET=${GA_API_SECRET}")
+      ;;
   esac
 
   printf '%s\n' "${defines[@]}"
@@ -362,6 +397,20 @@ collect_dart_defines() {
 prepare_release_dir() {
   rm -rf "$RELEASE_DIR"
   mkdir -p "$RELEASE_DIR"
+}
+
+run_web_deploy() {
+  [[ -n "${WEB_DEPLOY_COMMAND:-}" ]] || {
+    warn "WEB_DEPLOY_COMMAND is not set; skipping web deployment"
+    return 0
+  }
+
+  if $DRY_RUN; then
+    info "[DRY RUN] $WEB_DEPLOY_COMMAND"
+  else
+    info "Running web deploy command"
+    bash -lc "$WEB_DEPLOY_COMMAND"
+  fi
 }
 
 # =========================
@@ -387,6 +436,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-linux)
       SKIP_LINUX_LOCAL=true
+      shift
+      ;;
+    --skip-web)
+      SKIP_WEB_LOCAL=true
+      shift
+      ;;
+    --skip-web-deploy)
+      SKIP_WEB_DEPLOY=true
       shift
       ;;
     --skip-github)
@@ -418,6 +475,16 @@ while [[ $# -gt 0 ]]; do
       RELEASE_BRANCH="$2"
       shift 2
       ;;
+    --release-repo)
+      [[ $# -ge 2 ]] || die "--release-repo requires owner/repo"
+      PUBLIC_RELEASE_REPO="$2"
+      shift 2
+      ;;
+    --workflow-repo)
+      [[ $# -ge 2 ]] || die "--workflow-repo requires owner/repo"
+      WORKFLOW_REPO="$2"
+      shift 2
+      ;;
     --notes)
       [[ $# -ge 2 ]] || die "--notes requires a value"
       RELEASE_NOTES="$2"
@@ -437,10 +504,13 @@ step "FermentaCraft Release Automation"
 info "Script dir: $SCRIPT_DIR"
 info "Repo root: $REPO_ROOT"
 info "Detected OS: $OS_NAME"
+info "Public release repo: $PUBLIC_RELEASE_REPO"
+info "Workflow repo: $WORKFLOW_REPO"
 
 $DRY_RUN && warn "DRY RUN MODE enabled"
 $SKIP_WINDOWS_LOCAL && info "Local Windows build will be skipped"
 $SKIP_LINUX_LOCAL && info "Local Linux build will be skipped"
+$SKIP_WEB_LOCAL && info "Local Web build will be skipped"
 
 [[ -f "$PUBSPEC_PATH" ]] || die "pubspec.yaml not found at $PUBSPEC_PATH"
 
@@ -448,8 +518,9 @@ require_command git
 require_command awk
 require_command sed
 require_command grep
+require_command tr
 
-if [[ "$SKIP_ANDROID" = false || "$SKIP_WINDOWS_LOCAL" = false || "$SKIP_LINUX_LOCAL" = false ]]; then
+if [[ "$SKIP_ANDROID" = false || "$SKIP_WINDOWS_LOCAL" = false || "$SKIP_LINUX_LOCAL" = false || "$SKIP_WEB_LOCAL" = false ]]; then
   require_command flutter
 fi
 
@@ -473,10 +544,7 @@ step "Checking git state"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "This is not a git repository"
 
 CURRENT_BRANCH="$(current_branch)"
-REPO_SLUG="$(git_repo_slug)"
-
 info "Current branch: $CURRENT_BRANCH"
-[[ -n "$REPO_SLUG" ]] && info "GitHub repo: $REPO_SLUG" || warn "Could not detect GitHub repo slug from origin remote"
 
 enforce_branch_rule "$CURRENT_BRANCH"
 ensure_clean_git
@@ -518,10 +586,15 @@ if [[ -f "$CHANGELOG_PATH" ]]; then
   echo -e "\n--- End Changelog ---\n"
 fi
 
-if [[ "$SKIP_ANDROID" = false || "$SKIP_WINDOWS_LOCAL" = false || "$SKIP_LINUX_LOCAL" = false ]]; then
+if [[ "$SKIP_ANDROID" = false || "$SKIP_WINDOWS_LOCAL" = false || "$SKIP_LINUX_LOCAL" = false || "$SKIP_WEB_LOCAL" = false ]]; then
   step "Preparing Flutter"
-  run_cmd flutter clean
-  run_cmd flutter pub get
+  if $DRY_RUN; then
+    info "[DRY RUN] flutter clean"
+    info "[DRY RUN] flutter pub get"
+  else
+    flutter clean || warn "flutter clean reported a non-fatal error; continuing"
+    flutter pub get
+  fi
   success "Flutter preparation complete"
 fi
 
@@ -620,6 +693,26 @@ else
   info "Skipping local Linux build"
 fi
 
+if [[ "$SKIP_WEB_LOCAL" = false ]]; then
+  step "Building Web release"
+
+  mapfile -t WEB_DEFINES < <(collect_dart_defines web)
+
+  if ! $DRY_RUN; then
+    flutter build web --release "${WEB_DEFINES[@]}"
+  else
+    info "[DRY RUN] flutter build web --release ${WEB_DEFINES[*]}"
+  fi
+
+  if ! $DRY_RUN; then
+    WEB_DIR="$REPO_ROOT/build/web"
+    [[ -d "$WEB_DIR" ]] || die "Web build directory not found after build"
+    success "Web build created: $WEB_DIR"
+  fi
+else
+  info "Skipping local Web build"
+fi
+
 step "Committing version changes"
 
 if ! $DRY_RUN; then
@@ -679,45 +772,65 @@ if [[ "$SKIP_GITHUB_RELEASE" = false ]]; then
     if [[ "$SKIP_LINUX_LOCAL" = false ]]; then
       LINUX_BUNDLE="$REPO_ROOT/build/linux/x64/release/bundle"
       if [[ -d "$LINUX_BUNDLE" ]]; then
-        LINUX_ARCHIVE="$REPO_ROOT/release-artifacts/fermentacraft-$VERSION_TAG-linux.tar.gz"
+        LINUX_ARCHIVE="$RELEASE_DIR/fermentacraft-$VERSION_TAG-linux.tar.gz"
         tar -czf "$LINUX_ARCHIVE" -C "$LINUX_BUNDLE" .
         ARTIFACTS+=("$LINUX_ARCHIVE")
+      fi
+    fi
+
+    if [[ "$SKIP_WEB_LOCAL" = false ]]; then
+      WEB_DIR="$REPO_ROOT/build/web"
+      if [[ -d "$WEB_DIR" ]]; then
+        WEB_ARCHIVE="$RELEASE_DIR/fermentacraft-$VERSION_TAG-web.tar.gz"
+        tar -czf "$WEB_ARCHIVE" -C "$WEB_DIR" .
+        ARTIFACTS+=("$WEB_ARCHIVE")
       fi
     fi
 
     cp "$CHANGELOG_PATH" "$RELEASE_DIR/CHANGELOG-$VERSION_TAG.txt"
 
     if command_exists gh; then
-      if gh release view "$VERSION_TAG" >/dev/null 2>&1; then
-        warn "GitHub release $VERSION_TAG already exists. Skipping creation."
+      if gh release view "$VERSION_TAG" --repo "$PUBLIC_RELEASE_REPO" >/dev/null 2>&1; then
+        warn "GitHub release $VERSION_TAG already exists in $PUBLIC_RELEASE_REPO. Skipping creation."
       else
         gh release create "$VERSION_TAG" \
+          --repo "$PUBLIC_RELEASE_REPO" \
           --title "Release $VERSION_TAG" \
           --notes-file "$CHANGELOG_PATH" \
           "${ARTIFACTS[@]}"
-        success "GitHub release created"
+        success "GitHub release created in $PUBLIC_RELEASE_REPO"
       fi
     else
       warn "gh CLI not found. Create the GitHub release manually."
     fi
   else
-    info "[DRY RUN] Would create GitHub release for $VERSION_TAG"
+    info "[DRY RUN] Would create GitHub release for $VERSION_TAG in $PUBLIC_RELEASE_REPO"
   fi
 else
   info "Skipping GitHub release"
+fi
+
+if [[ "$SKIP_WEB_LOCAL" = false && "$SKIP_WEB_DEPLOY" = false ]]; then
+  step "Deploying Web release"
+  run_web_deploy
+else
+  info "Skipping Web deployment"
 fi
 
 if [[ "$SKIP_IOS_CI" = false ]]; then
   step "Triggering iOS workflow"
   if ! $DRY_RUN; then
     if command_exists gh; then
-      gh workflow run ios-release.yml --field release-channel="$VERSION_TAG" --field build-number="$NEW_BUILD"
-      success "Triggered ios-release.yml"
+      gh workflow run ios-release.yml \
+        --repo "$WORKFLOW_REPO" \
+        --field release-channel="$VERSION_TAG" \
+        --field build-number="$NEW_BUILD"
+      success "Triggered ios-release.yml in $WORKFLOW_REPO"
     else
       warn "gh CLI not found. Trigger iOS workflow manually."
     fi
   else
-    info "[DRY RUN] Would trigger ios-release.yml with release-channel=$VERSION_TAG build-number=$NEW_BUILD"
+    info "[DRY RUN] Would trigger ios-release.yml in $WORKFLOW_REPO with release-channel=$VERSION_TAG build-number=$NEW_BUILD"
   fi
 else
   info "Skipping iOS workflow trigger"
@@ -727,13 +840,15 @@ if [[ "$SKIP_WINDOWS_CI" = false ]]; then
   step "Triggering Windows workflow"
   if ! $DRY_RUN; then
     if command_exists gh; then
-      gh workflow run windows-release.yml --field release-channel="$VERSION_TAG"
-      success "Triggered windows-release.yml"
+      gh workflow run windows-release.yml \
+        --repo "$WORKFLOW_REPO" \
+        --field release-channel="$VERSION_TAG"
+      success "Triggered windows-release.yml in $WORKFLOW_REPO"
     else
       warn "gh CLI not found. Trigger Windows workflow manually."
     fi
   else
-    info "[DRY RUN] Would trigger windows-release.yml with release-channel=$VERSION_TAG"
+    info "[DRY RUN] Would trigger windows-release.yml in $WORKFLOW_REPO with release-channel=$VERSION_TAG"
   fi
 else
   info "Skipping Windows workflow trigger"
@@ -743,13 +858,15 @@ if [[ "$SKIP_LINUX_CI" = false ]]; then
   step "Triggering Linux workflow"
   if ! $DRY_RUN; then
     if command_exists gh; then
-      gh workflow run linux-release.yml --field release-channel="$VERSION_TAG"
-      success "Triggered linux-release.yml"
+      gh workflow run linux-release.yml \
+        --repo "$WORKFLOW_REPO" \
+        --field release-channel="$VERSION_TAG"
+      success "Triggered linux-release.yml in $WORKFLOW_REPO"
     else
       warn "gh CLI not found. Trigger Linux workflow manually."
     fi
   else
-    info "[DRY RUN] Would trigger linux-release.yml with release-channel=$VERSION_TAG"
+    info "[DRY RUN] Would trigger linux-release.yml in $WORKFLOW_REPO with release-channel=$VERSION_TAG"
   fi
 else
   info "Skipping Linux workflow trigger"
@@ -767,16 +884,15 @@ echo "Built artifacts:"
 [[ "$SKIP_ANDROID" = false ]] && echo "  ✓ Android App Bundle and split APKs"
 [[ "$SKIP_WINDOWS_LOCAL" = false ]] && echo "  ✓ Windows EXE / MSIX"
 [[ "$SKIP_LINUX_LOCAL" = false ]] && echo "  ✓ Linux bundle"
+[[ "$SKIP_WEB_LOCAL" = false ]] && echo "  ✓ Web bundle"
 echo
 
 echo "Next steps:"
-echo "  1. Verify GitHub Actions runs"
+echo "  1. Verify GitHub Actions runs in: $WORKFLOW_REPO"
 echo "  2. Upload Android .aab to Google Play Console"
-echo "  3. Verify GitHub release and artifacts"
-
-if [[ -n "$REPO_SLUG" ]]; then
-  echo "  4. Review releases: https://github.com/$REPO_SLUG/releases"
-  echo "  5. Review actions:  https://github.com/$REPO_SLUG/actions"
-fi
+echo "  3. Verify GitHub release and artifacts in: $PUBLIC_RELEASE_REPO"
+[[ "$SKIP_WEB_LOCAL" = false ]] && echo "  4. Verify web deployment for app.fermentacraft.com"
+echo "  5. Review releases: https://github.com/$PUBLIC_RELEASE_REPO/releases"
+echo "  6. Review actions:  https://github.com/$WORKFLOW_REPO/actions"
 
 $DRY_RUN && echo && echo "⚠ DRY RUN MODE - no git or publishing changes were made"
