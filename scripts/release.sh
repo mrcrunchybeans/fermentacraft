@@ -264,7 +264,9 @@ bump_version() {
 
 ensure_tag_does_not_exist() {
   local tag="$1"
-  git rev-parse "$tag" >/dev/null 2>&1 && die "Git tag already exists: $tag"
+  if git rev-parse "$tag" >/dev/null 2>&1; then
+    die "Git tag already exists: $tag"
+  fi
 }
 
 update_pubspec() {
