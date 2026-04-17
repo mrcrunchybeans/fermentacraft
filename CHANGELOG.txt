@@ -1,8 +1,5 @@
-# Release v2.0.20 (2.0.20+100)
+# Release v2.0.21 (2.0.21+101)
 
 ## What's New
 
-- fix: improve error reporting and security in release script
-- fix: properly handle git rev-parse failure in ensure_tag_does_not_exist
-- fix: strip carriage returns from version string parsing
-- chore: update release script and changelog
+- Initial release
