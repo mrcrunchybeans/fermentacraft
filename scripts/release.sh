@@ -221,7 +221,7 @@ enforce_branch_rule() {
 
 read_pubspec_version() {
   local version_line
-  version_line="$(awk '/^version:/ {print $2; exit}' "$PUBSPEC_PATH")"
+  version_line="$(awk '/^version:/ {print $2; exit}' "$PUBSPEC_PATH" | tr -d '\r')"
   [[ -n "$version_line" ]] || die "Could not find version in pubspec.yaml"
   echo "$version_line"
 }
