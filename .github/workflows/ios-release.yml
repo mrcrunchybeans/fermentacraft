@@ -1,7 +1,7 @@
 # ===============================================================
 # iOS Release Workflow — Read me before editing
 # ===============================================================
-# This workflow is tuned for Flutter + Xcode 16.x on macOS-15 runners,
+# This workflow is tuned for Flutter + Xcode 26.x on macOS-26 runners,
 # TestFlight uploads via Fastlane Pilot, and App Store–compatible signing.
 #
 # Required secrets (environment: app-store):
@@ -26,8 +26,8 @@
 # - Upload step that auto-discovers latest IPA — filenames may vary.
 #
 # Safe edit guidelines:
-# - Keep Xcode 16.x; if you bump Xcode, verify SDK versions still exist on
-#   the macos-15 runners and that pods resolve.
+# - Keep Xcode 26.x; if you bump Xcode, verify SDK versions still exist on
+#   the macos-26 runners and that pods resolve.
 # - If you alter the build-name logic, ensure it remains X.Y.Z with Z
 #   strictly increasing between submissions/re-runs and aligned with
 #   build-number.
@@ -65,7 +65,7 @@ jobs:
   build-and-upload:
     name: Build IPA and upload to TestFlight
     environment: app-store
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       FLUTTER_VERSION: 3.35.4
       APP_IDENTIFIER: com.fermentacraft
@@ -77,10 +77,10 @@ jobs:
         with:
           fetch-depth: 0  # needed to compute changelogs from tags
 
-      - name: Select Xcode 16.2
+      - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '26.3'
 
       - name: Export DEVELOPER_DIR for this job
         run: |
@@ -172,9 +172,9 @@ jobs:
         with:
           path: |
             ios/Pods
-          key: ${{ runner.os }}-pods-xcode16.2-${{ hashFiles('ios/Podfile.lock') }}
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pods-xcode16.2-
+            ${{ runner.os }}-pods-
 
       - name: Install CocoaPods (with retry)
         working-directory: ios
