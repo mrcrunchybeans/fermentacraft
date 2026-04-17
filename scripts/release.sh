@@ -241,8 +241,10 @@ echo -e "--- End Changelog ---\n"
 # ============================================
 step "Cleaning and preparing build"
 
-flutter clean
+# Suppress flutter clean errors (e.g. build directory locked by concurrent Gradle)
+flutter clean 2>/dev/null || true
 flutter pub get
+success "Flutter clean and pub get completed"
 success "Flutter clean and pub get completed"
 
 # ============================================
@@ -268,7 +270,7 @@ if [ "$SKIP_ANDROID" = false ]; then
         fi
 
         info "Building Android App Bundle..."
-        flutter build appbundle --release $dart_defines
+        flutter build appbundle --release $dart_defines 2>&1
 
         aab_path="build/app/outputs/bundle/release/app-release.aab"
         if [ -f "$aab_path" ]; then
@@ -280,7 +282,7 @@ if [ "$SKIP_ANDROID" = false ]; then
 
         # Build separate APKs for direct distribution
         info "Building split APKs..."
-        flutter build apk --split-per-abi --release $dart_defines
+        flutter build apk --split-per-abi --release $dart_defines 2>&1
 
         apk_dir="build/app/outputs/flutter-apk"
         if [ -d "$apk_dir" ]; then
@@ -314,7 +316,7 @@ if [ "$SKIP_WINDOWS" = false ]; then
     fi
 
     info "Building Windows EXE..."
-    flutter build windows --release $win_defines
+    flutter build windows --release $win_defines 2>&1
 
     exe_path="build/windows/x64/runner/Release/fermentacraft.exe"
     if [ -f "$exe_path" ]; then
@@ -340,9 +342,9 @@ else
 fi
 
 # ============================================
-# 6b. Build Linux
+# 6b. Build Linux (only on Linux hosts)
 # ============================================
-if [ "$SKIP_WINDOWS" = false ] && [ "$(uname -s)" = "Linux" ]; then
+if [ "$(uname -s)" = "Linux" ]; then
     step "Building Linux Release"
 
     linux_defines=""
@@ -433,8 +435,9 @@ if [ "$SKIP_GITHUB" = false ] && [ "$DRY_RUN" = false ]; then
     if [ "$(uname -s)" = "Linux" ]; then
         linux_dir="build/linux/x64/release/bundle"
         if [ -d "$linux_dir" ]; then
-            cp -r "$linux_dir" "$release_dir/fermentacraft-$version_tag-linux"
-            artifacts+=("$release_dir/fermentacraft-$version_tag-linux")
+            linux_archive="$release_dir/fermentacraft-$version_tag-linux.tar.gz"
+            tar -czf "$linux_archive" -C "$linux_dir" .
+            artifacts+=("$linux_archive")
         fi
     fi
 
@@ -522,7 +525,7 @@ fi
 # ============================================
 # 11. Trigger Linux Release Workflow
 # ============================================
-if [ "$(uname -s)" = "Linux" ] && [ "$DRY_RUN" = false ]; then
+if [ "$(uname -s)" != "Linux" ] && [ "$DRY_RUN" = false ]; then
     step "Triggering Linux Release Workflow"
 
     if command -v gh &> /dev/null; then
