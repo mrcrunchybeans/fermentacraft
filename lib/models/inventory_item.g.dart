@@ -22,6 +22,8 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
       unit: fields[2] as String,
       unitType: fields[3] as UnitType,
       category: fields[6] as String,
+      sg: fields[7] as double?,
+      brix: fields[8] as double?,
       notes: fields[4] as String?,
       purchaseHistory: (fields[5] as List?)?.cast<PurchaseTransaction>(),
     );
@@ -30,7 +32,7 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
   @override
   void write(BinaryWriter writer, InventoryItem obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +46,11 @@ class InventoryItemAdapter extends TypeAdapter<InventoryItem> {
       ..writeByte(5)
       ..write(obj.purchaseHistory)
       ..writeByte(6)
-      ..write(obj.category);
+      ..write(obj.category)
+      ..writeByte(7)
+      ..write(obj.sg)
+      ..writeByte(8)
+      ..write(obj.brix);
   }
 
   @override

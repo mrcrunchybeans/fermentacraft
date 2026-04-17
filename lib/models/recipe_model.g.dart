@@ -25,14 +25,14 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       abv: fields[6] as double?,
       additives: (fields[7] as List?)
           ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
-          .toList(),
+          ?.toList(),
       ingredients: (fields[8] as List?)
           ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
-          .toList(),
+          ?.toList(),
       fermentationStages: (fields[9] as List?)?.cast<FermentationStage>(),
       yeast: (fields[10] as List?)
           ?.map((dynamic e) => (e as Map).cast<dynamic, dynamic>())
-          .toList(),
+          ?.toList(),
       notes: fields[11] as String,
       lastOpened: fields[12] as DateTime?,
       batchVolume: fields[13] as double?,
@@ -40,6 +40,9 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       plannedAbv: fields[15] as double?,
       isArchived: fields[16] == null ? false : fields[16] as bool,
       category: fields[18] as String?,
+      isOgOverridden: fields[19] as bool?,
+      isAbvOverridden: fields[20] as bool?,
+      statsVolumeUnit: fields[21] as String?,
     )
       ..tagsLegacy = (fields[3] as List?)?.cast<Tag>()
       ..tagRefs = (fields[17] as HiveList?)?.castHiveList();
@@ -48,7 +51,7 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
   @override
   void write(BinaryWriter writer, RecipeModel obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(22)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -86,7 +89,13 @@ class RecipeModelAdapter extends TypeAdapter<RecipeModel> {
       ..writeByte(16)
       ..write(obj.isArchived)
       ..writeByte(18)
-      ..write(obj.category);
+      ..write(obj.category)
+      ..writeByte(19)
+      ..write(obj.isOgOverridden)
+      ..writeByte(20)
+      ..write(obj.isAbvOverridden)
+      ..writeByte(21)
+      ..write(obj.statsVolumeUnit);
   }
 
   @override

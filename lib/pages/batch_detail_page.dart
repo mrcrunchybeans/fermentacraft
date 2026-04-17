@@ -30,6 +30,7 @@ import 'package:fermentacraft/services/gravity_service.dart';
 import 'package:fermentacraft/services/batch_extras_repo.dart';
 import '../widgets/error_display.dart';
 import 'package:fermentacraft/models/settings_model.dart';
+import 'package:fermentacraft/models/enums.dart';
 import 'package:provider/provider.dart';
 import '../utils/temp_display.dart';
 import 'package:fermentacraft/utils/snacks.dart';
@@ -182,6 +183,122 @@ class AbvInfo {
     required this.estimatedFinalAbv,
     required this.hasActualMeasurements,
   });
+}
+
+/// A StatefulWidget dialog for editing batch recipe summary (volume, OG, ABV).
+class _EditBatchSummaryDialog extends StatefulWidget {
+  final double initialVolumeMl;
+  final VolumeUiUnit initialUnit;
+  final double? initialOg;
+  final double? initialAbv;
+  final Future<void> Function(double? volumeMl, double? og, double? abv) onSave;
+
+  const _EditBatchSummaryDialog({
+    required this.initialVolumeMl,
+    required this.initialUnit,
+    this.initialOg,
+    this.initialAbv,
+    required this.onSave,
+  });
+
+  @override
+  State<_EditBatchSummaryDialog> createState() => _EditBatchSummaryDialogState();
+}
+
+class _EditBatchSummaryDialogState extends State<_EditBatchSummaryDialog> {
+  late TextEditingController _volumeController;
+  late TextEditingController _ogController;
+  late TextEditingController _abvController;
+
+  @override
+  void initState() {
+    super.initState();
+    _volumeController = TextEditingController(
+      text: widget.initialUnit.fromMl(widget.initialVolumeMl).toStringAsFixed(2),
+    );
+    _ogController = TextEditingController(
+      text: widget.initialOg?.toString() ?? '',
+    );
+    _abvController = TextEditingController(
+      text: widget.initialAbv?.toString() ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _volumeController.dispose();
+    _ogController.dispose();
+    _abvController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onSave() async {
+    final displayVol = double.tryParse(_volumeController.text);
+    final volInMl = displayVol != null ? widget.initialUnit.toMl(displayVol) : null;
+    final og = double.tryParse(_ogController.text);
+    final abv = double.tryParse(_abvController.text);
+
+    debugPrint('[BATCH] Saving: displayVol=$displayVol, unit=${widget.initialUnit}, volInMl=$volInMl');
+
+    await widget.onSave(volInMl, og, abv);
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Recipe Summary'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _volumeController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              ],
+              decoration: InputDecoration(
+                labelText: 'Target Volume (${widget.initialUnit.label})',
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ogController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Target OG',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _abvController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Target ABV (%)',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _onSave,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 class BatchDetailPage extends StatefulWidget {
@@ -924,16 +1041,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       return;
     }
 
-    final TextEditingController nameController =
-        TextEditingController(text: batch.name);
-
     final newName = await showDialog<String>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
+        final controller = TextEditingController(text: batch.name);
         return AlertDialog(
           title: const Text('Rename Batch'),
           content: TextField(
-            controller: nameController,
+            controller: controller,
             decoration: const InputDecoration(
               labelText: 'Batch Name',
               hintText: 'Enter new batch name',
@@ -944,14 +1059,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
             ),
             ElevatedButton(
               child: const Text('Rename'),
               onPressed: () {
-                final trimmedName = nameController.text.trim();
+                final trimmedName = controller.text.trim();
                 if (trimmedName.isNotEmpty) {
-                  Navigator.of(context).pop(trimmedName);
+                  Navigator.of(dialogContext).pop(trimmedName);
                 }
               },
             ),
@@ -963,8 +1078,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     if (newName != null && newName != batch.name) {
       await _renameBatch(batch, newName);
     }
-
-    nameController.dispose();
   }
 
   Future<void> _renameBatch(BatchModel batch, String newName) async {
@@ -1646,8 +1759,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        'Target Volume: ${batch.batchVolume?.toStringAsFixed(1) ?? '—'} gal'),
+                    Builder(builder: (_) {
+                      final volUnit = context.read<SettingsModel>().volumeUnit;
+                      final volDisplay = batch.batchVolume != null
+                          ? volUnit.fromMl(batch.batchVolume!).toStringAsFixed(2)
+                          : '—';
+                      return Text('Target Volume: $volDisplay ${volUnit.label}');
+                    }),
                     const SizedBox(height: 4),
                     Text(
                         'Target OG: ${batch.plannedOg?.toStringAsFixed(3) ?? '—'}'),
@@ -1764,85 +1882,56 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   }
 
   void _editBatchSummary(BatchModel batch) {
-    final volumeController =
-        TextEditingController(text: batch.batchVolume?.toString() ?? '');
-    final ogController =
-        TextEditingController(text: batch.plannedOg?.toString() ?? '');
-    final abvController =
-        TextEditingController(text: batch.plannedAbv?.toString() ?? '');
+    final initialVolUnit = context.read<SettingsModel>().volumeUnit;
+    // Capture key BEFORE dialog opens — batch.key may be null if not yet in box
+    final batchKey = batch.key;
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Edit Recipe Summary'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: volumeController,
-              keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: 'Target Volume (gal)'),
-            ),
-            TextField(
-              controller: ogController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Target OG'),
-            ),
-            TextField(
-              controller: abvController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Target ABV (%)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              // capture what you need from context BEFORE any awaits
-              final nav = Navigator.of(context);
+      builder: (_) => _EditBatchSummaryDialog(
+        initialVolumeMl: batch.batchVolume ?? 0,
+        initialUnit: initialVolUnit,
+        initialOg: batch.plannedOg,
+        initialAbv: batch.plannedAbv,
+        onSave: (newVol, newOg, newAbv) async {
+          // Use the captured key if available, otherwise save directly
+          if (batchKey != null) {
+            final box = Hive.box<BatchModel>(Boxes.batches);
+            final currentBatch = box.get(batchKey);
+            if (currentBatch == null) {
+              debugPrint('[BATCH] Could not find batch in box to save');
+              return;
+            }
 
-              // snapshot current values for change detection
-              final prevVol = batch.batchVolume;
-              final ogWasBlank = ogController.text.trim().isEmpty;
+            final prevVol = currentBatch.batchVolume;
 
-              // parse once
-              final newVol = double.tryParse(volumeController.text);
-              final newOg = double.tryParse(ogController.text);
-              final newAbv = double.tryParse(abvController.text);
+            currentBatch.batchVolume = newVol;
+            currentBatch.plannedOg = newOg;
+            currentBatch.plannedAbv = newAbv;
 
-              // apply + persist
-              batch.batchVolume = newVol;
-              batch.plannedOg = newOg;
-              batch.plannedAbv = newAbv;
+            await currentBatch.save();
+            debugPrint('[BATCH] Save successful: batchVolume=${currentBatch.batchVolume}');
+
+            final volChanged = (prevVol ?? -1) != (newVol ?? -1);
+            if ((newVol ?? 0) > 0 && volChanged) {
+              await recalcPlannedOg(currentBatch);
+            }
+          } else {
+            // No key — batch not yet in box, try direct save
+            batch.batchVolume = newVol;
+            batch.plannedOg = newOg;
+            batch.plannedAbv = newAbv;
+
+            if (batch.isInBox) {
               await batch.save();
-
-              // decide if we should recompute planned OG
-              final volChanged = (prevVol ?? -1) != (newVol ?? -1);
-              if ((newVol ?? 0) > 0 && (ogWasBlank || volChanged)) {
-                await recalcPlannedOg(batch);
-              }
-
-              if (!mounted) return;
-              setState(() {}); // refresh UI
-              nav.pop();
-            },
-            child: const Text('Save'),
-          ),
-        ],
+              debugPrint('[BATCH] Save successful (no key): batchVolume=${batch.batchVolume}');
+            } else {
+              debugPrint('[BATCH] Cannot save - batch has no key and is not in box');
+            }
+          }
+        },
       ),
-    ).then((_) {
-      // Dispose controllers after dialog is closed
-      volumeController.dispose();
-      ogController.dispose();
-      abvController.dispose();
-    });
+    );
   }
 
   void _handleDeleteMeasurement(BatchModel batch, Measurement measurement) {
@@ -2476,7 +2565,9 @@ class _BatchDetailPageState extends State<BatchDetailPage>
           ),
         ],
       ),
-    );
+    ).then((_) {
+      controller.dispose();
+    });
 
     if (amount != null) {
       item.addPurchase(PurchaseTransaction(

@@ -1,5 +1,5 @@
 // lib/bootstrap/setup.dart
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint, defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -34,11 +34,17 @@ Future<void> setupAppServices() async {
   if (_didSetup) return;
   _didSetup = true;
 
-  // --- Firebase
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // --- Firebase (skip on Linux desktop only; web is fine)
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.linux) {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } else {
+    debugPrint('[SETUP] Firebase skipped on Linux desktop - not fully supported');
+  }
 
   // Set LOCAL persistence for mobile/desktop to keep users logged in across app restarts
-  await AuthService.instance.initForMobilePersistence();
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.linux) {
+    await AuthService.instance.initForMobilePersistence();
+  }
 
   // Debug: print the Firebase project/app identifiers to verify environment
   assert(() {
@@ -49,7 +55,7 @@ Future<void> setupAppServices() async {
     } catch (_) {}
     return true;
   }());
-  if (!kIsWeb) {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.linux) {
     try {
       // DISABLED to save memory - Firebase persistence can use 100MB+
       // Re-enable in debug mode for proper sync testing

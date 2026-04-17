@@ -18,6 +18,7 @@ import 'package:fermentacraft/widgets/sync_health_dashboard.dart';
 import 'package:fermentacraft/widgets/performance_dashboard.dart';
 
 import 'package:fermentacraft/models/settings_model.dart';
+import 'package:fermentacraft/models/enums.dart';
 import 'package:fermentacraft/utils/boxes.dart';
 import 'package:fermentacraft/utils/data_management.dart';
 
@@ -628,6 +629,17 @@ Widget _devicesSection(FeatureGate fg) {
                     ],
                     selected: {settings.useCelsius},
                     onSelectionChanged: (s) => settings.setUnit(isCelsius: s.first),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text("Default Volume Unit"),
+                  const SizedBox(height: 8),
+                  SegmentedButton<VolumeUiUnit>(
+                    segments: const [
+                      ButtonSegment(value: VolumeUiUnit.liters, label: Text("Liters (L)")),
+                      ButtonSegment(value: VolumeUiUnit.gallons, label: Text("Gallons (gal)")),
+                    ],
+                    selected: {settings.volumeUnit == VolumeUiUnit.liters || settings.volumeUnit == VolumeUiUnit.ml ? VolumeUiUnit.liters : VolumeUiUnit.gallons},
+                    onSelectionChanged: (s) => settings.setVolumeUnit(s.first),
                   ),
                 ],
               ),

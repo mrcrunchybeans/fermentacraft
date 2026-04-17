@@ -827,3 +827,4 @@ export const purgeSoftDeletes = onSchedule(
  * ────────────────────────────────────────────────────────────────────────── */
 export { ingestDevice } from "./ingestDevice";
 export { ingest } from "./ingest";
+export { onRecipeCreated, onBatchCreated, onDeviceLinked } from "./ga4Conversions";

@@ -3,8 +3,8 @@ import '../models/unit_type.dart';
 class UnitConversion {
   // All keys are lowercase for consistency.
   static final Map<String, double> volumeUnits = {
-    'ml': 1.0,
-    'l': 1000.0,
+    'mL': 1.0,
+    'L': 1000.0,
     'fl oz': 29.5735,
     'cup': 236.588,
     'pint': 473.176,
@@ -20,7 +20,7 @@ class UnitConversion {
     'kg': 1000.0,
     'oz': 28.3495,
     'lb': 453.592,
-    'packet': 5.0,
+    'package': 5.0,
   };
 
   /// Returns a list of valid unit keys for a unit type
@@ -37,18 +37,22 @@ class UnitConversion {
     final aliases = {
       'gallon': 'gal',
       'gallons': 'gal',
-      'milliliter': 'ml',
-      'milliliters': 'ml',
-      'liter': 'l',
-      'liters': 'l',
+      'milliliter': 'mL',
+      'milliliters': 'mL',
+      'ml': 'mL',
+      'liter': 'L',
+      'liters': 'L',
+      'litre': 'L',
+      'litres': 'L',
+      'l': 'L',
       'gram': 'g',
       'grams': 'g',
       'pound': 'lb',
       'pounds': 'lb',
-      'packet': 'packet',
-      'packets': 'packet',
-      'package': 'packet',
-      'packages': 'packet',
+      'packet': 'package',
+      'packets': 'package',
+      'package': 'package',
+      'packages': 'package',
       'teaspoon': 'tsp',
       'teaspoons': 'tsp',
       'tablespoon': 'tbsp',
@@ -59,7 +63,21 @@ class UnitConversion {
       'carboys': 'carboy',
     };
 
-    return aliases[unit.toLowerCase()] ?? unit.toLowerCase();
+    final lower = unit.toLowerCase();
+    
+    if (aliases.containsKey(lower)) {
+      return aliases[lower]!;
+    }
+    
+    // Check if the lowercased unit is a canonical unit if we capitalized it
+    for (final vol in volumeUnits.keys) {
+      if (vol.toLowerCase() == lower) return vol;
+    }
+    for (final mass in massUnits.keys) {
+      if (mass.toLowerCase() == lower) return mass;
+    }
+
+    return unit;
   }
 
   /// Display-safe pluralization for units
@@ -67,7 +85,6 @@ class UnitConversion {
     final base = normalizeUnit(unit);
 
     const simplePlurals = {
-      'packet': 'packets',
       'package': 'packages',
       'bottle': 'bottles',
       'can': 'cans',
@@ -78,7 +95,7 @@ class UnitConversion {
 
     const invariantUnits = {
       'g', 'kg', 'mg', 'lb',
-      'ml', 'l', 'tsp', 'tbsp', 'fl oz', 'cup', 'oz', 'gal'
+      'mL', 'L', 'tsp', 'tbsp', 'fl oz', 'cup', 'oz', 'gal'
     };
 
     if (amount == 1) return base;

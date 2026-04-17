@@ -52,8 +52,9 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   final _kFermentation = GlobalKey();
   final _kNotes = GlobalKey();
 
-  // UI state for stats volume unit (default to gallons)
+  // UI state for stats volume unit (default to gallons, assigned in didChangeDependencies)
   VolumeUiUnit _statsUnit = VolumeUiUnit.gallons;
+  bool _statsUnitInitialized = false;
 
   // ---------- responsive font scale ----------
   double _fontScale(BuildContext context) {
@@ -91,6 +92,22 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       await box.put(widget.recipeKey, updated);
 
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_statsUnitInitialized) {
+      final vuStr = widget.recipe.statsVolumeUnit;
+      if (vuStr != null) {
+        _statsUnit = VolumeUiUnit.values.firstWhere(
+            (v) => v.name == vuStr,
+            orElse: () => context.read<SettingsModel>().volumeUnit);
+      } else {
+        _statsUnit = context.read<SettingsModel>().volumeUnit;
+      }
+      _statsUnitInitialized = true;
+    }
   }
 
   ({double sugarG, double volumeMl, double brix, double sg}) _deriveStats(RecipeModel r) {
@@ -226,7 +243,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       additives: clonedAdditives,
       yeast: clonedYeast,
       fermentationStages: clonedStages,
-      batchVolume: VolumeUiUnit.gallons.fromMl(stats.volumeMl),
+      batchVolume: stats.volumeMl,
       plannedOg: recipe.og ?? stats.sg,
       plannedAbv: recipe.abv,
       notes: 'Created from recipe "${recipe.name}" on $pretty',
@@ -414,6 +431,9 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     required ValueChanged<VolumeUiUnit> onChanged,
   }) {
     final cs = Theme.of(context).colorScheme;
+    // Use all VolumeUiUnit values; clamp to gallons if value isn't recognized
+    final validValues = VolumeUiUnit.values.toList();
+    final safeValue = validValues.contains(value) ? value : VolumeUiUnit.gallons;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -424,12 +444,11 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<VolumeUiUnit>(
           isDense: true,
-          value: value,
+          value: safeValue,
           onChanged: (u) => onChanged(u ?? value),
-          items: const [
-            DropdownMenuItem(value: VolumeUiUnit.gallons, child: Text('gal')),
-            DropdownMenuItem(value: VolumeUiUnit.liters,  child: Text('L')),
-          ],
+          items: VolumeUiUnit.values
+              .map((u) => DropdownMenuItem(value: u, child: Text(u.label)))
+              .toList(),
         ),
       ),
     );
@@ -543,14 +562,32 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
 
     String fmtWeight(double? g) {
       if (g == null || g <= 0) return '';
-      final lbs = WeightUnit.pounds.fromGrams(g);
-      return '${lbs.toStringAsFixed(2)} ${WeightUnit.pounds.label}';
+      final vUnit = context.read<SettingsModel>().volumeUnit;
+      WeightUnit wUnit;
+      switch (vUnit) {
+        case VolumeUiUnit.liters:
+          wUnit = WeightUnit.kilograms;
+          break;
+        case VolumeUiUnit.ml:
+          wUnit = WeightUnit.grams;
+          break;
+        case VolumeUiUnit.gallons:
+          wUnit = WeightUnit.pounds;
+          break;
+        case VolumeUiUnit.cups:
+        case VolumeUiUnit.flOz:
+          wUnit = WeightUnit.ounces;
+          break;
+      }
+      final val = wUnit.fromGrams(g);
+      return '${val.toStringAsFixed(2)} ${wUnit.label}';
     }
 
     String fmtVolume(double? ml) {
       if (ml == null || ml <= 0) return '';
-      final gal = VolumeUiUnit.gallons.fromMl(ml);
-      return '${gal.toStringAsFixed(2)} ${VolumeUiUnit.gallons.label}';
+      final vUnit = context.read<SettingsModel>().volumeUnit;
+      final val = vUnit.fromMl(ml);
+      return '${val.toStringAsFixed(2)} ${vUnit.label}';
     }
 
     return Card(
@@ -684,7 +721,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
               ? stage
               : FermentationStage.fromJson(Map<String, dynamic>.from(stage as Map));
           final temp = s.targetTempC?.toDisplay(targetUnit: settings.unit);
-          final tempStr = temp == null ? '—' : '$temp${_unitSymbol(settings.unit)}';
+          final tempStr = temp == null ? '—' : temp;
 
           return ListTile(
             leading: const Icon(Icons.thermostat),

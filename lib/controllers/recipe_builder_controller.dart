@@ -7,9 +7,10 @@ import 'package:flutter/widgets.dart';
 import 'package:fermentacraft/models/recipe_model.dart';
 import 'package:fermentacraft/models/enums.dart';
 import 'package:fermentacraft/services/usda_service.dart';
+import 'package:fermentacraft/models/inventory_item.dart';
 import 'package:fermentacraft/utils/gravity_utils.dart' as gu;
 
-String _genId() => '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(1 << 32)}';
+String _genId() => '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(999999999)}';
 
 /// Normalize densities into g/mL (~ SG).
 /// Heuristics to catch common data-entry/unit mistakes:
@@ -44,6 +45,8 @@ class FermentableLine {
   final int? usdaFdcId;
   final FruitCategory? fruitCategory;     // only used when type == FermentableType.fruit
   final double? fruitYieldGalPerLb;       // optional override per line
+  final WeightUnit? userWeightUnit;
+  final VolumeUiUnit? userVolumeUnit;
 
   const FermentableLine._internal({
     required this.id,
@@ -58,6 +61,8 @@ class FermentableLine {
     this.usdaFdcId,
     this.fruitCategory,
     this.fruitYieldGalPerLb,
+    this.userWeightUnit,
+    this.userVolumeUnit,
   });
 
   factory FermentableLine({
@@ -73,6 +78,8 @@ class FermentableLine {
     int? usdaFdcId,
     FruitCategory? fruitCategory,
     double? fruitYieldGalPerLb,
+    WeightUnit? userWeightUnit,
+    VolumeUiUnit? userVolumeUnit,
   }) {
     return FermentableLine._internal(
       id: id ?? _genId(),
@@ -87,6 +94,8 @@ class FermentableLine {
       usdaFdcId: usdaFdcId,
       fruitCategory: fruitCategory,
       fruitYieldGalPerLb: fruitYieldGalPerLb,
+      userWeightUnit: userWeightUnit,
+      userVolumeUnit: userVolumeUnit,
     );
   }
 
@@ -103,6 +112,8 @@ class FermentableLine {
     int? usdaFdcId,
     FruitCategory? fruitCategory,
     double? fruitYieldGalPerLb,
+    WeightUnit? userWeightUnit,
+    VolumeUiUnit? userVolumeUnit,
   }) {
     return FermentableLine._internal(
       id: id ?? this.id,
@@ -117,6 +128,8 @@ class FermentableLine {
       usdaFdcId: usdaFdcId ?? this.usdaFdcId,
       fruitCategory: fruitCategory ?? this.fruitCategory,
       fruitYieldGalPerLb: fruitYieldGalPerLb ?? this.fruitYieldGalPerLb,
+      userWeightUnit: userWeightUnit ?? this.userWeightUnit,
+      userVolumeUnit: userVolumeUnit ?? this.userVolumeUnit,
     );
   }
 
@@ -290,6 +303,22 @@ void setStatsVolumeUnit(VolumeUiUnit unit) {
           _           => null,
         },
         fruitYieldGalPerLb: (m['fruitYieldGalPerLb'] as num?)?.toDouble(),
+        
+        userWeightUnit: switch ((m['userWeightUnit'] ?? '').toString()) {
+          'grams'     => WeightUnit.grams,
+          'kilograms' => WeightUnit.kilograms,
+          'pounds'    => WeightUnit.pounds,
+          'ounces'    => WeightUnit.ounces,
+          _           => null,
+        },
+        userVolumeUnit: switch ((m['userVolumeUnit'] ?? '').toString()) {
+          'ml'        => VolumeUiUnit.ml,
+          'liters'    => VolumeUiUnit.liters,
+          'flOz'      => VolumeUiUnit.flOz,
+          'cups'      => VolumeUiUnit.cups,
+          'gallons'   => VolumeUiUnit.gallons,
+          _           => null,
+        },
         );
 
       }));
@@ -330,6 +359,15 @@ void setStatsVolumeUnit(VolumeUiUnit unit) {
           notes: (m['notes'] ?? '').toString(),
         );
       }));
+
+    // Restore stats volume unit from recipe (per-recipe preference)
+    if (r.statsVolumeUnit != null) {
+      final vu = VolumeUiUnit.values.firstWhere(
+        (v) => v.name == r.statsVolumeUnit,
+        orElse: () => VolumeUiUnit.gallons,
+      );
+      setStatsVolumeUnit(vu);
+    }
 
     recalc();
     notifyListeners();
@@ -378,6 +416,32 @@ void setStatsVolumeUnit(VolumeUiUnit unit) {
   }
 
   Future<void> applyUsdaByIndex(int index, UsdaChoice choice) => applyUsda(index, choice);
+
+  void seedFromInventoryItem(int index, InventoryItem item) {
+    if (index < 0 || index >= fermentables.length) return;
+    final prev = fermentables[index];
+
+    FermentableType fType = FermentableType.sugar;
+    final catLower = item.category.toLowerCase();
+    if (catLower.contains('juice')) fType = FermentableType.juice;
+    else if (catLower.contains('honey')) fType = FermentableType.honey;
+    else if (catLower.contains('fruit')) fType = FermentableType.fruit;
+    double dens = item.sg ?? prev.density ?? fType.defaultDensity;
+    double brx = item.brix ?? prev.brix ?? fType.defaultBrix;
+
+    if (item.brix != null && item.sg == null) {
+      dens = gu.brixToSg(item.brix!);
+    } else if (item.sg != null && item.brix == null) {
+      brx = gu.sgToBrix(item.sg!);
+    }
+
+    _updateAtIndex(index, prev.copyWith(
+      name: item.name,
+      type: fType,
+      density: dens,
+      brix: brx,
+    ));
+  }
 
   void updateFermentableNameByIndex(int index, String name) {
     if (index < 0 || index >= fermentables.length) return;
@@ -436,7 +500,15 @@ void setSgAt(int index, double newSg) {
   _updateAtIndex(index, prev.copyWith(brix: newBrix, density: newSg));
 }
 
+void setWeightUnitAt(int index, WeightUnit unit) {
+  if (index < 0 || index >= fermentables.length) return;
+  _updateAtIndex(index, fermentables[index].copyWith(userWeightUnit: unit));
+}
 
+void setVolumeUnitAt(int index, VolumeUiUnit unit) {
+  if (index < 0 || index >= fermentables.length) return;
+  _updateAtIndex(index, fermentables[index].copyWith(userVolumeUnit: unit));
+}
   /// Optional: direct density edit (advanced/hidden UI)
   void setDensityAt(int index, double newDensity) {
     if (index < 0 || index >= fermentables.length) return;

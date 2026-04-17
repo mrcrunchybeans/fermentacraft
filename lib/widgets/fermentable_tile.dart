@@ -5,8 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'package:fermentacraft/models/enums.dart';
+import 'package:fermentacraft/models/settings_model.dart';
 import 'package:fermentacraft/services/usda_service.dart';
 import 'package:fermentacraft/controllers/recipe_builder_controller.dart';
+import 'package:fermentacraft/models/inventory_item.dart';
+import 'package:fermentacraft/utils/boxes.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class FermentableTile extends StatefulWidget {
   final int index;
@@ -39,8 +43,8 @@ class _FermentableTileState extends State<FermentableTile> {
   bool _programmaticSet = false;
 
   // Default mobile-first units
-  WeightUnit _weightUnit = WeightUnit.pounds;
-  VolumeUiUnit _volumeUnit = VolumeUiUnit.gallons;
+  late WeightUnit _weightUnit;
+  late VolumeUiUnit _volumeUnit;
 
   // Gravity UI state
   _GravityMode _mode = _GravityMode.brix;
@@ -59,6 +63,8 @@ class _FermentableTileState extends State<FermentableTile> {
         ? ctrl.fermentables[widget.index]
         : null;
 
+    _weightUnit = line?.userWeightUnit ?? WeightUnit.pounds;
+    _volumeUnit = line?.userVolumeUnit ?? context.read<SettingsModel>().volumeUnit;
 
     _nameCtrl = TextEditingController(text: line?.name ?? '');
     _brixCtrl =
@@ -411,17 +417,82 @@ class _FermentableTileState extends State<FermentableTile> {
     }
   }
 
-  // Helper methods to show pop-up menus for units
-  void _showWeightUnitMenu(BuildContext context) {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero),
-            ancestor: overlay),
+  // ==================== Inventory Picker method ====================
+  Future<void> _openInventoryPicker(FermentableLine line) async {
+    final ctrl = context.read<RecipeBuilderController>();
+    
+    final InventoryItem? picked = await showModalBottomSheet<InventoryItem>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
+      builder: (sheetCtx) {
+        final box = Hive.box<InventoryItem>(Boxes.inventory);
+        final items = box.values.where((i) {
+          final c = i.category.toLowerCase();
+          return c.contains('juice') || c.contains('sugar') || c.contains('honey') || c.contains('fruit');
+        }).toList()..sort((a,b) => a.name.compareTo(b.name));
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetCtx).size.height * 0.85),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Select from Inventory', style: Theme.of(sheetCtx).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(child: Text('No fermentables in inventory.'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx2, i) {
+                          final o = items[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(o.name),
+                            subtitle: Text('${o.category} • ${o.amountInStock.toStringAsFixed(1)} ${o.unit} in stock'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              Navigator.of(sheetCtx).pop<InventoryItem>(o);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      ctrl.seedFromInventoryItem(widget.index, picked);
+      _programmaticSet = true;
+      _nameCtrl.text = picked.name;
+      _programmaticSet = false;
+    }
+  }
+
+  // Helper methods to show pop-up menus for units
+  void _showWeightUnitMenu(BuildContext context, Offset globalPosition) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(globalPosition, globalPosition),
       Offset.zero & overlay.size,
     );
 
@@ -438,10 +509,9 @@ class _FermentableTileState extends State<FermentableTile> {
       if (selectedUnit != null) {
         setState(() {
           _weightUnit = selectedUnit;
-          final g = context
-              .read<RecipeBuilderController>()
-              .fermentables[widget.index]
-              .weightG;
+          final ctrl = context.read<RecipeBuilderController>();
+          ctrl.setWeightUnitAt(widget.index, selectedUnit);
+          final g = ctrl.fermentables[widget.index].weightG;
           if (g != null && !_wtFocus.hasFocus) {
             _programmaticSet = true;
             _wtCtrl.text = _trimTrailing(_weightUnit.fromGrams(g));
@@ -452,16 +522,10 @@ class _FermentableTileState extends State<FermentableTile> {
     });
   }
 
-  void _showVolumeUnitMenu(BuildContext context) {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
+  void _showVolumeUnitMenu(BuildContext context, Offset globalPosition) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero),
-            ancestor: overlay),
-      ),
+      Rect.fromPoints(globalPosition, globalPosition),
       Offset.zero & overlay.size,
     );
     showMenu<VolumeUiUnit>(
@@ -477,10 +541,9 @@ class _FermentableTileState extends State<FermentableTile> {
       if (selectedUnit != null) {
         setState(() {
           _volumeUnit = selectedUnit;
-          final ml = context
-              .read<RecipeBuilderController>()
-              .fermentables[widget.index]
-              .volumeMl;
+          final ctrl = context.read<RecipeBuilderController>();
+          ctrl.setVolumeUnitAt(widget.index, selectedUnit);
+          final ml = ctrl.fermentables[widget.index].volumeMl;
           if (ml != null && !_volFocus.hasFocus) {
             _programmaticSet = true;
             _volCtrl.text = _trimTrailing(_volumeUnit.fromMl(ml));
@@ -522,10 +585,20 @@ class _FermentableTileState extends State<FermentableTile> {
                           hintText: 'e.g., Honey, Apple juice…',
                           border: const OutlineInputBorder(),
                           isDense: true,
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.travel_explore, size: 20),
-                            tooltip: 'Search USDA',
-                            onPressed: () => _openUsdaPicker(line),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.inventory_2_outlined, size: 20),
+                                tooltip: 'Select from Inventory',
+                                onPressed: () => _openInventoryPicker(line),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.travel_explore, size: 20),
+                                tooltip: 'Search USDA',
+                                onPressed: () => _openUsdaPicker(line),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -580,13 +653,25 @@ class _FermentableTileState extends State<FermentableTile> {
                           contentPadding:
                               const EdgeInsets.fromLTRB(12, 10, 8, 10),
                           suffixIcon: SizedBox(
-                            width: 60,
+                            width: 65,
                             child: GestureDetector(
-                              onTap: () => _showWeightUnitMenu(context),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                child: Center(child: Text(_weightUnit.label)),
+                              onTapDown: (details) => _showWeightUnitMenu(context, details.globalPosition),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _weightUnit.label,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_drop_down,
+                                    size: 18,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -611,13 +696,25 @@ class _FermentableTileState extends State<FermentableTile> {
                           contentPadding:
                               const EdgeInsets.fromLTRB(12, 10, 8, 10),
                           suffixIcon: SizedBox(
-                            width: 60,
+                            width: 65,
                             child: GestureDetector(
-                              onTap: () => _showVolumeUnitMenu(context),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                child: Center(child: Text(_volumeUnit.label)),
+                              onTapDown: (details) => _showVolumeUnitMenu(context, details.globalPosition),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _volumeUnit.label,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_drop_down,
+                                    size: 18,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ],
                               ),
                             ),
                           ),

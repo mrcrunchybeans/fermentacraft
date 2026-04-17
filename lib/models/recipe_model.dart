@@ -69,6 +69,15 @@ class RecipeModel extends HiveObject {
   @HiveField(18)
   String? category;
 
+  @HiveField(19)
+  bool? isOgOverridden;
+
+  @HiveField(20)
+  bool? isAbvOverridden;
+
+  @HiveField(21)
+  String? statsVolumeUnit; // stored as VolumeUiUnit.name string
+
   String get categoryLabel {
     final c = category?.trim();
     if (c != null && c.isNotEmpty) return c;
@@ -95,6 +104,9 @@ class RecipeModel extends HiveObject {
     this.plannedAbv,
     this.isArchived = false,
     this.category,
+    this.isOgOverridden,
+    this.isAbvOverridden,
+    this.statsVolumeUnit,
   })  : id = id ?? const Uuid().v4(),
         tagsLegacy = tags,
         additives = additives ?? [],
@@ -178,6 +190,9 @@ class RecipeModel extends HiveObject {
       'plannedOg': plannedOg,
       'plannedAbv': plannedAbv,
       'isArchived': isArchived,
+      'isOgOverridden': isOgOverridden,
+      'isAbvOverridden': isAbvOverridden,
+      'statsVolumeUnit': statsVolumeUnit,
     };
   }
 
@@ -212,6 +227,9 @@ class RecipeModel extends HiveObject {
       plannedOg: _toDouble(json['plannedOg']),
       plannedAbv: _toDouble(json['plannedAbv']),
       isArchived: (json['isArchived'] as bool?) ?? false,
+      isOgOverridden: json['isOgOverridden'] as bool?,
+      isAbvOverridden: json['isAbvOverridden'] as bool?,
+      statsVolumeUnit: json['statsVolumeUnit'] as String?,
     );
   }
 
@@ -261,6 +279,9 @@ class RecipeModel extends HiveObject {
     double? plannedAbv,
     bool? isArchived,
     String? category,
+    bool? isOgOverridden,
+    bool? isAbvOverridden,
+    String? statsVolumeUnit,
   }) {
     final r = RecipeModel(
       id: id ?? this.id,
@@ -281,6 +302,9 @@ class RecipeModel extends HiveObject {
       plannedAbv: plannedAbv ?? this.plannedAbv,
       isArchived: isArchived ?? this.isArchived,
       category: category ?? this.category,
+      isOgOverridden: isOgOverridden ?? this.isOgOverridden,
+      isAbvOverridden: isAbvOverridden ?? this.isAbvOverridden,
+      statsVolumeUnit: statsVolumeUnit ?? this.statsVolumeUnit,
     );
     // Preserve HiveList reference if it exists to maintain relationships.
     r.tagRefs = tagRefs; 

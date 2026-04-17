@@ -406,10 +406,21 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
                 Expanded(
                   child: DropdownButtonFormField<DeviceType>(
                     value: _type,
+                    isExpanded: true,
+                    menuMaxWidth: 280,
                     items: const [
-                      DropdownMenuItem(value: DeviceType.ispindel, child: Text('iSpindel / GravityMon')),
-                      DropdownMenuItem(value: DeviceType.tilt, child: Text('Tilt (via bridge)')),
-                      DropdownMenuItem(value: DeviceType.other, child: Text('Other / Custom')),
+                      DropdownMenuItem(
+                        value: DeviceType.ispindel,
+                        child: Text('iSpindel / GravityMon', overflow: TextOverflow.visible, softWrap: true),
+                      ),
+                      DropdownMenuItem(
+                        value: DeviceType.tilt,
+                        child: Text('Tilt (via bridge)', overflow: TextOverflow.visible, softWrap: true),
+                      ),
+                      DropdownMenuItem(
+                        value: DeviceType.other,
+                        child: Text('Other / Custom', overflow: TextOverflow.visible, softWrap: true),
+                      ),
                     ],
                     onChanged: (v) => setState(() => _type = v ?? DeviceType.ispindel),
                     decoration: const InputDecoration(labelText: 'Type'),
@@ -419,9 +430,17 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
                 Expanded(
                   child: DropdownButtonFormField<TargetMode>(
                     value: _mode,
+                    isExpanded: true,
+                    menuMaxWidth: 280,
                     items: const [
-                      DropdownMenuItem(value: TargetMode.genericUrl, child: Text('BrewFather URL')),
-                      DropdownMenuItem(value: TargetMode.ckbrewCustom, child: Text('CKBrew (Custom)')),
+                      DropdownMenuItem(
+                        value: TargetMode.genericUrl,
+                        child: Text('BrewFather URL', overflow: TextOverflow.visible, softWrap: true),
+                      ),
+                      DropdownMenuItem(
+                        value: TargetMode.ckbrewCustom,
+                        child: Text('CKBrew (Custom)', overflow: TextOverflow.visible, softWrap: true),
+                      ),
                     ],
                     onChanged: (v) => setState(() => _mode = v ?? TargetMode.genericUrl),
                     decoration: const InputDecoration(labelText: 'Target'),

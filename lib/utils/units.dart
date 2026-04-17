@@ -37,6 +37,8 @@ const Map<String, String> kUnitAliases = {
   'l': 'L',
   'liter': 'L',
   'liters': 'L',
+  'litre': 'L',
+  'litres': 'L',
   // gallon
   'gallon': 'gal',
   'gallons': 'gal',

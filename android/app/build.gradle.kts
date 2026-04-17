@@ -57,18 +57,27 @@ android {
     signingConfigs {
         create("release") {
             val storeFilePath = keystoreProps.getProperty("storeFile") ?: ""
-            if (storeFilePath.isNotBlank()) {
-                storeFile = rootProject.file(storeFilePath)
+            // Only configure signing if storeFile is a valid path on this platform
+            // Windows paths contain a colon after the drive letter (e.g., C:\)
+            if (storeFilePath.isNotBlank() && !storeFilePath.contains(":")) {
+                val file = rootProject.file(storeFilePath)
+                if (file.exists()) {
+                    storeFile = file
+                    storePassword = keystoreProps.getProperty("storePassword")
+                    keyAlias = keystoreProps.getProperty("keyAlias")
+                    keyPassword = keystoreProps.getProperty("keyPassword")
+                }
             }
-            storePassword = keystoreProps.getProperty("storePassword")
-            keyAlias = keystoreProps.getProperty("keyAlias")
-            keyPassword = keystoreProps.getProperty("keyPassword")
         }
     }
 
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            // Only sign release if signing config is properly set up (no Windows paths)
+            val storeFilePath = keystoreProps.getProperty("storeFile") ?: ""
+            if (storeFilePath.isNotBlank() && !storeFilePath.contains(":")) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

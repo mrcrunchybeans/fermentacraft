@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fermentacraft/models/inventory_item.dart';
 import 'package:fermentacraft/models/unit_type.dart';
-import 'package:fermentacraft/utils/unit_conversion.dart';
+import 'package:fermentacraft/utils/units.dart';
 import 'package:intl/intl.dart';
 
 class EditInventoryDialog extends StatefulWidget {
@@ -19,33 +19,57 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
   // --- Editable Properties ---
   late TextEditingController _nameController;
   late TextEditingController _notesController;
+  late TextEditingController _sgController;
+  late TextEditingController _brixController;
   late String _category;
   late String _unit;
   late UnitType _unitType;
-  
+
   // --- Data for Dropdowns ---
   final List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
   late List<String> _unitOptions;
+
+  /// Get canonical unit list for a given unit type (matching kCanonicalUnits format)
+  List<String> _getCanonicalUnitsForType(UnitType type) {
+    return kCanonicalUnits.where((u) {
+      // Filter to units that match the type
+      if (type == UnitType.mass) {
+        return ['g', 'oz', 'lb'].contains(u);
+      } else if (type == UnitType.volume) {
+        return ['mL', 'L', 'tsp', 'tbsp', 'cup', 'fl oz', 'gal'].contains(u);
+      } else if (type == UnitType.gravity) {
+        return ['SG', 'Brix'].contains(u);
+      } else if (type == UnitType.temperature) {
+        return ['C', 'F'].contains(u);
+      }
+      return false;
+    }).toList();
+  }
 
   @override
   void initState() {
     super.initState();
     final item = widget.item;
-    
+
     // Initialize controllers for editable fields
     _nameController = TextEditingController(text: item.name);
     _notesController = TextEditingController(text: item.notes);
+    _sgController = TextEditingController(text: item.sg?.toStringAsFixed(3) ?? '');
+    _brixController = TextEditingController(text: item.brix?.toStringAsFixed(1) ?? '');
     _category = item.category;
-    _unit = item.unit;
+    // Normalize unit to canonical form to ensure consistency
+    _unit = normalizeUnit(item.unit);
     _unitType = item.unitType;
 
-    _unitOptions = UnitConversion.getUnitListFor(_unitType);
+    _unitOptions = _getCanonicalUnitsForType(_unitType);
   }
   
   @override
   void dispose() {
     _nameController.dispose();
     _notesController.dispose();
+    _sgController.dispose();
+    _brixController.dispose();
     super.dispose();
   }
 
@@ -59,6 +83,8 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
       widget.item.unit = _unit;
       widget.item.unitType = _unitType;
       widget.item.notes = _notesController.text.trim();
+      widget.item.sg = double.tryParse(_sgController.text.trim());
+      widget.item.brix = double.tryParse(_brixController.text.trim());
       
       widget.item.save();
 
@@ -104,8 +130,13 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                           .toList(),
                           onChanged: (val) => setState(() {
                             _unitType = val!;
-                            _unitOptions = UnitConversion.getUnitListFor(_unitType);
-                            if (!_unitOptions.contains(_unit)) {
+                            _unitOptions = _getCanonicalUnitsForType(_unitType);
+                            // Normalize current unit to canonical form
+                            final normalized = normalizeUnit(_unit);
+                            if (_unitOptions.contains(normalized)) {
+                              _unit = normalized;
+                            } else {
+                              // Default to first option if current unit isn't valid for new type
                               _unit = _unitOptions.isNotEmpty ? _unitOptions.first : '';
                             }
                           }),
@@ -115,7 +146,7 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      initialValue: _unit,
+                      initialValue: _unitOptions.contains(_unit) ? _unit : (_unitOptions.isNotEmpty ? _unitOptions.first : 'g'),
                       items: _unitOptions
                           .map((unit) => DropdownMenuItem(value: unit, child: Text(unit)))
                           .toList(),
@@ -129,6 +160,41 @@ class _EditInventoryDialogState extends State<EditInventoryDialog> {
                 controller: _notesController,
                 decoration: const InputDecoration(labelText: 'Notes (optional)'),
               ),
+
+              const SizedBox(height: 10),
+
+              if (['Juice', 'Sugar', 'Other'].contains(_category)) ...[
+                const SizedBox(height: 8),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    title: const Text('Fermentable Properties'),
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
+                    initiallyExpanded: false,
+                    children: [
+                      TextFormField(
+                        controller: _sgController,
+                        decoration: const InputDecoration(
+                          labelText: 'Specific Gravity (SG)',
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _brixController,
+                        decoration: const InputDecoration(
+                          labelText: 'Brix (°Bx)',
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
 
               const Divider(height: 32),
 

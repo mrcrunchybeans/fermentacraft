@@ -37,6 +37,8 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
   String? _notes;
   UnitType _unitType = UnitType.mass;
   DateTime? _expirationDate;
+  double? _sg;
+  double? _brix;
 
   static const List<String> _categories = ['Juice', 'Sugar', 'Additive', 'Yeast', 'Other'];
 
@@ -147,6 +149,8 @@ if (existingItem == null) {
           unitType: _unitType,
           notes: _notes,
           category: _category,
+          sg: _sg,
+          brix: _brix,
           purchaseHistory: [transaction],
         );
 
@@ -276,6 +280,38 @@ if (existingItem == null) {
                 ],
               ),
               const SizedBox(height: 10),
+
+              if (['Juice', 'Sugar', 'Other'].contains(_category)) ...[
+                const SizedBox(height: 8),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    title: const Text('Fermentable Properties'),
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
+                    initiallyExpanded: false,
+                    children: [
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Specific Gravity (SG)',
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onSaved: (val) => _sg = double.tryParse((val ?? '').trim()),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Brix (°Bx)',
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onSaved: (val) => _brix = double.tryParse((val ?? '').trim()),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
 
               // Total Cost (with currency symbol)
               TextFormField(

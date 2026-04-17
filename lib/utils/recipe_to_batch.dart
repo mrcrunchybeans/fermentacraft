@@ -55,16 +55,41 @@ Map<String, dynamic> recipeIngredientToBatch(Map<String, dynamic> m) {
   final double? ml = _numToDouble(m['volumeMl']);
   final double? g  = _numToDouble(m['weightG']);
 
-  // Prefer volume if present; convert to gallons and round nicely.
+  final String? prefVol = m['userVolumeUnit']?.toString();
+  final String? prefWt = m['userWeightUnit']?.toString();
+
+  // Prefer volume if present; convert to preferred unit (default gallons) and round nicely.
   late final String unit;
   late final double amount;
 
   if (ml != null && ml > 0) {
-    unit = 'gal';
-    amount = _roundForUnit(ml / _kMlPerGal, unit);
+    if (prefVol == 'liters') {
+      unit = 'l';
+      amount = _roundForUnit(ml / _kMlPerL, unit);
+    } else if (prefVol == 'ml') {
+      unit = 'ml';
+      amount = _roundForUnit(ml, unit);
+    } else if (prefVol == 'flOz') {
+      unit = 'fl oz';
+      amount = _roundForUnit(ml / _kMlPerFlOz, unit);
+    } else {
+      unit = 'gal';
+      amount = _roundForUnit(ml / _kMlPerGal, unit);
+    }
   } else if (g != null && g > 0) {
-    unit = 'g';
-    amount = _roundForUnit(g, unit);
+    if (prefWt == 'kilograms') {
+      unit = 'kg';
+      amount = _roundForUnit(g / _kGPerKg, unit);
+    } else if (prefWt == 'pounds') {
+      unit = 'lbs';
+      amount = _roundForUnit(g / _kGPerLb, unit);
+    } else if (prefWt == 'ounces') {
+      unit = 'oz';
+      amount = _roundForUnit(g / _kGPerOz, unit);
+    } else {
+      unit = 'g';
+      amount = _roundForUnit(g, unit);
+    }
   } else {
     unit = 'g';
     amount = 0;

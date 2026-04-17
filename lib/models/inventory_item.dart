@@ -28,12 +28,20 @@ class InventoryItem extends HiveObject {
   @HiveField(6)
   String category;
 
+  @HiveField(7)
+  double? sg;
+
+  @HiveField(8)
+  double? brix;
+
   InventoryItem({
     required this.id,
     required this.name,
     required this.unit,
     required this.unitType,
     required this.category,
+    this.sg,
+    this.brix,
     this.notes,
     List<PurchaseTransaction>? purchaseHistory,
   }) : purchaseHistory = purchaseHistory ?? [];
@@ -121,6 +129,8 @@ class InventoryItem extends HiveObject {
       'notes': notes,
       'purchaseHistory': purchaseHistory.map((p) => p.toJson()).toList(),
       'category': category,
+      'sg': sg,
+      'brix': brix,
     };
   }
 
@@ -134,6 +144,8 @@ class InventoryItem extends HiveObject {
         orElse: () => UnitType.values.first,
       ),
       category: (json['category'] ?? '').toString(),
+      sg: (json['sg'] as num?)?.toDouble(),
+      brix: (json['brix'] as num?)?.toDouble(),
       notes: json['notes']?.toString(),
       purchaseHistory: (json['purchaseHistory'] as List? ?? [])
           .map((p) => PurchaseTransaction.fromJson(Map<String, dynamic>.from(p as Map)))
@@ -148,6 +160,8 @@ class InventoryItem extends HiveObject {
     String? unit,
     UnitType? unitType,
     String? notes,
+    double? sg,
+    double? brix,
     List<PurchaseTransaction>? purchaseHistory,
     String? category,
   }) {
@@ -157,6 +171,8 @@ class InventoryItem extends HiveObject {
       unit: unit ?? this.unit,
       unitType: unitType ?? this.unitType,
       notes: notes ?? this.notes,
+      sg: sg ?? this.sg,
+      brix: brix ?? this.brix,
       purchaseHistory: purchaseHistory ?? List<PurchaseTransaction>.from(this.purchaseHistory),
       category: category ?? this.category,
     );

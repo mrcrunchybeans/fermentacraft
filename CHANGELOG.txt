@@ -1,5 +1,9 @@
-# Release v2.0.11 (2.0.11+91)
+# Release v2.0.16 (2.0.16+96)
 
 ## What's New
 
-- update 20260325 - fix: Windows DLL distribution - add MSIX and portable versions for Issue #1
+April update: Bugs - 1: Fix 'Must Stats' unit reverting. 2: Fix inventory units reverting to gallons. 3: Fix fermentation stages target temp reverting to 20C. 4: Add feature - add inventory items to fermentable autocomplete.
+
+## Commits
+
+- Initial release

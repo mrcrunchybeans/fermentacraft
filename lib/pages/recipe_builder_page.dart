@@ -4,6 +4,7 @@ import 'package:fermentacraft/models/fermentation_stage.dart';
 import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
+import 'package:fermentacraft/models/settings_model.dart';
 
 // Sections / Widgets
 import 'package:fermentacraft/widgets/fermentable_tile.dart';
@@ -125,7 +126,7 @@ double? get _selectedSourceMl => (_selectedSourceGrams != null && _selectedSugar
     : null;
 
 
-  VolumeUnit selectedVolumeUnit = VolumeUnit.gallons;
+  VolumeUiUnit selectedVolumeUnit = VolumeUiUnit.liters;
 
   // USDA + Fermentables Controller
   late final RecipeBuilderController c;
@@ -147,6 +148,12 @@ double? get _selectedSourceMl => (_selectedSourceGrams != null && _selectedSugar
     c = RecipeBuilderController(usda: UsdaService());
     c.addListener(_onControllerChanged);
 
+    // Seed volume unit from user's settings preference
+    final settings = context.read<SettingsModel>();
+    c.setStatsVolumeUnit(settings.volumeUnit);
+    // Also seed selectedVolumeUnit for fermentable batch volumes
+    selectedVolumeUnit = settings.volumeUnit;
+
     // Seed from existingRecipe if provided
     final er = widget.existingRecipe;
     if (er != null) {
@@ -159,11 +166,44 @@ double? get _selectedSourceMl => (_selectedSourceGrams != null && _selectedSugar
       }
       
       if (er.abv != null) abv = er.abv!;
-        c.seedFromRecipe(er);
+      
+      c.seedFromRecipe(er);
+
+      // Update selectedVolumeUnit to match the newly seeded stats volume unit
+      selectedVolumeUnit = c.statsVolumeUnit;
+
+      if (er.og != null) {
+        // If isOgOverridden is explicitly true, restore the measured OG directly
+        if (er.isOgOverridden == true) {
+          measuredMustSG = er.og;
+          measuredMustSGController.text = er.og!.toStringAsFixed(3);
+          userOverrodeMeasuredSG = true;
         } else {
-          c.addFermentable();
-                }
-                _onControllerChanged();
+          // Fallback: detect override by comparing og vs plannedOg
+          bool isOverride = false;
+          if (er.plannedOg != null) {
+            isOverride = (er.og != er.plannedOg);
+          } else {
+            isOverride = (er.og != double.parse(c.stats.estimatedOg.toStringAsFixed(3)));
+          }
+          if (isOverride) {
+            measuredMustSG = er.og;
+            measuredMustSGController.text = er.og!.toStringAsFixed(3);
+            userOverrodeMeasuredSG = true;
+          }
+        }
+      }
+
+      if (er.batchVolume != null && er.batchVolume! > 0) {
+        final val = selectedVolumeUnit.fromMl(er.batchVolume!);
+        volumeController.text = val.toStringAsFixed(2);
+        userOverrodeBatchVolume = true;
+      }
+      
+      } else {
+        c.addFermentable();
+      }
+      _onControllerChanged();
 if (er != null) {
   // Normalize whatever is stored into real FermentationStage objects
   _stages = (er.fermentationStages as List).map<FermentationStage>((s) {
@@ -261,9 +301,11 @@ if (er != null) {
     final sgDelta = targetMustSG! - measuredMustSG!;
     final batchVolume = double.tryParse(volumeController.text) ?? 0;
     final batchLiters = switch (selectedVolumeUnit) {
-      VolumeUnit.gallons => batchVolume * 3.78541,
-      VolumeUnit.ounces => batchVolume * 0.0295735,
-      VolumeUnit.liters => batchVolume,
+      VolumeUiUnit.gallons => batchVolume * 3.78541,
+      VolumeUiUnit.flOz => batchVolume * 0.0295735,
+      VolumeUiUnit.liters => batchVolume,
+      VolumeUiUnit.ml => batchVolume / 1000.0,
+      VolumeUiUnit.cups => batchVolume * 236.5882365,
     };
 
     if (sgDelta > 0) {
@@ -360,6 +402,8 @@ if (er != null) {
         'usdaFdcId': f.usdaFdcId,
         'fruitCategory': f.fruitCategory?.name,        // e.g. "berries"
         'fruitYieldGalPerLb': f.fruitYieldGalPerLb,   // optional per-line override
+        'userWeightUnit': f.userWeightUnit?.name,
+        'userVolumeUnit': f.userVolumeUnit?.name,
       };
     }).toList();
 
@@ -390,6 +434,12 @@ if (er != null) {
     final fgVal = double.parse(fg.toStringAsFixed(3));
     final abvVal = double.parse(CalcUtils.abvFromSG(ogVal, fgVal).toStringAsFixed(2));
 
+    double? batchVol;
+    if (userOverrodeBatchVolume) {
+      final v = double.tryParse(volumeController.text);
+      if (v != null && v > 0) batchVol = selectedVolumeUnit.toMl(v);
+    }
+
 final model = RecipeModel(
   id: idForEdit,
   name: name.isEmpty ? 'Untitled' : name,
@@ -403,10 +453,12 @@ final model = RecipeModel(
   yeast: yeastsMaps,
   notes: notes,
   lastOpened: now,
-  batchVolume: null,
-  plannedOg: null,
+  batchVolume: batchVol,
+  plannedOg: double.parse(c.stats.estimatedOg.toStringAsFixed(3)),
   plannedAbv: null,
   isArchived: isArchived,
+  isOgOverridden: userOverrodeMeasuredSG,
+  statsVolumeUnit: c.statsVolumeUnit.name,
   // ✅ add this line (use JSON so Hive/serialization stays simple)
 fermentationStages: _stages, // ✅ List<FermentationStage>
 );
@@ -587,11 +639,16 @@ Future<void> _saveRecipe() async {
                           const Spacer(),
                           DropdownButton<VolumeUiUnit>(
                             value: c.statsVolumeUnit,
+                            isExpanded: false,
                             underline: const SizedBox.shrink(),
                             items: VolumeUiUnit.values
                                 .map((u) => DropdownMenuItem(value: u, child: Text(u.label)))
                                 .toList(),
-                            onChanged: (u) => u == null ? null : c.setStatsVolumeUnit(u),
+                            onChanged: (u) {
+                              if (u == null) return;
+                              c.setStatsVolumeUnit(u);
+                              context.read<SettingsModel>().setVolumeUnit(u);
+                            },
                           ),
                           IconButton(onPressed: c.recalc, icon: const Icon(Icons.refresh)),
                         ]),
@@ -785,17 +842,20 @@ const SizedBox(height: 12),
                           ),
                         ),
                         const SizedBox(width: 12),
-                        DropdownButton<VolumeUnit>(
+                        DropdownButton<VolumeUiUnit>(
                           value: selectedVolumeUnit,
+                          isExpanded: false,
+                          underline: const SizedBox.shrink(),
                           onChanged: (val) {
                             if (val != null) {
                               setState(() {
                                 selectedVolumeUnit = val;
                                 _calculateSugarNeeded();
                               });
+                              context.read<SettingsModel>().setVolumeUnit(val);
                             }
                           },
-                          items: VolumeUnit.values
+                          items: VolumeUiUnit.values
                               .map((unit) => DropdownMenuItem(value: unit, child: Text(unit.label)))
                               .toList(),
                         ),
@@ -906,17 +966,6 @@ const SizedBox(height: 12),
       ),
     );
   }
-}
-
-// Keep consistent with earlier enum in your code base
-enum VolumeUnit { gallons, liters, ounces }
-
-extension VolumeUnitLabel on VolumeUnit {
-  String get label => switch (this) {
-        VolumeUnit.gallons => 'gal',
-        VolumeUnit.liters => 'L',
-        VolumeUnit.ounces => 'fl oz',
-      };
 }
 
 class _SectionTitle extends StatelessWidget {
