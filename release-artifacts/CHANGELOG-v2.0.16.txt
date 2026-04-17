@@ -1,9 +1,0 @@
-# Release v2.0.16 (2.0.16+96)
-
-## What's New
-
-April update: Bugs - 1: Fix 'Must Stats' unit reverting. 2: Fix inventory units reverting to gallons. 3: Fix fermentation stages target temp reverting to 20C. 4: Add feature - add inventory items to fermentable autocomplete.
-
-## Commits
-
-- Initial release
