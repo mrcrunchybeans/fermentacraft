@@ -1437,7 +1437,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
       SnackBar(
         content: Text(label),
         action: SnackBarAction(label: 'Undo', onPressed: onUndo),
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 5),
       ),
     );
   }

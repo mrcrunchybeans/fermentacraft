@@ -1,0 +1,5 @@
+# Release v2.0.23 (2.0.23+103)
+
+## What's New
+
+- fix: use IsNullOrWhiteSpace instead of .Trim() on null

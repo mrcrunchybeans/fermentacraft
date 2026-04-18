@@ -163,6 +163,7 @@ class FermentaCraftApp extends StatelessWidget {
               theme: AppTheme.lightTheme,
               darkTheme: AppTheme.darkTheme,
               home: const AuthGate(),
+              navigatorObservers: [ClearSnackbarsOnNavigate()],
             );
           },
         ),

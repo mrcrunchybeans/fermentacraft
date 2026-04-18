@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:brewfather.app)",
       "WebFetch(domain:beersmith.com)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(flutter analyze *)"
     ]
   },
   "enabledMcpjsonServers": [

@@ -172,7 +172,7 @@ class ActiveBatchesSection extends StatelessWidget {
         message: "No active batches.\nTime to start brewing! 🍻",
       ),
       itemBuilder: (context, batch) {
-        final daysActive = DateTime.now().difference(batch.startDate).inDays;
+        final daysActive = DateTime.now().difference(batch.startDate).inDays + 1;
         
         return ListTile(
           contentPadding: EdgeInsets.zero,
