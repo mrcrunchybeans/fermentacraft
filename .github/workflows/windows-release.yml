@@ -142,16 +142,25 @@ jobs:
           }
 
       - name: Build Windows Portable
+        shell: pwsh
         run: |
           Set-StrictMode -Version Latest
-          $outputDir = Join-Path $env:GITHUB_WORKSPACE "fermentacraft-portable"
-          powershell -ExecutionPolicy Bypass -File "$PSScriptRoot\..\scripts\build-windows-portable.ps1" -OutputDir $outputDir
-          # Verify it exists
-          if (Test-Path (Join-Path $outputDir "fermentacraft.exe")) {
-            Write-Host "Portable build OK: $outputDir"
+
+          $repoRoot = $env:GITHUB_WORKSPACE
+          $scriptPath = Join-Path $repoRoot "scripts/build-windows-portable.ps1"
+          $outputDir = Join-Path $repoRoot "fermentacraft-portable"
+
+          if (-not (Test-Path $scriptPath)) {
+            throw "Portable script not found: $scriptPath"
+          }
+
+          & $scriptPath -OutputDir $outputDir -SkipBuild
+
+          $portableExe = Join-Path $outputDir "fermentacraft.exe"
+          if (Test-Path $portableExe) {
+            Write-Host "Portable build OK: $portableExe"
           } else {
-            Write-Host "ERROR: Portable build missing executable"
-            exit 1
+            throw "Portable build missing executable: $portableExe"
           }
 
       - name: Set release tag output
