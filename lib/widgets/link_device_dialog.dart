@@ -489,6 +489,7 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
 
               // Endpoint configuration
               _OutputPanel(
+                deviceType: _type,
                 mode: _mode,
                 shortUrl: _shortUrl ?? '',
                 ckHost: _ckHost ?? '',
@@ -559,6 +560,7 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
 // New widget to handle the output panels for each mode (uses current format/header)
 class _OutputPanel extends StatelessWidget {
   const _OutputPanel({
+    required this.deviceType,
     required this.mode,
     required this.shortUrl,
     required this.ckHost,
@@ -569,6 +571,7 @@ class _OutputPanel extends StatelessWidget {
     required this.onShowQr,
   });
 
+  final DeviceType deviceType;
   final TargetMode mode;
   final String shortUrl;
   final String ckHost;
@@ -611,39 +614,60 @@ class _OutputPanel extends StatelessWidget {
         ),
       );
     } else {
+      final uri = Uri.tryParse(shortUrl);
+      final serverAddress = uri?.host != null ? 'https://${uri!.host}' : 'https://log.fermentacraft.com';
+      final serverPath = uri?.path ?? '/u/<uid>/d/<deviceId>';
+      final isIspindel = deviceType == DeviceType.ispindel;
+
       return _SectionCard(
-        title: 'BrewFather / GravityMon configuration',
+        title: isIspindel ? 'iSpindle firmware configuration' : 'BrewFather / GravityMon configuration',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _LabeledCodeField(label: 'Endpoint URL', value: shortUrl, maxLines: 4, copyLabel: 'Copy URL'),
-            const SizedBox(height: 12),
-            _LabeledCodeField(
-              label: 'Headers',
-              value: '$contentHeader\n$secretHeader',
-              maxLines: 2,
-              copyLabel: 'Copy Headers',
-            ),
-            const SizedBox(height: 12),
-            _LabeledCodeField(label: 'Body template', value: bodyTemplate, maxLines: 8, copyLabel: 'Copy Body'),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.qr_code, size: 18),
-                    label: const Text('Show QR Code'),
-                    onPressed: onShowQr,
+            if (isIspindel) ...[
+              // Stock iSpindle firmware fields
+              const _LabeledCodeField(label: 'Service', value: 'HTTPS', maxLines: 1, copyLabel: 'Copy'),
+              const SizedBox(height: 10),
+              _LabeledCodeField(label: 'Server address', value: serverAddress, maxLines: 1, copyLabel: 'Copy'),
+              const SizedBox(height: 10),
+              _LabeledCodeField(label: 'Path / URL', value: serverPath, maxLines: 3, copyLabel: 'Copy Path'),
+              const SizedBox(height: 10),
+              const _LabeledCodeField(label: 'Token / API key', value: '(leave blank)', maxLines: 1, copyLabel: 'Copy'),
+              const SizedBox(height: 8),
+              Text(
+                'After creating the device, go to your batch and attach it so it knows where to store readings.',
+                style: help,
+              ),
+            ] else ...[
+              _LabeledCodeField(label: 'Endpoint URL', value: shortUrl, maxLines: 4, copyLabel: 'Copy URL'),
+              const SizedBox(height: 12),
+              _LabeledCodeField(
+                label: 'Headers',
+                value: '$contentHeader\n$secretHeader',
+                maxLines: 2,
+                copyLabel: 'Copy Headers',
+              ),
+              const SizedBox(height: 12),
+              _LabeledCodeField(label: 'Body template', value: bodyTemplate, maxLines: 8, copyLabel: 'Copy Body'),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.qr_code, size: 18),
+                      label: const Text('Show QR Code'),
+                      onPressed: onShowQr,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Paste this URL where the endpoint is requested. Use POST with the headers above. '
-              'If your app asks for “Brewfather URL”, this is it.',
-              style: help,
-            ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Paste this URL where the endpoint is requested. Use POST with the headers above. '
+                'If your app asks for “Brewfather URL”, this is it.',
+                style: help,
+              ),
+            ],
           ],
         ),
       );

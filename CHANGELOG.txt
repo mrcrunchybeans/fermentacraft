@@ -1,5 +1,7 @@
-# Release v2.0.23 (2.0.23+103)
+# Release v2.0.26 (2.0.26+106)
 
 ## What's New
 
-- fix: use IsNullOrWhiteSpace instead of .Trim() on null
+- chore: bump msix_version to 2.0.100.0
+- 1. Snackbar not dismissing — ClearSnackbarsOnNavigate was dead code (never registered), and the ScaffoldMessengerState-based auto-dismiss was failing silently. Added a Timer in SnackbarService.show() that explicitly calls hide() after the duration expires, and registered the observer on MaterialApp.
+- fix: remove syntax error from windows-release workflow

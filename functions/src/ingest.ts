@@ -150,7 +150,7 @@ function htmlEscape(s: string) {
 async function saveMeasurement(opts: {
   uid: string;
   deviceId: string;
-  secret: string;
+  secret?: string;
   batchIdFromQuery?: string;
   sg?: number;
   tempC?: number;
@@ -160,7 +160,6 @@ async function saveMeasurement(opts: {
   const { uid, deviceId, secret, batchIdFromQuery, sg, tempC, angle, battery } = opts;
 
   if (!uid || !deviceId) throw new Error("missing_uid_or_deviceId");
-  if (!secret) throw new Error("missing_secret");
   if (sg == null || !isFinite(sg)) throw new Error("bad_gravity");
 
   const devRef = db.doc(`users/${uid}/devices/${deviceId}`);
@@ -168,7 +167,11 @@ async function saveMeasurement(opts: {
   if (!devSnap.exists) throw new Error("device_not_found");
   const dev = devSnap.data() as any;
 
-  if (String(dev.secret || "") !== secret) throw new Error("bad_secret");
+  // Secret is optional — if provided (non-empty), validate it. Stock iSpindle
+  // firmware has no header support, so URL-path auth (device ID + URL secrecy) is sufficient.
+  if (secret != null && secret.length > 0 && String(dev.secret || "") !== secret) {
+    throw new Error("bad_secret");
+  }
 
   const linked = String(dev.linkedBatchId ?? "");
   const targetBatch = batchIdFromQuery || linked;
