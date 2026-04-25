@@ -1,5 +1,9 @@
-# Release v2.0.29 (2.0.29+109)
+# Release v2.0.31 (2.0.31+13)
 
 ## What's New
 
-- Initial release
+- chore: restore execute permission on scripts/release.sh
+- chore: ignore release-artifacts, logs, and binary build outputs
+- fix: Windows launch hang, mobile premium gate reset, and actions hub_protocol error
+- feat: Nautilis device support, calibration offsets (gravity/temp/pressure) applied to charts/ABV/log, ParentDataWidget layout fixes
+- chore: bump msix_version to 2.0.108.0 to resolve Microsoft Store package identity conflict
