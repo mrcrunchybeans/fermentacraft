@@ -236,7 +236,6 @@ jobs:
           fi
 
           # Push tag to origin so the release can reference it
-          git config --global hub_protocol https
           git tag "$TAG" 2>/dev/null || true
           git push origin "refs/tags/${TAG}" 2>/dev/null || true
 

@@ -492,8 +492,15 @@ class RevenueCatService {
     await _premiumDocSub?.cancel();
     _premiumDocSub = null;
 
-    FeatureGate.instance.setFromBackend(false);
-    if (user == null) return;
+    // Only clear premium status when signed out.
+    // When signed in, do NOT reset to free here — the locally-persisted plan
+    // (Hive) should remain valid until the live Firestore snapshot arrives.
+    // Resetting eagerly caused Free-tier paywall flash / permanent gate reset
+    // for Premium/Pro-Offline users whose Firestore read was slow or offline.
+    if (user == null) {
+      FeatureGate.instance.setFromBackend(false);
+      return;
+    }
 
     final docRef = FirebaseFirestore.instance
         .collection('users')

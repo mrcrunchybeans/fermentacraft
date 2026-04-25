@@ -103,13 +103,24 @@ Future<void> _bootstrap() async {
   await ServiceLocator.initialize();
   debugPrint('[DI] Service locator initialized.');
 
-  // Legacy sync service (will be phased out in favor of SyncCoordinator)
-  // Keep for compatibility during transition
-  try {
-    await FirestoreSyncService.instance.init();
-    debugPrint('[SYNC] Legacy sync service initialized');
-  } catch (e) {
-    debugPrint('[SYNC] Legacy sync init failed: $e (using new coordinator)');
+  // Legacy sync service (will be phased out in favour of SyncCoordinator)
+  // On Windows/Linux/macOS, do NOT await – Firebase Auth's first emission can
+  // be slow and would block the window from ever appearing (customer-reported hang).
+  // On mobile/web the await is safe and gives us an immediate premium mirror.
+  final bool isDesktopBootstrap = !kIsWeb &&
+      (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+  if (isDesktopBootstrap) {
+    unawaited(FirestoreSyncService.instance.init().catchError((e) {
+      debugPrint('[SYNC] Legacy sync init failed (desktop, non-blocking): $e');
+    }));
+    debugPrint('[SYNC] Legacy sync service init started (fire-and-forget on desktop)');
+  } else {
+    try {
+      await FirestoreSyncService.instance.init();
+      debugPrint('[SYNC] Legacy sync service initialized');
+    } catch (e) {
+      debugPrint('[SYNC] Legacy sync init failed: $e (using new coordinator)');
+    }
   }
 }
 
