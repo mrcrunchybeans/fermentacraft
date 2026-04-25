@@ -38,6 +38,9 @@ class MeasurementLogPage extends StatefulWidget {
     this.firstMeasurementDate,
     this.onEditLocal,
     this.onDeleteLocal,
+    this.gravityOffset = 0.0,
+    this.tempOffset = 0.0,
+    this.pressureOffset = 0.0,
   });
 
   final String batchId;
@@ -47,6 +50,12 @@ class MeasurementLogPage extends StatefulWidget {
   final DateTime? firstMeasurementDate;
   final void Function(Measurement)? onEditLocal;
   final void Function(Measurement)? onDeleteLocal;
+  /// Offset added to every device gravity reading before display.
+  final double gravityOffset;
+  /// Offset added to every device temperature reading before display.
+  final double tempOffset;
+  /// Offset added to every Nautilis pressure reading before display (bar).
+  final double pressureOffset;
 
   @override
   State<MeasurementLogPage> createState() => _MeasurementLogPageState();
@@ -368,17 +377,56 @@ class _MeasurementLogPageState extends State<MeasurementLogPage> {
                                       const Expanded(child: Divider()),
                                     ],
                                   ),
-                                  ...items.map((m) => ListTile(
+                                   ...items.map((m) => ListTile(
                                         dense: true,
                                         contentPadding: EdgeInsets.zero,
                                         leading: Icon(m.fromDevice == true
                                             ? Icons.sensors
                                             : Icons.edit_note),
                                         title: Text(
-                                          '${DateFormat.Md().add_jm().format(m.timestamp.toLocal())} · '
-                                          'SG ${(m.gravity ?? (m.brix != null ? (brixToSg(m.brix!)) : null))?.toStringAsFixed(3) ?? "—"} · '
-                                          '${m.temperature != null ? '${m.temperature!.toStringAsFixed(1)}°C' : "—"}'
-                                          '${m.fsuspeed != null ? ' · FSU ${m.fsuspeed!.toStringAsFixed(0)}' : ''}',
+                                          () {
+                                            // Apply per-device offsets for device readings; leave manual as-is.
+                                            final isDevice = m.fromDevice == true;
+                                            final rawSg = m.gravity ?? (m.brix != null ? brixToSg(m.brix!) : null);
+                                            final displaySg = rawSg != null
+                                                ? (isDevice ? rawSg + widget.gravityOffset : rawSg)
+                                                : null;
+                                            final rawTemp = m.temperature;
+                                            final displayTemp = rawTemp != null
+                                                ? (isDevice ? rawTemp + widget.tempOffset : rawTemp)
+                                                : null;
+                                            // Show 4 decimal places for gravity (instead of 3) so users can
+                                            // see the true reading and fine-tune the offset accordingly.
+                                            final sgStr = displaySg?.toStringAsFixed(4) ?? '—';
+                                            final tempStr = displayTemp != null
+                                                ? '${displayTemp.toStringAsFixed(1)}°C'
+                                                : '—';
+                                            final fsuStr = m.fsuspeed != null
+                                                ? ' · FSU ${m.fsuspeed!.toStringAsFixed(0)}'
+                                                : '';
+                                            // Pressure from Nautilis iPressure/iRelay+P
+                                            // is encoded as 'P: X.XXX bar' in the notes field.
+                                            // Apply pressureOffset before display.
+                                            String pressureStr = '';
+                                            if (m.fromDevice == true &&
+                                                m.notes != null &&
+                                                m.notes!.startsWith('P:')) {
+                                              // Parse the raw bar value out of e.g. 'P: 1.234 bar'
+                                              final rawPStr = m.notes!
+                                                  .replaceFirst('P:', '')
+                                                  .replaceAll('bar', '')
+                                                  .trim();
+                                              final rawP = double.tryParse(rawPStr);
+                                              if (rawP != null) {
+                                                final displayP = rawP + widget.pressureOffset;
+                                                pressureStr = ' · P: ${displayP.toStringAsFixed(3)} bar';
+                                              } else {
+                                                pressureStr = ' · ${m.notes}';
+                                              }
+                                            }
+                                            return '${DateFormat.Md().add_jm().format(m.timestamp.toLocal())} · '
+                                                'SG $sgStr · $tempStr$fsuStr$pressureStr';
+                                          }(),
                                         ),
                                         trailing: (m.fromDevice == true)
                                             ? const SizedBox.shrink()
@@ -412,6 +460,8 @@ class _MeasurementLogPageState extends State<MeasurementLogPage> {
   }
 
   // --- Firestore doc → Measurement ---
+  // NOTE: offsets are NOT applied here; they are applied at display time so
+  // the raw values remain pristine for averaging/bucketing calculations.
   Measurement _fromRemoteDoc(Map<String, dynamic> m, {String? docId}) {
     final ts = (m['timestamp'] is Timestamp)
         ? (m['timestamp'] as Timestamp).toDate()
@@ -457,6 +507,16 @@ class _MeasurementLogPageState extends State<MeasurementLogPage> {
       }
     }
 
+    // Pressure (Nautilis iPressure / iRelay+P) — stored in Firestore as pressureBar.
+    // Since Measurement has no pressure field (no Hive schema change), we encode it
+    // into notes so it can be displayed in the full log without touching local storage.
+    final pressureBar = (m['pressureBar'] as num?)?.toDouble();
+    String? notes = ((m['notes'] ?? m['note']) as String?)?.trim();
+    if (pressureBar != null) {
+      final pStr = 'P: ${pressureBar.toStringAsFixed(2)} bar';
+      notes = notes != null && notes.isNotEmpty ? '$notes · $pStr' : pStr;
+    }
+
     return Measurement(
       id: docId,
       timestamp: ts,
@@ -464,7 +524,7 @@ class _MeasurementLogPageState extends State<MeasurementLogPage> {
       brix: brix,
       temperature: tempC,
       fromDevice: true,
-      notes: ((m['notes'] ?? m['note']) as String?)?.trim(),
+      notes: notes,
     );
   }
 }

@@ -513,7 +513,7 @@ class _PlanComparison extends StatelessWidget {
           free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
       const _RowSpec('Online backup & restore',
           free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
-      const _RowSpec('Live device streaming & cloud exports (iSpindel/Tilt)',
+      const _RowSpec('Live device streaming & cloud exports (iSpindel, Nautilis, Tilt)',
           free: _Avail.no, pro: _Avail.no, premium: _Avail.yes),
       const _RowSpec(
         'Billing type',

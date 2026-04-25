@@ -62,6 +62,7 @@ function parsePayload(req: Request): {
   tempC?: number;
   angle: number | null;
   battery: number | null;
+  pressureBar: number | null;
   raw: any;
 } {
   const ctype = (getHeader(req, "content-type") || "").toLowerCase();
@@ -136,7 +137,27 @@ function parsePayload(req: Request): {
   tempC = tempUnit.startsWith("F") ? (temp - 32) * (5 / 9) : temp;
   }
 
-  return { sg, tempC, angle, battery, raw };
+  // Pressure (Nautilis iPressure / iRelay+P). Stored in bar for consistency.
+  // The device can send in bar or psi; it also names the field "pressure" or "pressure_psi".
+  let pressureBar: number | null = null;
+  if (raw.pressure != null) {
+    const p = Number(raw.pressure);
+    if (!Number.isNaN(p)) {
+      const pUnit = String(raw.pressure_unit ?? raw.pressureUnit ?? raw.pressure_units ?? "bar").toLowerCase();
+      if (pUnit.includes("psi")) {
+        pressureBar = p * 0.0689476; // psi → bar
+      } else if (pUnit.includes("kpa")) {
+        pressureBar = p / 100;       // kPa → bar
+      } else {
+        pressureBar = p;             // assume bar
+      }
+    }
+  } else if (raw.pressure_psi != null) {
+    const p = Number(raw.pressure_psi);
+    if (!Number.isNaN(p)) pressureBar = p * 0.0689476;
+  }
+
+  return { sg, tempC, angle, battery, pressureBar, raw };
 }
 
 function htmlEscape(s: string) {
@@ -156,11 +177,15 @@ async function saveMeasurement(opts: {
   tempC?: number;
   angle: number | null;
   battery: number | null;
+  pressureBar: number | null;
 }): Promise<boolean> {
-  const { uid, deviceId, secret, batchIdFromQuery, sg, tempC, angle, battery } = opts;
+  const { uid, deviceId, secret, batchIdFromQuery, sg, tempC, angle, battery, pressureBar } = opts;
+  const hasSg = sg != null && isFinite(sg);
+  const hasPressure = pressureBar != null;
 
   if (!uid || !deviceId) throw new Error("missing_uid_or_deviceId");
-  if (sg == null || !isFinite(sg)) throw new Error("bad_gravity");
+  // NOTE: sg is now optional when pressureBar is present (Nautilis iPressure standalone).
+  if (!hasSg && !hasPressure) throw new Error("bad_gravity");
 
   const devRef = db.doc(`users/${uid}/devices/${deviceId}`);
   const devSnap = await devRef.get();
@@ -201,10 +226,16 @@ async function saveMeasurement(opts: {
 
   const batch = db.batch();
 
-  // Heartbeat
+  // Heartbeat — always update lastSeen and latest readings
   batch.set(
     devRef,
-    { lastSeen: now, lastSg: sg, lastTempC: tempC ?? null, battery: battery ?? null },
+    {
+      lastSeen: now,
+      lastSg: hasSg ? sg : null,
+      lastTempC: tempC ?? null,
+      battery: battery ?? null,
+      ...(hasPressure ? { lastPressureBar: pressureBar } : {}),
+    },
     { merge: true },
   );
 
@@ -213,8 +244,19 @@ async function saveMeasurement(opts: {
     return false;
   }
 
+
   const base = `users/${uid}/batches/${targetBatch}`;
-  const meas = { timestamp: now, sg, tempC: tempC ?? null, source: "device", deviceId, angle, battery };
+
+  const meas: Record<string, unknown> = {
+    timestamp: now,
+    tempC: tempC ?? null,
+    source: "device",
+    deviceId,
+    angle,
+    battery,
+    ...(hasSg ? { sg } : {}),
+    ...(hasPressure ? { pressureBar } : {}),
+  };
   
   const mRef = db.collection(`${base}/measurements`).doc();
   const rRef = db.collection(`${base}/raw_measurements`).doc();
@@ -273,7 +315,7 @@ export const ingest = onRequest({ cors: true }, async (req: Request, res: Respon
 </head>
 <body>
   <h2>FermentaCraft ingest endpoint</h2>
-  <p class="muted">This URL is <strong>working</strong>. Paste it into GravityMon/TiltBridge/Fermentrack as the BrewFather/HTTP POST endpoint.</p>
+  <p class="muted">This URL is <strong>working</strong>. Paste it into GravityMon / Nautilis iRelay / TiltBridge / Fermentrack as the HTTP POST endpoint.</p>
 
   <div class="box">
     <div><strong>UID:</strong> <code>${htmlEscape(uid || "(none)")}</code></div>
@@ -290,9 +332,11 @@ export const ingest = onRequest({ cors: true }, async (req: Request, res: Respon
   "temp": 20.5,
   "temp_unit": "C",
   "battery": 3.7,
-  "angle": 30
+  "angle": 30,
+  "pressure": 1.2,       // optional — Nautilis iPressure/iRelay+P (bar)
+  "pressure_unit": "bar" // optional — "bar", "PSI", or "KPA"
 }</pre>
-  <p class="muted">If you hit “Run push test” in GravityMon and it shows an error, ignore it — live pushes still work.</p>
+  <p class="muted">iSpindel, GravityMon, Nautilis iRelay, Nautilis iPressure, Tilt (via bridge), and HYDROM are all supported. If “Run push test” shows an error, ignore it — live pushes still work.</p>
 </body></html>`;
     res.set("Content-Type", "text/html; charset=utf-8");
     res.set("Access-Control-Allow-Origin", "*");
@@ -308,8 +352,10 @@ export const ingest = onRequest({ cors: true }, async (req: Request, res: Respon
     const secret = getHeader(req, "x-device-secret") || getHeader(req, "x-api-key");
     const batchId = String((req.query?.b as string) ?? "").trim();
 
-    const { sg, tempC, angle, battery } = parsePayload(req);
-    if (sg == null || !isFinite(sg)) {
+    const { sg, tempC, angle, battery, pressureBar } = parsePayload(req);
+    const hasSg = sg != null && isFinite(sg as number);
+    const hasPressure = pressureBar != null;
+    if (!hasSg && !hasPressure) {
       // Gentle response so users don’t think the URL is broken
       res.set("Access-Control-Allow-Origin", "*");
       res.status(200).json({
@@ -331,7 +377,7 @@ export const ingest = onRequest({ cors: true }, async (req: Request, res: Respon
       return;
     }
 
-    const saved = await saveMeasurement({ uid, deviceId, secret, batchIdFromQuery: batchId, sg, tempC, angle, battery });
+    const saved = await saveMeasurement({ uid, deviceId, secret, batchIdFromQuery: batchId, sg, tempC, angle, battery, pressureBar });
 
     res.set("Access-Control-Allow-Origin", "*");
     res.json({ ok: true, saved });

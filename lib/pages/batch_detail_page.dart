@@ -324,6 +324,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
   bool _pauseRealtime = false;
   bool _addingMeasurement = false; // Prevents concurrent measurement additions
 
+  // Calibration offsets — kept fresh via a separate subscription so they
+  // don't nest inside the chart StreamBuilder and cause ParentDataWidget errors.
+  double _gravityOffset = 0.0;
+  double _tempOffset = 0.0;
+  double _pressureOffset = 0.0;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _offsetSub;
+
   // ---- Model / key ----
   BatchModel? _batch;
   // Cache a one-shot device snapshot for non-premium view
@@ -367,6 +374,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _tastingFlavorController.dispose();
     _finalNotesController.dispose();
     _chartRangeNotifier.dispose();
+    _offsetSub?.cancel();
     super.dispose();
   }
 
@@ -386,6 +394,30 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _chartRangeNotifier = ValueNotifier<ChartRange>(ChartRange.d7);
 
     _initControllersFrom(_batch);
+
+    // Listen for device calibration offsets *outside* the chart builder so the
+    // nested StreamBuilder pattern is avoided (it causes ParentDataWidget errors).
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final batchId = widget.batchKey; // matches the Firestore doc ID
+      _offsetSub = FirestorePaths.devicesColl(uid)
+          .where('linkedBatchId', isEqualTo: batchId)
+          .limit(1)
+          .snapshots()
+          .listen((snap) {
+        final data = snap.docs.firstOrNull?.data();
+        final g = (data?['gravityOffset'] as num?)?.toDouble() ?? 0.0;
+        final t = (data?['tempOffset'] as num?)?.toDouble() ?? 0.0;
+        final p = (data?['pressureOffset'] as num?)?.toDouble() ?? 0.0;
+        if (mounted && (g != _gravityOffset || t != _tempOffset || p != _pressureOffset)) {
+          setState(() {
+            _gravityOffset = g;
+            _tempOffset = t;
+            _pressureOffset = p;
+          });
+        }
+      });
+    }
   }
 
   /// Render [builder] only when a UID is available; otherwise return SizedBox.shrink().
@@ -656,6 +688,23 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     _finalNotesController = TextEditingController(text: b?.finalNotes ?? '');
   }
 
+  // ---------------- Calibration offset helper ----------------
+
+  /// Returns a new list where gravity and temperature in device readings
+  /// have been adjusted by the current calibration offsets.
+  /// Manual (non-device) readings are returned unchanged.
+  /// Raw Hive/Firestore data is never modified.
+  List<Measurement> _applyOffsets(List<Measurement> measurements) {
+    if (_gravityOffset == 0.0 && _tempOffset == 0.0) return measurements;
+    return measurements.map((m) {
+      if (m.fromDevice != true) return m;
+      return m.copyWith(
+        gravity: m.gravity != null ? m.gravity! + _gravityOffset : null,
+        temperature: m.temperature != null ? m.temperature! + _tempOffset : null,
+      );
+    }).toList();
+  }
+
   // ---------------- ABV math ----------------
 
   /// Compute comprehensive ABV information showing both current and estimated values
@@ -679,10 +728,14 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     // Check if we have actual measurements
     final bool hasActualMeasurements = batch.safeMeasurements.isNotEmpty;
 
-    // Current ABV: based on actual measurements if available
+    // Current ABV: based on actual measurements if available,
+    // with gravity offset applied to device readings.
     double? currentAbv;
     if (hasActualMeasurements) {
-      final latestGravity = batch.safeMeasurements.last.gravity;
+      // Use offset-adjusted latest device gravity if available,
+      // otherwise fall back to raw (for manual-only batches).
+      final adjusted = _applyOffsets(batch.safeMeasurements);
+      final latestGravity = adjusted.last.gravity;
       if (latestGravity != null && latestGravity > 0.9) {
         currentAbv = GravityService.abv(og: og, fg: latestGravity.toDouble());
       }
@@ -2800,6 +2853,9 @@ class _BatchDetailPageState extends State<BatchDetailPage>
     required void Function(Measurement) onEditLocal,
     required void Function(Measurement) onDeleteLocal,
     int cap = 12,
+    double gravityOffset = 0.0,
+    double tempOffset = 0.0,
+    double pressureOffset = 0.0,
   }) {
     if (_pauseRealtime) return const SizedBox.shrink();
     // Merge + newest-first
@@ -2872,10 +2928,13 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                     Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => MeasurementLogPage(
                         batchId: batchId,
-                        uid: uid, // null => local-only
+                        uid: uid,
                         local: local,
                         deviceName: deviceName,
                         onEditLocal: onEditLocal,
+                        gravityOffset: gravityOffset,
+                        tempOffset: tempOffset,
+                        pressureOffset: pressureOffset,
                       ),
                     ));
                   },
@@ -3014,7 +3073,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     ImprovedFermentationChartPanel(
-                      measurements: batch.safeMeasurements,
+                      measurements: _applyOffsets(batch.safeMeasurements),
                       useFahrenheit: useFahrenheit,
                       sincePitchingAt: _inferPitchTime(batch),
                       initialRange: ChartRange.d7,
@@ -3104,7 +3163,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                           final capped = _capPoints(combined, maxPoints);
 
                           return ImprovedFermentationChartPanel(
-                            measurements: capped,
+                            measurements: _applyOffsets(capped),
                             useFahrenheit: useFahrenheit,
                             sincePitchingAt: _inferPitchTime(batch),
                             initialRange: chartRange,
@@ -3128,11 +3187,11 @@ class _BatchDetailPageState extends State<BatchDetailPage>
               );
             }
 
-// Signed in + Premium -> live stream
+
+// Signed in + Premium → live stream (offsets come from _gravityOffset/_tempOffset state).
             final settings = context.watch<SettingsModel>();
             final useFahrenheit = !settings.useCelsius;
 
-// UPDATED: Dynamically create the stream based on the selected range
             return ValueListenableBuilder<ChartRange>(
               valueListenable: _chartRangeNotifier,
               builder: (context, chartRange, child) {
@@ -3177,7 +3236,6 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                     final combined =
                         _mergeDeviceAndLocal(local: localSorted, remote: remote);
 
-                    // UPDATED: Dynamic data cap based on the selected range
                     final maxPoints = chartRange == ChartRange.sincePitch
                         ? _kSincePitchMaxPoints
                         : 600;
@@ -3189,7 +3247,7 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           ImprovedFermentationChartPanel(
-                            measurements: capped,
+                            measurements: _applyOffsets(capped),
                             useFahrenheit: useFahrenheit,
                             sincePitchingAt: _inferPitchTime(batch),
                             initialRange: chartRange,
@@ -3199,13 +3257,15 @@ class _BatchDetailPageState extends State<BatchDetailPage>
                           _groupedRecentList(
                             local: localSorted,
                             device: remote,
-                            deviceName:
-                                null, // keep null to avoid the undefined variable warning
+                            deviceName: null,
                             batchId: batch.id,
                             uid: uid,
                             onEditLocal: (m) => _openMeasurementEditor(batch, m),
                             onDeleteLocal: (m) =>
                                 _handleDeleteMeasurement(batch, m),
+                            gravityOffset: _gravityOffset,
+                            tempOffset: _tempOffset,
+                            pressureOffset: _pressureOffset,
                           ),
                         ],
                       ),

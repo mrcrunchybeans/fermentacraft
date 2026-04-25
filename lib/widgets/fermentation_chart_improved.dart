@@ -230,7 +230,7 @@ class _ImprovedFermentationChartPanelState extends State<ImprovedFermentationCha
               SizedBox(height: 12),
               Text('Data Display:', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 4),
-              Text('With many measurements (iSpindle), data is automatically grouped for clarity. Dots show when zoomed in.'),
+              Text('With many measurements (iSpindel, Nautilis, or other device), data is automatically grouped for clarity. Dots show when zoomed in.'),
             ],
           ),
         ),

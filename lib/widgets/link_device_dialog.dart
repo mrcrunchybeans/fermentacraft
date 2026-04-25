@@ -15,8 +15,8 @@ String _rand(int len) {
   return List.generate(len, (_) => chars[r.nextInt(chars.length)]).join();
 }
 
-enum DeviceType { ispindel, tilt, other }
-enum TargetMode { genericUrl, ckbrewCustom }
+enum DeviceType { ispindel, tilt, nautilisIrelay, nautilisIpressure, other }
+enum TargetMode { genericUrl, ckbrewCustom, nautilisHttp }
 enum PayloadFormat { json, form }
 
 // ---------- URL builders (short path; no secret in URL) ---------------------
@@ -230,6 +230,8 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
         'type': switch (_type) {
           DeviceType.ispindel => 'ispindel',
           DeviceType.tilt => 'tilt',
+          DeviceType.nautilisIrelay => 'nautilis_irelay',
+          DeviceType.nautilisIpressure => 'nautilis_ipressure',
           DeviceType.other => 'other',
         },
         'name': name,
@@ -410,18 +412,53 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
                     items: const [
                       DropdownMenuItem(
                         value: DeviceType.ispindel,
-                        child: Text('iSpindel / GravityMon', overflow: TextOverflow.visible, softWrap: true),
+                        child: Text('iSpindel / GravityMon', overflow: TextOverflow.ellipsis),
                       ),
                       DropdownMenuItem(
                         value: DeviceType.tilt,
-                        child: Text('Tilt (via bridge)', overflow: TextOverflow.visible, softWrap: true),
+                        child: Text('Tilt (via bridge)', overflow: TextOverflow.ellipsis),
+                      ),
+                      DropdownMenuItem(
+                        value: DeviceType.nautilisIrelay,
+                        child: Text('Nautilis iRelay', overflow: TextOverflow.ellipsis),
+                      ),
+                      DropdownMenuItem(
+                        value: DeviceType.nautilisIpressure,
+                        child: Text('Nautilis iPressure', overflow: TextOverflow.ellipsis),
                       ),
                       DropdownMenuItem(
                         value: DeviceType.other,
-                        child: Text('Other / Custom', overflow: TextOverflow.visible, softWrap: true),
+                        child: Text('Other / Custom', overflow: TextOverflow.ellipsis),
                       ),
                     ],
-                    onChanged: (v) => setState(() => _type = v ?? DeviceType.ispindel),
+                    onChanged: (v) {
+                      final t = v ?? DeviceType.ispindel;
+                      // Auto-fill a sensible default name and switch to the
+                      // right target mode when the device type changes.
+                      String? autoName;
+                      TargetMode autoMode = _mode;
+                      switch (t) {
+                        case DeviceType.nautilisIrelay:
+                          autoName = 'Nautilis iRelay';
+                          autoMode = TargetMode.nautilisHttp;
+                        case DeviceType.nautilisIpressure:
+                          autoName = 'Nautilis iPressure';
+                          autoMode = TargetMode.nautilisHttp;
+                        case DeviceType.ispindel:
+                          if (_type == DeviceType.nautilisIrelay ||
+                              _type == DeviceType.nautilisIpressure) {
+                            autoName = 'Fermenter iSpindel';
+                            autoMode = TargetMode.genericUrl;
+                          }
+                        default:
+                          break;
+                      }
+                      setState(() {
+                        _type = t;
+                        _mode = autoMode;
+                        if (autoName != null) _name.text = autoName;
+                      });
+                    },
                     decoration: const InputDecoration(labelText: 'Type'),
                   ),
                 ),
@@ -433,13 +470,18 @@ class _LinkDeviceDialogState extends State<LinkDeviceDialog> {
                     items: const [
                       DropdownMenuItem(
                         value: TargetMode.genericUrl,
-                        child: Text('BrewFather URL', overflow: TextOverflow.visible, softWrap: true),
+                        child: Text('BrewFather / HTTP URL', overflow: TextOverflow.ellipsis),
                       ),
                       DropdownMenuItem(
                         value: TargetMode.ckbrewCustom,
-                        child: Text('CKBrew (Custom)', overflow: TextOverflow.visible, softWrap: true),
+                        child: Text('CKBrew (Custom)', overflow: TextOverflow.ellipsis),
+                      ),
+                      DropdownMenuItem(
+                        value: TargetMode.nautilisHttp,
+                        child: Text('Nautilis HTTP Setup', overflow: TextOverflow.ellipsis),
                       ),
                     ],
+
                     onChanged: (v) => setState(() => _mode = v ?? TargetMode.genericUrl),
                     decoration: const InputDecoration(labelText: 'Target'),
                   ),
@@ -586,7 +628,53 @@ class _OutputPanel extends StatelessWidget {
     final help = TextStyle(fontSize: 12, color: Theme.of(context).hintColor);
     final secretHeader = 'X-Device-Secret: $secret';
 
-    if (mode == TargetMode.ckbrewCustom) {
+    if (mode == TargetMode.nautilisHttp) {
+      final isIPressure = deviceType == DeviceType.nautilisIpressure;
+      final uri = Uri.tryParse(shortUrl);
+      final host = uri?.host ?? ckHost;
+      return _SectionCard(
+        title: isIPressure
+            ? 'Nautilis iPressure — HTTP setup'
+            : 'Nautilis iRelay — HTTP setup',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Open the Nautilis web interface at 192.168.4.1, '
+              'select "HTTP" as the service type, then enter:',
+              style: help,
+            ),
+            const SizedBox(height: 12),
+            _LabeledCodeField(label: 'Server', value: host, copyLabel: 'Copy Server'),
+            const SizedBox(height: 10),
+            _LabeledCodeField(label: 'Port', value: '443', maxLines: 1, copyLabel: 'Copy'),
+            const SizedBox(height: 10),
+            _LabeledCodeField(label: 'Path / URI', value: ckPath, maxLines: 3, copyLabel: 'Copy Path'),
+            const SizedBox(height: 10),
+            _LabeledCodeField(
+              label: 'Required header — add as a custom header if supported',
+              value: 'X-Device-Secret: $secret',
+              maxLines: 1,
+              copyLabel: 'Copy Secret',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Protocol: HTTPS · Method: POST · Content-Type: application/json',
+              style: help,
+            ),
+            if (isIPressure) ...[
+              const SizedBox(height: 8),
+              Text(
+                '💡 Pressure readings (bar/PSI) are stored automatically and '
+                'will appear in the "Open full log" view alongside gravity and temperature.',
+                style: help,
+              ),
+            ],
+          ],
+        ),
+      );
+    } else if (mode == TargetMode.ckbrewCustom) {
+
       return _SectionCard(
         title: 'CKBrew (Custom) configuration',
         child: Column(

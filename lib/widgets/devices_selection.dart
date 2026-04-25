@@ -350,6 +350,16 @@ Widget build(BuildContext context) {
               const PopupMenuItem(value: 'link-pick', child: Text('Link to…')),
             if (linkedBid.isNotEmpty)
               const PopupMenuItem(value: 'unlink', child: Text('Unlink')),
+            const PopupMenuItem(
+              value: 'calibrate',
+              child: Row(
+                children: [
+                  Icon(Icons.tune, size: 18),
+                  SizedBox(width: 8),
+                  Text('Calibrate offsets'),
+                ],
+              ),
+            ),
             const PopupMenuItem(value: 'delete', child: Text('Delete')),
           ],
         ),
@@ -442,13 +452,11 @@ class _DeviceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _RowWrap(children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                       if ((linkedBid).isNotEmpty)
                         const Padding(
@@ -481,6 +489,16 @@ class _DeviceCard extends StatelessWidget {
                   if (batchId != null && linkedBid != batchId) const PopupMenuItem(value: 'link-here', child: Text('Link to this batch')),
                   if (batchId == null) const PopupMenuItem(value: 'link-pick', child: Text('Link to…')),
                   if (linkedBid.isNotEmpty) const PopupMenuItem(value: 'unlink', child: Text('Unlink')),
+                  const PopupMenuItem(
+                    value: 'calibrate',
+                    child: Row(
+                      children: [
+                        Icon(Icons.tune, size: 18),
+                        SizedBox(width: 8),
+                        Text('Calibrate offsets'),
+                      ],
+                    ),
+                  ),
                   const PopupMenuItem(value: 'delete', child: Text('Delete')),
                 ],
                 onSelected: (value) => _onMenu(
@@ -666,7 +684,7 @@ class _HelpBanner extends StatelessWidget {
           title: Text(
             batchMode
                 ? 'Tip: When linking a device, unlinked ones are shown first.'
-                : 'Tip: GravityMon’s “Run push test” can show an error even when live pushes work.',
+                : 'Tip: iSpindel/Nautilis “Run push test” may show an error even when live pushes work.',
             style: theme.textTheme.bodyMedium,
           ),
           trailing: TextButton(
@@ -676,11 +694,14 @@ class _HelpBanner extends StatelessWidget {
               builder: (_) => const AlertDialog(
                 title: Text('About device pushes'),
                 content: Text(
-                  'Devices should POST JSON to the shown URL with:\n'
+                  'Supported devices (iSpindel, GravityMon, Tilt, '
+                  'Nautilis iRelay, Nautilis iPressure, HYDROM, and more) '
+                  'should POST JSON to the shown URL with:\n'
                   '• Content-Type: application/json\n'
                   '• X-Device-Secret: <secret>\n\n'
-                  'The “Run push test” button in some firmware may not reflect reality, '
-                  'but live background pushes will still be ingested.\n',
+                  'The “Run push test” button in some firmware/relay UI may '
+                  'show an error even though live background pushes succeed. '
+                  'Watch the device card for “Seen just now” to confirm.\n',
                 ),
               ),
             ),
@@ -783,6 +804,9 @@ Future<void> _onMenu({
       await FirestorePaths.deviceDoc(uid, deviceId).update({'linkedBatchId': ''});
       onUnlinked();
       break;
+    case 'calibrate':
+      await _showCalibrationDialog(context, uid: uid, deviceId: deviceId, deviceName: deviceName);
+      break;
     case 'delete':
     final ok = await _confirmDelete(context, deviceName);
       if (!ok) return;
@@ -792,6 +816,198 @@ Future<void> _onMenu({
     default:
       messenger.showSnackBar(const SnackBar(content: Text('Unknown action')));
   }
+}
+
+/// Dialog to set gravity, temperature and pressure calibration offsets for a device.
+/// Offsets are stored in Firestore as `gravityOffset`, `tempOffset`, and `pressureOffset`.
+/// They are applied at display-time in the full log view (raw data is unchanged).
+Future<void> _showCalibrationDialog(
+  BuildContext context, {
+  required String uid,
+  required String deviceId,
+  required String deviceName,
+}) async {
+  // Fetch current offsets
+  final docSnap = await FirestorePaths.deviceDoc(uid, deviceId).get();
+  final data = docSnap.data() ?? {};
+  final currentGravity = (data['gravityOffset'] as num?)?.toDouble() ?? 0.0;
+  final currentTemp = (data['tempOffset'] as num?)?.toDouble() ?? 0.0;
+  final currentPressure = (data['pressureOffset'] as num?)?.toDouble() ?? 0.0;
+
+  double gravity = currentGravity;
+  double temp = currentTemp;
+  double pressure = currentPressure;
+
+  final gravityCtrl = TextEditingController(
+    text: currentGravity == 0.0 ? '' : currentGravity.toStringAsFixed(4),
+  );
+  final tempCtrl = TextEditingController(
+    text: currentTemp == 0.0 ? '' : currentTemp.toStringAsFixed(2),
+  );
+  final pressureCtrl = TextEditingController(
+    text: currentPressure == 0.0 ? '' : currentPressure.toStringAsFixed(3),
+  );
+
+  // ignore: use_build_context_synchronously – we guard with a mounted-equivalent
+  // check; top-level fns have no `mounted`, so we rely on the dialog guard below.
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.tune, color: Theme.of(ctx).colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Calibrate "$deviceName"')),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Gravity offset
+            Text('Gravity offset (SG)', style: Theme.of(ctx).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            TextField(
+              controller: gravityCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: true,
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                hintText: '0.0000 (e.g. −0.0002)',
+                border: const OutlineInputBorder(),
+                helperText:
+                    'Added to every device gravity reading.\n'
+                    'Tip: open the full log (4 d.p.) to find the true reading.',
+                helperMaxLines: 3,
+                prefixIcon: const Icon(Icons.water_drop_outlined),
+                suffixText: 'SG',
+              ),
+              onChanged: (v) => gravity = double.tryParse(v) ?? 0.0,
+            ),
+            const SizedBox(height: 16),
+
+            // Temperature offset
+            Text('Temperature offset (°C)', style: Theme.of(ctx).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            TextField(
+              controller: tempCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: true,
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                hintText: 'e.g. −0.5 or −0.35',
+                border: const OutlineInputBorder(),
+                helperText: 'Added to every device temperature reading.\n'
+                    'Any decimal is accepted, e.g. −0.35.',
+                helperMaxLines: 3,
+                prefixIcon: const Icon(Icons.thermostat_outlined),
+                suffixText: '°C',
+              ),
+              onChanged: (v) => temp = double.tryParse(v) ?? 0.0,
+            ),
+
+            const SizedBox(height: 16),
+
+            // Pressure offset (Nautilis iPressure / iRelay+P)
+            Text('Pressure offset (bar)', style: Theme.of(ctx).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            TextField(
+              controller: pressureCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: true,
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                hintText: 'e.g. −0.050 or +0.100',
+                border: const OutlineInputBorder(),
+                helperText: 'Added to every Nautilis pressure reading (bar).\n'
+                    'Leave blank or 0 if no pressure sensor is attached.',
+                helperMaxLines: 3,
+                prefixIcon: const Icon(Icons.compress_outlined),
+                suffixText: 'bar',
+              ),
+              onChanged: (v) => pressure = double.tryParse(v) ?? 0.0,
+            ),
+
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.surfaceVariant.withOpacity(.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Offsets apply to all past and future readings from this device — '
+                'charts, ABV, attenuation, and the full log all reflect the corrected values. '
+                'Raw data is never modified.',
+                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(ctx).hintColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Cancel'),
+        ),
+        OutlinedButton(
+          onPressed: () async {
+            final nav = Navigator.of(ctx);
+            // Reset to zero
+            await FirestorePaths.deviceDoc(uid, deviceId).update({
+              'gravityOffset': 0.0,
+              'tempOffset': 0.0,
+              'pressureOffset': 0.0,
+            });
+            nav.pop();
+            if (ctx.mounted) {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Offsets reset to zero')),
+              );
+            }
+          },
+          child: const Text('Reset'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            // Read final values from text fields (in case onChanged wasn't called)
+            gravity = double.tryParse(gravityCtrl.text) ?? 0.0;
+            temp = double.tryParse(tempCtrl.text) ?? 0.0;
+            pressure = double.tryParse(pressureCtrl.text) ?? 0.0;
+            final nav = Navigator.of(ctx);
+            await FirestorePaths.deviceDoc(uid, deviceId).update({
+              'gravityOffset': gravity,
+              'tempOffset': temp,
+              'pressureOffset': pressure,
+            });
+            nav.pop();
+            if (ctx.mounted) {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Saved: gravity ${gravity >= 0 ? "+" : ""}${gravity.toStringAsFixed(4)} SG · '
+                    'temp ${temp >= 0 ? "+" : ""}${temp.toStringAsFixed(2)}°C · '
+                    'pressure ${pressure >= 0 ? "+" : ""}${pressure.toStringAsFixed(3)} bar',
+                  ),
+                ),
+              );
+            }
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+
+  gravityCtrl.dispose();
+  tempCtrl.dispose();
 }
 
 /// Polished, responsive bottom sheet with sections, copy rows, and QR.
@@ -998,6 +1214,50 @@ _IconTextButton(
                       const SizedBox(height: 8),
                       Text(
                         'CKBrew → Third-Party → Custom: HTTPS, Port 443, Path shown above. Method: POST with JSON + both headers.',
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Section: Nautilis iRelay / iPressure
+                _Section(
+                  title: 'Nautilis iRelay / iPressure',
+                  icon: Icons.sensors_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Nautilis devices (iRelay+, iRelay Premium, iPressure) use the '
+                        'same HTTP endpoint as iSpindel. Select "HTTP" service in the '
+                        'Nautilis web interface (192.168.4.1) and enter:',
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+                      ),
+                      const SizedBox(height: 10),
+                      _KeyValueChips(items: {
+                        'Server': host,
+                        'Port': '443',
+                        'Protocol': 'HTTPS',
+                      }),
+                      const SizedBox(height: 8),
+                      const _Label('Path / URI'),
+                      _MonoBox(path, maxLines: 2),
+                      const SizedBox(height: 8),
+                      const _Label('Headers'),
+                      _MonoBox('$contentHeader\n$secretHeader', maxLines: 2),
+                      _CopyRow(values: [
+                        ('Copy Host', host),
+                        ('Copy Path', path),
+                      ], extra: [
+                        ('Copy Secret header', secretHeader),
+                      ]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Pressure readings from iPressure / iRelay+P are stored '
+                        'automatically and appear in the "Open full log" view '
+                        'alongside gravity and temperature.',
                         style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
                       ),
                     ],
