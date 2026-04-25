@@ -76,3 +76,13 @@ ios/Flutter/Flutter.podspec
 play_api_key.json
 functions/scripts/generated-codes/proOffline-codes-2025-12-07-50.txt
 functions/.env
+
+# Release artifacts (belong in GitHub Releases, not the git tree)
+release-artifacts/
+logs_*/
+*.aab
+*.ipa
+*.apk
+*.msix
+firebase_cpp_sdk.zip
+
