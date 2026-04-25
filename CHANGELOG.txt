@@ -1,7 +1,5 @@
-# Release v2.0.26 (2.0.26+106)
+# Release v2.0.29 (2.0.29+109)
 
 ## What's New
 
-- chore: bump msix_version to 2.0.100.0
-- 1. Snackbar not dismissing — ClearSnackbarsOnNavigate was dead code (never registered), and the ScaffoldMessengerState-based auto-dismiss was failing silently. Added a Timer in SnackbarService.show() that explicitly calls hide() after the duration expires, and registered the observer on MaterialApp.
-- fix: remove syntax error from windows-release workflow
+- Initial release

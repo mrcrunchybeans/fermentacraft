@@ -1,7 +1,7 @@
 name: fermentacraft
 description: A new Flutter project for tracking fermentation recipes.
 publish_to: 'none'
-version: 2.0.27+107
+version: 2.0.29+109
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
